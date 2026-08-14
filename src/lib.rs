@@ -1,0 +1,114 @@
+pub mod actions;
+pub mod asset_manager;
+pub mod audio;
+pub mod camera;
+pub mod draggable;
+pub mod engine;
+pub mod input;
+pub mod object;
+pub mod particles;
+pub mod postprocess;
+pub mod prelude;
+pub mod scene;
+pub mod sequence;
+pub mod state;
+pub mod time;
+pub mod ui;
+pub mod window;
+pub mod world;
+
+#[cfg(test)]
+mod tests {
+    use super::prelude::*;
+    use macroquad::input::KeyCode;
+    use macroquad::math::vec2;
+    use macroquad::color::WHITE;
+
+    #[test]
+    fn test_state_store_and_serde() {
+        let mut store = StateStore::new();
+        store.set_bool("door_open", true);
+        store.set_int("gold", 100);
+        store.increment("gold", 50);
+        store.set_text("player_name", "Hero");
+
+        assert_eq!(store.get_bool("door_open"), true);
+        assert_eq!(store.get_int("gold"), 150);
+        assert_eq!(store.get_text("player_name"), "Hero");
+
+        // Save & Load JSON
+        let temp_path = std::env::temp_dir().join("rusty_engine_test_state.json");
+        let path_str = temp_path.to_str().unwrap();
+
+        store.save_to_file(path_str).unwrap();
+        let loaded = StateStore::load_from_file(path_str).unwrap();
+
+        assert_eq!(loaded.get_bool("door_open"), true);
+        assert_eq!(loaded.get_int("gold"), 150);
+        assert_eq!(loaded.get_text("player_name"), "Hero");
+
+        let _ = std::fs::remove_file(temp_path);
+    }
+
+    #[test]
+    fn test_action_map() {
+        let mut actions = ActionMap::new();
+        actions.bind_key("jump", KeyCode::Space);
+        actions.bind_mouse("attack", Side::Left);
+
+        actions.unbind("jump");
+        assert_eq!(actions.is_down("jump"), false);
+    }
+
+    #[test]
+    fn test_text_typewriter() {
+        let mut text = Text::new("Hello", vec2(0.0, 0.0), 20.0, WHITE)
+            .with_typewriter(10.0);
+
+        assert_eq!(text.is_finished(), false);
+        text.skip();
+        assert_eq!(text.content, "Hello");
+        assert_eq!(text.is_finished(), true);
+    }
+
+    #[test]
+    fn test_ui_bring_to_front_and_count() {
+        let p1 = Panel::new(vec2(0.0, 0.0), vec2(100.0, 100.0)).with_tag("panel1");
+        let p2 = Panel::new(vec2(10.0, 10.0), vec2(100.0, 100.0)).with_tag("panel2");
+
+        let ui = UI::new(vec![Box::new(p1), Box::new(p2)]);
+        let world = World::new_with_ui(vec![], vec![Box::new(ui)]);
+
+        assert_eq!(world.count_ui_by_tag("UI"), 1);
+    }
+
+    #[test]
+    fn test_object_set_text() {
+        let mut text = Text::new("Stary tekst", vec2(0.0, 0.0), 20.0, WHITE);
+        text.set_text("Nowy tekst");
+        assert_eq!(text.content, "Nowy tekst");
+    }
+
+    #[test]
+    fn test_world_macros() {
+        let t1 = Text::new("T1", vec2(0.0, 0.0), 10.0, WHITE);
+        let t2 = Text::new("T2", vec2(0.0, 0.0), 10.0, WHITE);
+        let p1 = Panel::new(vec2(0.0, 0.0), vec2(50.0, 50.0));
+
+        let w_full = world! {
+            objects: [t1, t2],
+            ui: [p1],
+        };
+
+        assert_eq!(w_full.objects().len(), 2);
+        assert_eq!(w_full.ui_objects().len(), 1);
+
+        let t3 = Text::new("T3", vec2(0.0, 0.0), 10.0, WHITE);
+        let w_no_ui = world! {
+            objects: [t3],
+        };
+
+        assert_eq!(w_no_ui.objects().len(), 1);
+        assert_eq!(w_no_ui.ui_objects().len(), 0);
+    }
+}
