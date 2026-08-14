@@ -168,4 +168,23 @@ mod tests {
         assert_eq!(ui.is_visible(), false);
         assert_eq!(ui.is_active(), false);
     }
+
+    #[test]
+    fn test_text_field() {
+        let mut tf = TextField::new(vec2(10.0, 10.0), vec2(200.0, 30.0), "Enter name...")
+            .with_text("Player1")
+            .with_max_length(10)
+            .without_decoration()
+            .hidden()
+            .deactivated();
+
+        assert_eq!(tf.text, "Player1");
+        assert_eq!(tf.placeholder, "Enter name...");
+        assert_eq!(tf.decorated, false);
+        assert_eq!(tf.is_visible(), false);
+        assert_eq!(tf.is_active(), false);
+
+        tf.set_focused(true);
+        assert_eq!(tf.is_focused(), true);
+    }
 }

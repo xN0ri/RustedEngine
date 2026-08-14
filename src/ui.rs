@@ -1,9 +1,9 @@
 use macroquad::{
     color::{Color, GRAY, GREEN, LIGHTGRAY, RED, WHITE},
-    input::{is_mouse_button_pressed, mouse_position, MouseButton},
+    input::{is_key_pressed, is_mouse_button_pressed, mouse_position, KeyCode, MouseButton},
     math::{vec2, Rect, Vec2},
     shapes::draw_rectangle,
-    text::draw_text,
+    text::{draw_text, draw_text_ex, measure_text, Font, TextParams},
 };
 
 use crate::{
@@ -46,6 +46,7 @@ pub struct Text {
     pub content: String,
     pub position: Vec2,
     pub font_size: f32,
+    pub font: Option<Font>,
     pub color: Color,
     pub tag: String,
     pub visible: bool,
@@ -66,6 +67,7 @@ impl Text {
             full_content: text.to_string(),
             position,
             font_size,
+            font: None,
             color,
             tag: String::new(),
             visible: true,
@@ -78,6 +80,12 @@ impl Text {
     /// Builder pattern: Sets the text color.
     pub fn with_color(mut self, color: Color) -> Self {
         self.color = color;
+        self
+    }
+
+    /// Builder pattern: Sets a custom TTF font.
+    pub fn with_font(mut self, font: Font) -> Self {
+        self.font = Some(font);
         self
     }
 
@@ -186,13 +194,27 @@ impl Object for Text {
         if !self.visible {
             return;
         }
-        draw_text(
-            &self.content,
-            self.position.x,
-            self.position.y,
-            self.font_size,
-            self.color,
-        );
+        if let Some(ref font) = self.font {
+            draw_text_ex(
+                &self.content,
+                self.position.x,
+                self.position.y,
+                TextParams {
+                    font: Some(font),
+                    font_size: self.font_size as u16,
+                    color: self.color,
+                    ..Default::default()
+                },
+            );
+        } else {
+            draw_text(
+                &self.content,
+                self.position.x,
+                self.position.y,
+                self.font_size,
+                self.color,
+            );
+        }
     }
 
     fn tag(&self) -> &str {
@@ -250,6 +272,7 @@ pub struct Button {
     pub size: Vec2,
     pub label: String,
     pub font_size: f32,
+    pub font: Option<Font>,
     pub color: Color,
     pub hover_color: Color,
     pub text_color: Color,
@@ -266,6 +289,7 @@ impl Button {
             size,
             label: label.to_string(),
             font_size: 20.0,
+            font: None,
             color: GRAY,
             hover_color: LIGHTGRAY,
             text_color: WHITE,
@@ -278,6 +302,12 @@ impl Button {
     /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
+        self
+    }
+
+    /// Builder pattern: Sets a custom TTF font for button label.
+    pub fn with_font(mut self, font: Font) -> Self {
+        self.font = Some(font);
         self
     }
 
@@ -361,7 +391,21 @@ impl Object for Button {
         );
         let tx = self.position.x + 10.0;
         let ty = self.position.y + (self.size.y / 2.0) + (self.font_size / 3.0);
-        draw_text(&self.label, tx, ty, self.font_size, self.text_color);
+        if let Some(ref font) = self.font {
+            draw_text_ex(
+                &self.label,
+                tx,
+                ty,
+                TextParams {
+                    font: Some(font),
+                    font_size: self.font_size as u16,
+                    color: self.text_color,
+                    ..Default::default()
+                },
+            );
+        } else {
+            draw_text(&self.label, tx, ty, self.font_size, self.text_color);
+        }
     }
 
     fn tag(&self) -> &str {
@@ -922,5 +966,348 @@ impl Object for UI {
 impl Default for UI {
     fn default() -> Self {
         Self::new(Vec::new())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TextField — Interactive UI text input field
+// ---------------------------------------------------------------------------
+
+/// Interactive UI text input field supporting focus management, character typing,
+/// placeholder text, blinking cursor, custom fonts, and optional decorations.
+pub struct TextField {
+    pub position: Vec2,
+    pub size: Vec2,
+    pub text: String,
+    pub placeholder: String,
+    pub font_size: f32,
+    pub font: Option<Font>,
+    pub bg_color: Color,
+    pub focus_border_color: Color,
+    pub border_color: Option<Color>,
+    pub border_width: f32,
+    pub text_color: Color,
+    pub placeholder_color: Color,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+    pub focused: bool,
+    pub decorated: bool,
+    pub max_length: Option<usize>,
+    cursor_timer: f32,
+}
+
+impl TextField {
+    /// Creates a new UI [`TextField`] with default styling and decorations enabled.
+    pub fn new(position: Vec2, size: Vec2, placeholder: &str) -> Self {
+        Self {
+            position,
+            size,
+            text: String::new(),
+            placeholder: placeholder.to_string(),
+            font_size: 20.0,
+            font: None,
+            bg_color: Color::from_rgba(20, 20, 30, 240),
+            focus_border_color: Color::from_rgba(100, 180, 255, 255),
+            border_color: Some(Color::from_rgba(80, 80, 100, 255)),
+            border_width: 1.5,
+            text_color: WHITE,
+            placeholder_color: GRAY,
+            tag: String::new(),
+            visible: true,
+            active: true,
+            focused: false,
+            decorated: true,
+            max_length: None,
+            cursor_timer: 0.0,
+        }
+    }
+
+    /// Builder pattern: Sets initial text.
+    pub fn with_text(mut self, text: &str) -> Self {
+        self.text = text.to_string();
+        self
+    }
+
+    /// Builder pattern: Sets a custom TTF font.
+    pub fn with_font(mut self, font: Font) -> Self {
+        self.font = Some(font);
+        self
+    }
+
+    /// Builder pattern: Sets font size.
+    pub fn with_font_size(mut self, size: f32) -> Self {
+        self.font_size = size;
+        self
+    }
+
+    /// Builder pattern: Sets text color.
+    pub fn with_color(mut self, color: Color) -> Self {
+        self.text_color = color;
+        self
+    }
+
+    /// Builder pattern: Sets placeholder text color.
+    pub fn with_placeholder_color(mut self, color: Color) -> Self {
+        self.placeholder_color = color;
+        self
+    }
+
+    /// Builder pattern: Sets background color.
+    pub fn with_background(mut self, color: Color) -> Self {
+        self.bg_color = color;
+        self
+    }
+
+    /// Builder pattern: Sets border color and width.
+    pub fn with_border(mut self, color: Color, width: f32) -> Self {
+        self.border_color = Some(color);
+        self.border_width = width;
+        self
+    }
+
+    /// Builder pattern: Disables border rendering.
+    pub fn without_border(mut self) -> Self {
+        self.border_color = None;
+        self
+    }
+
+    /// Builder pattern: Enables or disables visual decorations (background box and border).
+    pub fn with_decoration(mut self, enabled: bool) -> Self {
+        self.decorated = enabled;
+        self
+    }
+
+    /// Builder pattern: Disables visual decorations (renders as plain text without background or border).
+    pub fn without_decoration(mut self) -> Self {
+        self.decorated = false;
+        self
+    }
+
+    /// Builder pattern: Sets maximum character length.
+    pub fn with_max_length(mut self, max_len: usize) -> Self {
+        self.max_length = Some(max_len);
+        self
+    }
+
+    /// Builder pattern: Sets entity tag.
+    pub fn with_tag(mut self, tag: &str) -> Self {
+        self.tag = tag.to_string();
+        self
+    }
+
+    /// Builder pattern: Sets text field to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets text field to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets text field to deactivated (`active = false`) (alias for [`deactivated`](TextField::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets text field visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets text field active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Returns `true` if text field is visible.
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Returns `true` if text field is active.
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
+    /// Returns `true` if the text field currently has focus.
+    pub fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    /// Explicitly sets focus state.
+    pub fn set_focused(&mut self, focused: bool) {
+        self.focused = focused;
+        if focused {
+            self.cursor_timer = 0.0;
+        }
+    }
+
+    /// Returns bounding rectangle of the text field.
+    pub fn rect(&self) -> Rect {
+        Rect {
+            x: self.position.x,
+            y: self.position.y,
+            w: self.size.x,
+            h: self.size.y,
+        }
+    }
+}
+
+impl Clickable for TextField {
+    fn click_rect(&self) -> Rect {
+        self.rect()
+    }
+    fn is_active(&self) -> bool {
+        self.active
+    }
+}
+
+impl Object for TextField {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
+
+        if is_mouse_button_pressed(MouseButton::Left) {
+            self.focused = self.is_hovered();
+            if self.focused {
+                self.cursor_timer = 0.0;
+            }
+        }
+
+        if self.focused {
+            self.cursor_timer += ctx.time.deltatime();
+
+            while let Some(c) = macroquad::input::get_char_pressed() {
+                if !c.is_control() {
+                    if let Some(max_len) = self.max_length {
+                        if self.text.len() < max_len {
+                            self.text.push(c);
+                        }
+                    } else {
+                        self.text.push(c);
+                    }
+                }
+            }
+
+            if is_key_pressed(KeyCode::Backspace) {
+                self.text.pop();
+            }
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+
+        if self.decorated {
+            draw_rectangle(
+                self.position.x,
+                self.position.y,
+                self.size.x,
+                self.size.y,
+                self.bg_color,
+            );
+
+            let bc = if self.focused {
+                Some(self.focus_border_color)
+            } else {
+                self.border_color
+            };
+
+            if let Some(border_color) = bc {
+                let bw = self.border_width;
+                draw_rectangle(self.position.x, self.position.y, self.size.x, bw, border_color);
+                draw_rectangle(self.position.x, self.position.y + self.size.y - bw, self.size.x, bw, border_color);
+                draw_rectangle(self.position.x, self.position.y, bw, self.size.y, border_color);
+                draw_rectangle(self.position.x + self.size.x - bw, self.position.y, bw, self.size.y, border_color);
+            }
+        }
+
+        let text_to_draw = if self.text.is_empty() {
+            &self.placeholder
+        } else {
+            &self.text
+        };
+        let color_to_draw = if self.text.is_empty() {
+            self.placeholder_color
+        } else {
+            self.text_color
+        };
+
+        let tx = if self.decorated { self.position.x + 8.0 } else { self.position.x };
+        let ty = self.position.y + (self.size.y / 2.0) + (self.font_size / 3.0);
+
+        if let Some(ref font) = self.font {
+            draw_text_ex(
+                text_to_draw,
+                tx,
+                ty,
+                TextParams {
+                    font: Some(font),
+                    font_size: self.font_size as u16,
+                    color: color_to_draw,
+                    ..Default::default()
+                },
+            );
+        } else {
+            draw_text(text_to_draw, tx, ty, self.font_size, color_to_draw);
+        }
+
+        if self.focused && (self.cursor_timer % 0.8) < 0.4 {
+            let text_dim = measure_text(
+                if self.text.is_empty() { "" } else { &self.text },
+                self.font.as_ref(),
+                self.font_size as u16,
+                1.0,
+            );
+            let cursor_x = tx + text_dim.width + 2.0;
+            let cursor_top = self.position.y + 4.0;
+            let cursor_height = (self.size.y - 8.0).max(self.font_size);
+            draw_rectangle(cursor_x, cursor_top, 2.0, cursor_height, self.text_color);
+        }
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
+}
+
+/// Type alias for a text field combined with game data and update closure.
+pub type TextFieldObject<Data> = Behavior<TextField, Data>;
+
+impl<Data> std::ops::Deref for Behavior<TextField, Data> {
+    type Target = TextField;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<Data> std::ops::DerefMut for Behavior<TextField, Data> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }

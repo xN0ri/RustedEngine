@@ -1,5 +1,5 @@
 use macroquad::prelude::*;
-use RustyEngine::prelude::*;
+use RustedEngine::prelude::*;
 
 struct PlayerData {
     hp: f32,

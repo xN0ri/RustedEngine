@@ -15,7 +15,7 @@ pub use crate::{
     sequence::{Sequence, Step},
     state::{StateStore, StateValue},
     time::{Time, Timer},
-    ui::{Button, Panel, ProgressBar, RevealMode, Text, TextObject, UI},
+    ui::{Button, Panel, ProgressBar, RevealMode, Text, TextField, TextFieldObject, TextObject, UI},
     window::Window,
     world::{Object, World},
     world, world_objects,

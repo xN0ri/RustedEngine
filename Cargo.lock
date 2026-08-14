@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "RustyEngine"
+name = "RustedEngine"
 version = "0.1.0"
 dependencies = [
  "macroquad",
