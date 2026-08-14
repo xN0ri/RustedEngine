@@ -1,6 +1,6 @@
-# 🦀 RustyEngine
+# 🦀 RustedEngine
 
-**RustyEngine** is a clean, modular 2D game engine framework built on top of [Macroquad](https://macroquad.rs/). Designed to remove boilerplate while keeping Rust's performance and safety, it provides everything you need to build desktop games, UI-heavy narrative exploration games, or fast-paced 2D action titles.
+**RustedEngine** is a clean, modular 2D game engine framework built on top of [Macroquad](https://macroquad.rs/). Designed to remove boilerplate while keeping Rust's performance and safety, it provides everything you need to build desktop games, UI-heavy narrative exploration games, or fast-paced 2D action titles.
 
 ---
 
@@ -23,9 +23,9 @@
 
 ## ⚡ Quick Start
 
-Add `RustyEngine` and `macroquad` to your `Cargo.toml`:
+Add `RustedEngine` and `macroquad` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 macroquad = "0.4.16"
-RustyEngine = { path = "../RustyEngine" } # or git dependency
+RustedEngine = { path = "../RustedEngine" } # or git dependency
