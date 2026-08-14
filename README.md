@@ -9,7 +9,6 @@
 - 🌌 **Layered World & UI Architecture**: Separate rendering layers for world space (transformed by camera) and screen space (UI overlays).
 - 🎥 **Smooth 2D Camera**: Frame-cached camera system with smooth target lerp tracking, trilling screen shake, and `begin_to_target` shader support.
 - 📦 **Generic Behavior System**: `Behavior<Inner, Data>` allows attaching custom state and per-frame update closures to *any* entity (`Sprite`, `Text`, `ParticleEmitter`, `ProgressBar`, `Panel`, etc.).
-- 🪄 **Declarative `world!` Macros**: Concise syntax for instantiating world layers without repetitive `Box::new()` calls.
 - 👆 **Interactive Traits (`Clickable` & `Draggable`)**: Easy hover, click, hold, and drag-and-drop mechanics supporting both screen-space and camera-transformed world space coordinates.
 - 🖼️ **UI Toolkit & Z-Ordering**: Built-in `Text` (with typewriter reveal effect), `Button`, `ProgressBar` (with `StateStore` binding), and `Panel` containers with z-order focus switching.
 - 💾 **State Store & JSON Saves**: Centralized `StateStore` (`Bool`, `Int`, `Float`, `Text`) with `serde` JSON save/load out of the box.
