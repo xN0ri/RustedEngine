@@ -151,6 +151,45 @@ impl Sprite {
         self
     }
 
+    /// Builder pattern: Sets the sprite to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets the sprite to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets the sprite to deactivated (`active = false`) (alias for [`deactivated`](Sprite::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets sprite visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets sprite active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Returns `true` if the sprite is visible.
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Returns `true` if the sprite is active.
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
     /// Updates the sprite texture.
     pub fn set_texture(&mut self, texture: Texture2D) {
         self.texture = texture;
@@ -214,6 +253,22 @@ impl Object for Sprite {
     fn tag(&self) -> &str {
         &self.tag
     }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +305,45 @@ impl Rectangle {
         self.tag = tag.to_string();
         self
     }
+
+    /// Builder pattern: Sets rectangle to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets rectangle to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets rectangle to deactivated (`active = false`) (alias for [`deactivated`](Rectangle::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets rectangle visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets rectangle active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Returns `true` if the rectangle is visible.
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Returns `true` if the rectangle is active.
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
 }
 
 impl Object for Rectangle {
@@ -270,6 +364,22 @@ impl Object for Rectangle {
 
     fn tag(&self) -> &str {
         &self.tag
+    }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }
 
@@ -341,6 +451,66 @@ impl<Inner, Data> Behavior<Inner, Data> {
     pub fn inner_mut(&mut self) -> &mut Inner {
         &mut self.inner
     }
+
+    /// Builder pattern: Sets the inner entity to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self
+    where
+        Inner: Object,
+    {
+        self.inner.set_visible(false);
+        self
+    }
+
+    /// Builder pattern: Sets the inner entity to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self
+    where
+        Inner: Object,
+    {
+        self.inner.set_active(false);
+        self
+    }
+
+    /// Builder pattern: Sets the inner entity to deactivated (`active = false`) (alias for [`deactivated`](Behavior::deactivated)).
+    pub fn desactivated(self) -> Self
+    where
+        Inner: Object,
+    {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets visibility of the inner entity.
+    pub fn with_visible(mut self, visible: bool) -> Self
+    where
+        Inner: Object,
+    {
+        self.inner.set_visible(visible);
+        self
+    }
+
+    /// Builder pattern: Sets active state of the inner entity.
+    pub fn with_active(mut self, active: bool) -> Self
+    where
+        Inner: Object,
+    {
+        self.inner.set_active(active);
+        self
+    }
+
+    /// Returns `true` if the inner entity is visible.
+    pub fn is_visible(&self) -> bool
+    where
+        Inner: Object,
+    {
+        self.inner.is_visible()
+    }
+
+    /// Returns `true` if the inner entity is active.
+    pub fn is_active(&self) -> bool
+    where
+        Inner: Object,
+    {
+        self.inner.is_active()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +540,22 @@ impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
 
     fn set_text(&mut self, text: &str) {
         self.inner.set_text(text);
+    }
+
+    fn is_visible(&self) -> bool {
+        self.inner.is_visible()
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.inner.set_visible(visible);
+    }
+
+    fn is_active(&self) -> bool {
+        self.inner.is_active()
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.inner.set_active(active);
     }
 }
 

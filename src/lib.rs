@@ -125,4 +125,47 @@ mod tests {
         assert_eq!(w_no_ui.objects().len(), 1);
         assert_eq!(w_no_ui.ui_objects().len(), 0);
     }
+
+    #[test]
+    fn test_hidden_and_deactivated() {
+        let rect = Rectangle::new(vec2(0.0, 0.0), vec2(10.0, 10.0), 0.0, WHITE)
+            .hidden()
+            .deactivated();
+        assert_eq!(rect.is_visible(), false);
+        assert_eq!(rect.is_active(), false);
+
+        let button = Button::new(vec2(0.0, 0.0), vec2(10.0, 10.0), "Click")
+            .hidden()
+            .desactivated();
+        assert_eq!(button.is_visible(), false);
+        assert_eq!(button.is_active(), false);
+
+        let text = Text::new("Hi", vec2(0.0, 0.0), 12.0, WHITE)
+            .hidden()
+            .deactivated();
+        assert_eq!(text.is_visible(), false);
+        assert_eq!(text.is_active(), false);
+
+        let panel = Panel::new(vec2(0.0, 0.0), vec2(100.0, 100.0))
+            .hidden()
+            .desactivated();
+        assert_eq!(panel.is_visible(), false);
+        assert_eq!(panel.is_active(), false);
+
+        let progress = ProgressBar::new(vec2(0.0, 0.0), vec2(100.0, 10.0), 0.5)
+            .hidden()
+            .deactivated();
+        assert_eq!(progress.is_visible(), false);
+        assert_eq!(progress.is_active(), false);
+
+        let behavior_obj = Behavior::new(Rectangle::new(vec2(0.0, 0.0), vec2(10.0, 10.0), 0.0, WHITE), ())
+            .hidden()
+            .desactivated();
+        assert_eq!(behavior_obj.is_visible(), false);
+        assert_eq!(behavior_obj.is_active(), false);
+
+        let ui = UI::new(vec![]).hidden().deactivated();
+        assert_eq!(ui.is_visible(), false);
+        assert_eq!(ui.is_active(), false);
+    }
 }

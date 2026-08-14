@@ -21,6 +21,22 @@ pub trait Object {
     /// Updates text content on entities supporting text rendering (e.g. [`Text`](crate::ui::Text), [`TextObject`](crate::ui::TextObject)).
     /// Default implementation is a no-op.
     fn set_text(&mut self, _text: &str) {}
+
+    /// Returns whether this entity is visible for rendering. Defaults to `true`.
+    fn is_visible(&self) -> bool {
+        true
+    }
+
+    /// Sets whether this entity is visible for rendering.
+    fn set_visible(&mut self, _visible: bool) {}
+
+    /// Returns whether this entity is active for logic updates and input interaction. Defaults to `true`.
+    fn is_active(&self) -> bool {
+        true
+    }
+
+    /// Sets whether this entity is active for logic updates and input interaction.
+    fn set_active(&mut self, _active: bool) {}
 }
 
 /// Game world container holding separate entity rendering layers:

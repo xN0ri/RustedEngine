@@ -49,6 +49,7 @@ pub struct Text {
     pub color: Color,
     pub tag: String,
     pub visible: bool,
+    pub active: bool,
     /// Active reveal animation mode. Defaults to [`RevealMode::Instant`].
     pub reveal_mode: RevealMode,
     /// Full target string when in Typewriter mode.
@@ -68,6 +69,7 @@ impl Text {
             color,
             tag: String::new(),
             visible: true,
+            active: true,
             reveal_mode: RevealMode::Instant,
             revealed_chars: text.len() as f32,
         }
@@ -83,6 +85,45 @@ impl Text {
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
+    }
+
+    /// Builder pattern: Sets text component to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets text component to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets text component to deactivated (`active = false`) (alias for [`deactivated`](Text::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets text visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets text active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Returns `true` if text component is visible.
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Returns `true` if text component is active.
+    pub fn is_active(&self) -> bool {
+        self.active
     }
 
     /// Builder pattern: Configures typewriter reveal mode with specified characters per second speed.
@@ -123,6 +164,9 @@ impl Text {
 
 impl Object for Text {
     fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
         if let RevealMode::Typewriter { chars_per_sec } = self.reveal_mode {
             if !self.is_finished() {
                 self.revealed_chars += chars_per_sec * ctx.time.deltatime();
@@ -157,6 +201,22 @@ impl Object for Text {
 
     fn set_text(&mut self, text: &str) {
         self.set_text(text);
+    }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }
 
@@ -221,6 +281,45 @@ impl Button {
         self
     }
 
+    /// Builder pattern: Sets button component to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets button component to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets button component to deactivated (`active = false`) (alias for [`deactivated`](Button::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets button visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets button active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Returns `true` if button is visible.
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Returns `true` if button is active.
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
     /// Returns the bounding rectangle of the button.
     pub fn rect(&self) -> Rect {
         Rect {
@@ -268,6 +367,22 @@ impl Object for Button {
     fn tag(&self) -> &str {
         &self.tag
     }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +398,7 @@ pub struct ProgressBar {
     pub fill_color: Color,
     pub tag: String,
     pub visible: bool,
+    pub active: bool,
     /// Optional key entry in [`Context::state`](crate::engine::Context::state) (`f64` between 0.0 and 1.0) for automatic progress updates.
     pub state_binding: Option<String>,
 }
@@ -298,6 +414,7 @@ impl ProgressBar {
             fill_color: GREEN,
             tag: String::new(),
             visible: true,
+            active: true,
             state_binding: None,
         }
     }
@@ -306,6 +423,45 @@ impl ProgressBar {
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
+    }
+
+    /// Builder pattern: Sets progress bar to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets progress bar to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets progress bar to deactivated (`active = false`) (alias for [`deactivated`](ProgressBar::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets progress bar visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets progress bar active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Returns `true` if progress bar is visible.
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Returns `true` if progress bar is active.
+    pub fn is_active(&self) -> bool {
+        self.active
     }
 
     /// Binds progress ratio to a float entry in [`Context::state`](crate::engine::Context::state).
@@ -322,6 +478,9 @@ impl ProgressBar {
 
 impl Object for ProgressBar {
     fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
         if let Some(key) = &self.state_binding {
             if ctx.state.has_flag(key) {
                 let val = ctx.state.get_float(key) as f32;
@@ -355,6 +514,22 @@ impl Object for ProgressBar {
 
     fn tag(&self) -> &str {
         &self.tag
+    }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }
 
@@ -408,6 +583,45 @@ impl Panel {
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
+    }
+
+    /// Builder pattern: Sets panel to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets panel to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets panel to deactivated (`active = false`) (alias for [`deactivated`](Panel::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets panel visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets panel active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Returns `true` if panel is visible.
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Returns `true` if panel is active.
+    pub fn is_active(&self) -> bool {
+        self.active
     }
 
     /// Builder pattern: Sets panel background color.
@@ -495,6 +709,9 @@ impl Draggable for Panel {
 
 impl Object for Panel {
     fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
         if self.draggable {
             let lmb_pressed = is_mouse_button_pressed(MouseButton::Left);
             let lmb_down = macroquad::input::is_mouse_button_down(MouseButton::Left);
@@ -539,6 +756,22 @@ impl Object for Panel {
     fn tag(&self) -> &str {
         &self.tag
     }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +782,8 @@ impl Object for Panel {
 pub struct UI {
     pub elements: Vec<Box<dyn Object>>,
     pub tag: String,
+    pub visible: bool,
+    pub active: bool,
 }
 
 impl UI {
@@ -557,6 +792,8 @@ impl UI {
         Self {
             elements,
             tag: "UI".to_string(),
+            visible: true,
+            active: true,
         }
     }
 
@@ -564,6 +801,45 @@ impl UI {
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
+    }
+
+    /// Builder pattern: Sets UI container to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets UI container to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets UI container to deactivated (`active = false`) (alias for [`deactivated`](UI::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets UI container visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets UI container active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Returns `true` if UI container is visible.
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Returns `true` if UI container is active.
+    pub fn is_active(&self) -> bool {
+        self.active
     }
 
     /// Adds a new element object to the UI container.
@@ -605,12 +881,18 @@ impl UI {
 
 impl Object for UI {
     fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
         for element in self.elements.iter_mut() {
             element.update(ctx);
         }
     }
 
     fn draw(&self) {
+        if !self.visible {
+            return;
+        }
         for element in self.elements.iter() {
             element.draw();
         }
@@ -618,6 +900,22 @@ impl Object for UI {
 
     fn tag(&self) -> &str {
         &self.tag
+    }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }
 
