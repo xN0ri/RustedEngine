@@ -7,6 +7,7 @@ use macroquad::{
 
 use crate::{engine::Context, world::Object};
 
+/// Individual particle data struct.
 #[derive(Clone)]
 pub struct Particle {
     pub position: Vec2,
@@ -17,12 +18,15 @@ pub struct Particle {
     pub max_lifetime: f32,
 }
 
+/// 2D Particle emitter system managing particle spawning, physics integration, and rendering.
 pub struct ParticleEmitter {
     particles: Vec<Particle>,
+    /// Global gravity vector applied to particles.
     pub gravity: Vec2,
 }
 
 impl ParticleEmitter {
+    /// Creates a new empty [`ParticleEmitter`].
     pub fn new() -> Self {
         Self {
             particles: Vec::new(),
@@ -30,11 +34,13 @@ impl ParticleEmitter {
         }
     }
 
+    /// Builder pattern: Sets gravity for emitted particles.
     pub fn with_gravity(mut self, gravity: Vec2) -> Self {
         self.gravity = gravity;
         self
     }
 
+    /// Emits a radial burst of particles at `pos`.
     pub fn emit_burst(&mut self, pos: Vec2, count: usize, color: Color, speed_range: (f32, f32), size: f32, lifetime: f32) {
         for _ in 0..count {
             let angle = gen_range(0.0, std::f32::consts::TAU);
@@ -52,6 +58,7 @@ impl ParticleEmitter {
         }
     }
 
+    /// Returns the number of currently active particles.
     pub fn active_particles_count(&self) -> usize {
         self.particles.len()
     }

@@ -14,15 +14,15 @@ use crate::{
 };
 
 // ---------------------------------------------------------------------------
-// RevealMode — tryb wyświetlania tekstu
+// RevealMode — Text reveal animation mode
 // ---------------------------------------------------------------------------
 
-/// Tryb odsłaniania treści `Text`.
+/// Text reveal animation mode for [`Text`].
 #[derive(Clone, Debug)]
 pub enum RevealMode {
-    /// Tekst pojawia się natychmiastowo.
+    /// Text appears instantly in full.
     Instant,
-    /// Tekst pojawia się literka po literce z podaną prędkością.
+    /// Text appears character-by-character at the specified speed.
     Typewriter { chars_per_sec: f32 },
 }
 
@@ -33,30 +33,32 @@ impl Default for RevealMode {
 }
 
 // ---------------------------------------------------------------------------
-// Text — etykieta tekstowa (warstwa UI) z typewriter reveal
+// Text — UI Text component with typewriter reveal effect
 // ---------------------------------------------------------------------------
 
+/// UI Text component supporting typewriter reveal animation.
+///
+/// # Field Naming Notice
+/// The string content field is named `content` (instead of `text`) to avoid ambiguity
+/// when accessing fields on [`Behavior<Text, Data>`](crate::ui::TextObject) via `Deref`.
 pub struct Text {
-    /// Treść wyświetlanego napisu.
-    ///
-    /// Pole nazwane `content` (nie `text`) aby uniknąć kolizji w `Behavior<Text, Data>`:
-    /// `text_obj.text` przez deref-coercion odnosiło by się do `String` zamiast do `Text`,
-    /// co jest mylące. Jawna nazwa `content` eliminuje tę dwuznaczność.
+    /// Text string content displayed by the component.
     pub content: String,
     pub position: Vec2,
     pub font_size: f32,
     pub color: Color,
     pub tag: String,
     pub visible: bool,
-    /// Tryb odsłaniania. Domyślnie `Instant`.
+    /// Active reveal animation mode. Defaults to [`RevealMode::Instant`].
     pub reveal_mode: RevealMode,
-    /// Pełna treść (target) przy trybie Typewriter.
+    /// Full target string when in Typewriter mode.
     full_content: String,
-    /// Liczba aktualnie odsłoniętych znaków (f32 dla ułamkowego przyrostu).
+    /// Counter tracking revealed characters.
     revealed_chars: f32,
 }
 
 impl Text {
+    /// Creates a new [`Text`] component with instant reveal mode.
     pub fn new(text: &str, position: Vec2, font_size: f32, color: Color) -> Self {
         Self {
             content: text.to_string(),
@@ -71,26 +73,27 @@ impl Text {
         }
     }
 
+    /// Builder pattern: Sets the text color.
     pub fn with_color(mut self, color: Color) -> Self {
         self.color = color;
         self
     }
 
+    /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
     }
 
-    /// Ustawia tryb typewriter z podaną prędkością (znaków na sekundę).
+    /// Builder pattern: Configures typewriter reveal mode with specified characters per second speed.
     pub fn with_typewriter(mut self, chars_per_sec: f32) -> Self {
         self.reveal_mode = RevealMode::Typewriter { chars_per_sec };
-        // Reset postępu
         self.revealed_chars = 0.0;
         self.content = String::new();
         self
     }
 
-    /// Ustawia nową treść i resetuje postęp odsłaniania.
+    /// Updates the target text content and resets the reveal animation state.
     pub fn set_text(&mut self, text: impl Into<String>) {
         let t = text.into();
         self.full_content = t.clone();
@@ -106,13 +109,13 @@ impl Text {
         }
     }
 
-    /// Natychmiastowo odsłania cały tekst (skip animacji).
+    /// Immediately completes the typewriter animation, revealing all text instantly.
     pub fn skip(&mut self) {
         self.content = self.full_content.clone();
         self.revealed_chars = self.full_content.len() as f32;
     }
 
-    /// Czy cały tekst jest już odsłonięty.
+    /// Returns `true` if the text reveal animation has finished displaying all characters.
     pub fn is_finished(&self) -> bool {
         self.revealed_chars >= self.full_content.len() as f32
     }
@@ -124,7 +127,6 @@ impl Object for Text {
             if !self.is_finished() {
                 self.revealed_chars += chars_per_sec * ctx.time.deltatime();
                 let count = (self.revealed_chars as usize).min(self.full_content.len());
-                // Bezpieczne wycinanie po granicy char (UTF-8)
                 self.content = self.full_content
                     .char_indices()
                     .take(count)
@@ -136,8 +138,6 @@ impl Object for Text {
         }
     }
 
-    /// Rysuje tekst — zakładamy, że jest to warstwa UI rysowana po camera.end().
-    /// Nie wołamy set_default_camera() — za zarządzanie kamerą odpowiada Engine::run.
     fn draw(&self) {
         if !self.visible {
             return;
@@ -164,15 +164,9 @@ impl Object for Text {
 // TextObject<Data> = Behavior<Text, Data>
 // ---------------------------------------------------------------------------
 
-/// Obiekt tekstowy z danymi i opcjonalną funkcją aktualizacji.
-///
-/// Dzięki `Deref<Target = Text>` pola i metody `Text` są dostępne bezpośrednio:
-/// - `text_obj.content` — treść napisu (`String`)
-/// - `text_obj.set_text("nowa treść")`, `text_obj.skip()`, `text_obj.is_finished()`
+/// Type alias for a text component combined with game data and update closure.
 pub type TextObject<Data> = Behavior<Text, Data>;
 
-/// `Deref` umożliwia bezpośredni dostęp do pól i metod `Text` na `TextObject`.
-/// Pole treści napisu: `text_obj.content` (nie `text_obj.text`).
 impl<Data> std::ops::Deref for Behavior<Text, Data> {
     type Target = Text;
     fn deref(&self) -> &Self::Target {
@@ -187,9 +181,10 @@ impl<Data> std::ops::DerefMut for Behavior<Text, Data> {
 }
 
 // ---------------------------------------------------------------------------
-// Button — interaktywny przycisk (warstwa UI)
+// Button — Interactive UI button
 // ---------------------------------------------------------------------------
 
+/// Interactive UI button component.
 pub struct Button {
     pub position: Vec2,
     pub size: Vec2,
@@ -204,6 +199,7 @@ pub struct Button {
 }
 
 impl Button {
+    /// Creates a new UI [`Button`].
     pub fn new(position: Vec2, size: Vec2, label: &str) -> Self {
         Self {
             position,
@@ -219,11 +215,13 @@ impl Button {
         }
     }
 
+    /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
     }
 
+    /// Returns the bounding rectangle of the button.
     pub fn rect(&self) -> Rect {
         Rect {
             x: self.position.x,
@@ -246,9 +244,6 @@ impl Clickable for Button {
 impl Object for Button {
     fn update(&mut self, _ctx: &mut Context) {}
 
-    /// Rysuje przycisk — warstwa UI, rysowana po camera.end().
-    /// Nie wołamy set_default_camera() — zarządza tym Engine::run.
-    /// Używa `is_hovered()` (przestrzeń ekranu) — poprawne dla warstwy UI.
     fn draw(&self) {
         if !self.visible {
             return;
@@ -276,9 +271,10 @@ impl Object for Button {
 }
 
 // ---------------------------------------------------------------------------
-// ProgressBar — pasek postępu (warstwa UI)
+// ProgressBar — Progress bar UI component
 // ---------------------------------------------------------------------------
 
+/// Visual UI progress bar component supporting optional data binding via [`Context::state`](crate::engine::Context::state).
 pub struct ProgressBar {
     pub position: Vec2,
     pub size: Vec2,
@@ -287,11 +283,12 @@ pub struct ProgressBar {
     pub fill_color: Color,
     pub tag: String,
     pub visible: bool,
-    /// Opcjonalny klucz w `ctx.state` (wartość f64 w zakresie 0.0..1.0) do automatycznego czytania postępu.
+    /// Optional key entry in [`Context::state`](crate::engine::Context::state) (`f64` between 0.0 and 1.0) for automatic progress updates.
     pub state_binding: Option<String>,
 }
 
 impl ProgressBar {
+    /// Creates a new [`ProgressBar`].
     pub fn new(position: Vec2, size: Vec2, progress: f32) -> Self {
         Self {
             position,
@@ -305,17 +302,19 @@ impl ProgressBar {
         }
     }
 
+    /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
     }
 
-    /// Wiąże pasek postępu z wartością float w `ctx.state`.
+    /// Binds progress ratio to a float entry in [`Context::state`](crate::engine::Context::state).
     pub fn with_state_binding(mut self, state_key: &str) -> Self {
         self.state_binding = Some(state_key.to_string());
         self
     }
 
+    /// Sets progress ratio (`0.0` .. `1.0`).
     pub fn set_progress(&mut self, progress: f32) {
         self.progress = progress.clamp(0.0, 1.0);
     }
@@ -331,7 +330,6 @@ impl Object for ProgressBar {
         }
     }
 
-    /// Rysuje pasek — warstwa UI, rysowana po camera.end().
     fn draw(&self) {
         if !self.visible {
             return;
@@ -361,19 +359,18 @@ impl Object for ProgressBar {
 }
 
 // ---------------------------------------------------------------------------
-// Panel — ogólny kontener UI z Draggable + z-order
+// Panel — General UI container with Draggable + z-order support
 // ---------------------------------------------------------------------------
 
-/// Ogólny kontener UI: pozycja, rozmiar, tło, lista dzieci (`Vec<Box<dyn Object>>`).
+/// General UI container holding position, size, background styling, and child components (`Vec<Box<dyn Object>>`).
+/// Implements [`Object`] + [`Clickable`] + [`Draggable`].
 ///
-/// Implementuje `Object` + `Clickable` + `Draggable`.
-///
-/// # Przykład
+/// # Example
 /// ```ignore
 /// let mut panel = Panel::new(vec2(100.0, 100.0), vec2(300.0, 200.0))
 ///     .with_tag("inventory")
 ///     .with_background(Color::from_rgba(20, 20, 30, 200));
-/// panel.add_child(Box::new(Text::new("Ekwipunek", vec2(10.0, 30.0), 20.0, WHITE)));
+/// panel.add_child(Box::new(Text::new("Inventory", vec2(10.0, 30.0), 20.0, WHITE)));
 /// ```
 pub struct Panel {
     pub position: Vec2,
@@ -390,6 +387,7 @@ pub struct Panel {
 }
 
 impl Panel {
+    /// Creates a new [`Panel`] with default styling and dragging enabled.
     pub fn new(position: Vec2, size: Vec2) -> Self {
         Self {
             position,
@@ -406,37 +404,43 @@ impl Panel {
         }
     }
 
+    /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
     }
 
+    /// Builder pattern: Sets panel background color.
     pub fn with_background(mut self, color: Color) -> Self {
         self.background_color = color;
         self
     }
 
+    /// Builder pattern: Sets panel border color and width.
     pub fn with_border(mut self, color: Color, width: f32) -> Self {
         self.border_color = Some(color);
         self.border_width = width;
         self
     }
 
+    /// Builder pattern: Disables panel border.
     pub fn without_border(mut self) -> Self {
         self.border_color = None;
         self
     }
 
+    /// Builder pattern: Enables or disables panel dragging mechanics.
     pub fn draggable(mut self, enabled: bool) -> Self {
         self.draggable = enabled;
         self
     }
 
-    /// Dodaje element potomny do panelu.
+    /// Adds a child entity object to the panel container.
     pub fn add_child(&mut self, child: Box<dyn Object>) {
         self.children.push(child);
     }
 
+    /// Returns the bounding rectangle of the panel.
     pub fn rect(&self) -> Rect {
         Rect {
             x: self.position.x,
@@ -446,7 +450,7 @@ impl Panel {
         }
     }
 
-    /// Czy obiekt jest aktualnie przeciągany.
+    /// Returns `true` if the panel is currently being dragged by the mouse.
     pub fn is_dragging(&self) -> bool {
         self.drag.is_dragging
     }
@@ -479,7 +483,6 @@ impl Draggable for Panel {
             return false;
         }
         let (mx, my) = mouse_position();
-        // Strefa chwytania: górny pasek (20px) lub cały panel
         let header = Rect {
             x: self.position.x,
             y: self.position.y,
@@ -492,7 +495,6 @@ impl Draggable for Panel {
 
 impl Object for Panel {
     fn update(&mut self, ctx: &mut Context) {
-        // Obsługa przeciągania
         if self.draggable {
             let lmb_pressed = is_mouse_button_pressed(MouseButton::Left);
             let lmb_down = macroquad::input::is_mouse_button_down(MouseButton::Left);
@@ -506,7 +508,6 @@ impl Object for Panel {
             }
         }
 
-        // Aktualizuj dzieci (offsetujemy ctx.camera? Nie — panel jest w przestrzeni ekranu)
         for child in self.children.iter_mut() {
             child.update(ctx);
         }
@@ -516,7 +517,6 @@ impl Object for Panel {
         if !self.visible {
             return;
         }
-        // Tło panelu
         draw_rectangle(
             self.position.x,
             self.position.y,
@@ -524,21 +524,13 @@ impl Object for Panel {
             self.size.y,
             self.background_color,
         );
-        // Ramka
         if let Some(bc) = self.border_color {
             let bw = self.border_width;
-            // Górna krawędź
             draw_rectangle(self.position.x, self.position.y, self.size.x, bw, bc);
-            // Dolna krawędź
             draw_rectangle(self.position.x, self.position.y + self.size.y - bw, self.size.x, bw, bc);
-            // Lewa krawędź
             draw_rectangle(self.position.x, self.position.y, bw, self.size.y, bc);
-            // Prawa krawędź
             draw_rectangle(self.position.x + self.size.x - bw, self.position.y, bw, self.size.y, bc);
         }
-        // Rysuj dzieci (z offsetem pozycji panelu)
-        // UWAGA: dzieci przechowują pozycje względem lewego-górnego rogu panelu.
-        // Bez transformacji rysuje je w przestrzeni absolutnej ekranu.
         for child in self.children.iter() {
             child.draw();
         }
@@ -550,15 +542,17 @@ impl Object for Panel {
 }
 
 // ---------------------------------------------------------------------------
-// UI — kontener elementów warstwy UI z z-order/focus
+// UI — Container manager for UI layer elements with z-order focus
 // ---------------------------------------------------------------------------
 
+/// UI layer container holding UI objects with z-order focus management.
 pub struct UI {
     pub elements: Vec<Box<dyn Object>>,
     pub tag: String,
 }
 
 impl UI {
+    /// Creates a new [`UI`] container initialized with elements.
     pub fn new(elements: Vec<Box<dyn Object>>) -> Self {
         Self {
             elements,
@@ -566,17 +560,18 @@ impl UI {
         }
     }
 
+    /// Builder pattern: Sets the tag for the UI container.
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
     }
 
+    /// Adds a new element object to the UI container.
     pub fn add(&mut self, element: Box<dyn Object>) {
         self.elements.push(element);
     }
 
-    /// Przenosi element z podanym tagiem na koniec listy (rysowany na wierzchu).
-    /// Zwraca `true` jeśli element o tym tagu został znaleziony.
+    /// Brings an element with matching tag to the top of the draw stack (front focus).
     pub fn bring_to_front(&mut self, tag: &str) -> bool {
         if let Some(pos) = self.elements.iter().position(|e| e.tag() == tag) {
             let element = self.elements.remove(pos);
@@ -587,19 +582,14 @@ impl UI {
         }
     }
 
-    /// Automatycznie podnosi element trafiony kliknięciem LPM na wierzch.
-    /// Wywołuj w `update` jeśli chcesz focus-on-click.
+    /// Automatically moves the clicked element to the front of the UI stack.
     pub fn raise_clicked(&mut self) {
         let (mx, my) = mouse_position();
         if !is_mouse_button_pressed(MouseButton::Left) {
             return;
         }
-        // Znajdź ostatni (wierzchni) element który zawiera kursor
         let mut hit_tag: Option<String> = None;
         for element in self.elements.iter().rev() {
-            // Prostą heurystyką jest sprawdzenie tagu — Panel implementuje Clickable,
-            // ale Object trait nie eksponuje click_rect(). Użytkownicy mogą nadpisać
-            // tę logikę. Tutaj jako stub nie robimy downcast (brak Any w trait).
             let _ = (mx, my);
             let tag = element.tag().to_string();
             if !tag.is_empty() {
@@ -620,7 +610,6 @@ impl Object for UI {
         }
     }
 
-    /// Rysuje elementy UI — brak set_default_camera(), zarządza tym Engine::run.
     fn draw(&self) {
         for element in self.elements.iter() {
             element.draw();

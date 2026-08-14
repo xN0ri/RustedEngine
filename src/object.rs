@@ -9,9 +9,10 @@ use macroquad::{
 use crate::{engine::Context, world::Object};
 
 // ---------------------------------------------------------------------------
-// Side — strona przycisku myszy
+// Side — Mouse button side enum
 // ---------------------------------------------------------------------------
 
+/// Enum representing mouse button sides (Left, Middle, Right).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Side {
     Left,
@@ -20,6 +21,7 @@ pub enum Side {
 }
 
 impl Side {
+    /// Converts [`Side`] into Macroquad's native [`MouseButton`].
     pub fn to_macroquad(self) -> MouseButton {
         match self {
             Side::Left => MouseButton::Left,
@@ -30,34 +32,30 @@ impl Side {
 }
 
 // ---------------------------------------------------------------------------
-// Trait Clickable — wspólna logika klikalności dla Sprite i Button
+// Trait Clickable — Shared hover/click interaction logic
 // ---------------------------------------------------------------------------
 
-/// Trait eliminujący duplikację logiki hover/click między `Sprite` i `Button`.
-/// Implementuj `click_rect()` i `is_active()` — reszta metod jest domyślna.
+/// Trait providing shared mouse interaction (hover, click, hold) mechanics for entities.
 ///
-/// # Uwaga: przestrzenie współrzędnych
+/// Implement [`Clickable::click_rect`] and [`Clickable::is_active`] — default methods handle all input logic.
 ///
-/// Metody **bez** sufiksu `_ctx` (`is_hovered`, `click`, `clicked`) operują
-/// w **przestrzeni ekranu** (surowe piksele myszy, bez transformacji kamery).
+/// # Coordinate Spaces
 ///
-/// - Dla elementów UI (`Button`, `ProgressBar`) umieszczonych na warstwie UI
-///   (rysowanych po `camera.end()`) jest to poprawne zachowanie.
+/// Methods **without** the `_ctx` suffix ([`is_hovered`](Clickable::is_hovered), [`click`](Clickable::click), [`clicked`](Clickable::clicked))
+/// operate in **screen space** (raw pixel mouse coordinates).
 ///
-/// - Dla `Sprite` umieszczonego w przestrzeni świata (warstwa `objects`,
-///   rysowana z kamerą 2D) **użyj wariantów `_ctx`** (`is_hovered_ctx`,
-///   `click_ctx`, `clicked_ctx`), które przeliczają pozycję myszy przez
-///   `ctx.camera.screen_to_world()`.
-///
-///   Użycie metod bez `_ctx` na Sprite-ach w przestrzeni świata da błędne
-///   wyniki (hit-test w złej przestrzeni) bez żadnego błędu kompilacji.
+/// - For UI elements ([`Button`](crate::ui::Button), [`ProgressBar`](crate::ui::ProgressBar)) rendered on the UI layer, these are appropriate.
+/// - For entities rendered in 2D world space ([`Sprite`]), **use the `_ctx` variants** ([`is_hovered_ctx`](Clickable::is_hovered_ctx), [`click_ctx`](Clickable::click_ctx), [`clicked_ctx`](Clickable::clicked_ctx)), which convert mouse coordinates via `ctx.camera.screen_to_world()`.
 pub trait Clickable {
+    /// Returns the bounding rectangle used for hit-testing mouse interactions.
     fn click_rect(&self) -> Rect;
+
+    /// Returns whether this entity is currently active for click interactions.
     fn is_active(&self) -> bool;
 
-    /// Czy kursor myszy jest nad obiektem (**przestrzeń ekranu**).
+    /// Returns `true` if the mouse cursor is over the entity (**screen space**).
     ///
-    /// ⚠️ Dla `Sprite` w przestrzeni świata użyj [`is_hovered_ctx`].
+    /// ⚠️ For world-space entities rendered with a 2D camera, use [`is_hovered_ctx`](Clickable::is_hovered_ctx).
     fn is_hovered(&self) -> bool {
         if !self.is_active() {
             return false;
@@ -66,9 +64,7 @@ pub trait Clickable {
         self.click_rect().contains(vec2(mx, my))
     }
 
-    /// Czy kursor jest nad obiektem (**przestrzeń świata** z uwzględnieniem kamery).
-    ///
-    /// Używaj tej metody dla obiektów rysowanych z kamerą 2D (`Sprite`).
+    /// Returns `true` if the mouse cursor is over the entity (**world space** using camera matrix transformation).
     fn is_hovered_ctx(&self, ctx: &Context) -> bool {
         if !self.is_active() {
             return false;
@@ -77,28 +73,28 @@ pub trait Clickable {
         self.click_rect().contains(m_world)
     }
 
-    /// Jednorazowe kliknięcie — tylko klatka wciśnięcia (**przestrzeń ekranu**).
+    /// Returns `true` during the single frame the specified mouse button was pressed over the entity (**screen space**).
     ///
-    /// ⚠️ Dla `Sprite` w przestrzeni świata użyj [`click_ctx`].
+    /// ⚠️ For world-space entities rendered with a 2D camera, use [`click_ctx`](Clickable::click_ctx).
     fn click(&self, btn: Side) -> bool {
         self.is_hovered() && is_mouse_button_pressed(btn.to_macroquad())
     }
 
-    /// Jednorazowe kliknięcie (**przestrzeń świata**, z uwzględnieniem kamery).
+    /// Returns `true` during the single frame the specified mouse button was pressed over the entity (**world space** using camera matrix transformation).
     fn click_ctx(&self, ctx: &Context, btn: Side) -> bool {
         self.is_hovered_ctx(ctx) && ctx.input.is_mouse_button_pressed(btn.to_macroquad())
     }
 
-    /// Przytrzymanie przycisku (true przez wszystkie klatki wciśnięcia, **przestrzeń ekranu**).
+    /// Returns `true` while the specified mouse button is held down over the entity (**screen space**).
     ///
-    /// ⚠️ Dla `Sprite` w przestrzeni świata użyj [`clicked_ctx`].
+    /// ⚠️ For world-space entities rendered with a 2D camera, use [`clicked_ctx`](Clickable::clicked_ctx).
     fn clicked(&self, btn: Side) -> bool {
         self.is_hovered()
             && (is_mouse_button_down(btn.to_macroquad())
                 || is_mouse_button_pressed(btn.to_macroquad()))
     }
 
-    /// Przytrzymanie (**przestrzeń świata**, z uwzględnieniem kamery).
+    /// Returns `true` while the specified mouse button is held down over the entity (**world space** using camera matrix transformation).
     fn clicked_ctx(&self, ctx: &Context, btn: Side) -> bool {
         self.is_hovered_ctx(ctx)
             && (ctx.input.is_mouse_button_down(btn.to_macroquad())
@@ -110,6 +106,7 @@ pub trait Clickable {
 // Sprite
 // ---------------------------------------------------------------------------
 
+/// 2D Textured sprite component supporting position, size, rotation, color tinting, and tag filtering.
 pub struct Sprite {
     pub position: Vec2,
     pub size: Vec2,
@@ -122,6 +119,7 @@ pub struct Sprite {
 }
 
 impl Sprite {
+    /// Creates a new [`Sprite`] with default white tint.
     pub fn new(position: Vec2, size: Vec2, rotation: f32, texture: Texture2D) -> Self {
         Self {
             position,
@@ -135,26 +133,30 @@ impl Sprite {
         }
     }
 
-    /// Tworzy jednokolorowy sprajt bez potrzeby ręcznego tworzenia tekstury 1x1.
+    /// Creates a solid colored 2D rectangle sprite without requiring a texture file.
     pub fn solid(position: Vec2, size: Vec2, color: Color) -> Self {
         let texture = Texture2D::from_rgba8(1, 1, &[255, 255, 255, 255]);
         Self::new(position, size, 0.0, texture).with_color(color)
     }
 
+    /// Builder pattern: Sets the color tint of the sprite.
     pub fn with_color(mut self, color: Color) -> Self {
         self.color = color;
         self
     }
 
+    /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
     }
 
+    /// Updates the sprite texture.
     pub fn set_texture(&mut self, texture: Texture2D) {
         self.texture = texture;
     }
 
+    /// Returns the bounding rectangle of the sprite.
     pub fn rect(&self) -> Rect {
         Rect {
             x: self.position.x,
@@ -164,14 +166,17 @@ impl Sprite {
         }
     }
 
+    /// Returns `true` if this sprite's bounding box overlaps with another sprite's bounding box.
     pub fn collides(&self, obj: &Sprite) -> bool {
         self.rect().overlaps(&obj.rect())
     }
 
+    /// Returns the position vector.
     pub fn pos(&self) -> Vec2 {
         self.position
     }
 
+    /// Sets the position vector.
     pub fn setpos(&mut self, pos: Vec2) {
         self.position = pos;
     }
@@ -215,6 +220,7 @@ impl Object for Sprite {
 // Rectangle
 // ---------------------------------------------------------------------------
 
+/// 2D Colored rectangle entity.
 pub struct Rectangle {
     pub position: Vec2,
     pub size: Vec2,
@@ -226,6 +232,7 @@ pub struct Rectangle {
 }
 
 impl Rectangle {
+    /// Creates a new [`Rectangle`].
     pub fn new(position: Vec2, size: Vec2, rotation: f32, color: Color) -> Self {
         Self {
             position,
@@ -238,6 +245,7 @@ impl Rectangle {
         }
     }
 
+    /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
@@ -266,33 +274,23 @@ impl Object for Rectangle {
 }
 
 // ---------------------------------------------------------------------------
-// Behavior<Inner, Data> — wspólny szkielet dla GameObject/TextObject
+// Behavior<Inner, Data> — Generic component wrapper with custom update closure
 // ---------------------------------------------------------------------------
 
-/// Generyczna struktura łącząca wewnętrzny obiekt graficzny (`Inner`),
-/// dane gry (`Data`) i opcjonalną funkcję aktualizacji.
+/// Generic wrapper combining an inner graphic object (`Inner`), custom state data (`Data`),
+/// and an optional per-frame update callback closure.
 ///
-/// Eliminuje duplikację między `GameObject<Data>` i `TextObject<Data>`.
+/// Works with any type `Inner` implementing [`Object`].
 ///
-/// # Dostęp do wewnętrznego obiektu
-///
-/// `Behavior<Sprite, Data>` implementuje `Deref<Target = Sprite>` i
-/// `DerefMut`, co umożliwia bezpośredni dostęp do pól i metod `Sprite`
-/// przez deref-coercion:
+/// # Field Access via Deref
+/// `Behavior<Sprite, Data>` implements `Deref<Target = Sprite>` and `DerefMut`,
+/// enabling direct field access on `Sprite`:
 ///
 /// ```ignore
-/// obj.position.x += 1.0;   // zamiast obj.inner.position.x += 1.0
-/// obj.color = RED;           // zamiast obj.inner.color = RED
-/// obj.click_ctx(ctx, Side::Left); // Clickable przez deref
+/// obj.position.x += 1.0;
+/// obj.color = RED;
+/// obj.click_ctx(ctx, Side::Left);
 /// ```
-///
-/// **Nie istnieje pole `.sprite` ani `.text` na `Behavior`.** Jeśli
-/// potrzebujesz jawnej referencji do wewnętrznego obiektu, użyj
-/// `obj.inner` (dostęp do pola) lub metod `obj.inner()` / `obj.inner_mut()`.
-///
-/// Analogicznie `Behavior<Text, Data>` implementuje `Deref<Target = Text>`,
-/// lecz uwaga: `Text` ma pole `content: String` (nie `text: String`), więc
-/// `text_obj.content` to treść napisu. Nie ma kolizji z nazwą typu.
 pub struct Behavior<Inner, Data> {
     pub inner: Inner,
     pub data: Data,
@@ -301,6 +299,7 @@ pub struct Behavior<Inner, Data> {
 }
 
 impl<Inner, Data> Behavior<Inner, Data> {
+    /// Creates a new [`Behavior`] wrapping `inner` graphic entity and custom `data`.
     pub fn new(inner: Inner, data: Data) -> Self {
         Self {
             inner,
@@ -310,12 +309,13 @@ impl<Inner, Data> Behavior<Inner, Data> {
         }
     }
 
+    /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: &str) -> Self {
         self.tag = tag.to_string();
         self
     }
 
-    /// Ustawia funkcję aktualizacji wywoływaną w każdej klatce.
+    /// Registers a closure to be executed on each frame update pass.
     pub fn update<F>(mut self, func: F) -> Self
     where
         F: FnMut(&mut Behavior<Inner, Data>, &mut Context) + 'static,
@@ -324,6 +324,7 @@ impl<Inner, Data> Behavior<Inner, Data> {
         self
     }
 
+    /// Internal: Runs the update callback closure for this frame.
     pub fn run_update(&mut self, ctx: &mut Context) {
         if let Some(mut func) = self.func.take() {
             func(self, ctx);
@@ -331,14 +332,12 @@ impl<Inner, Data> Behavior<Inner, Data> {
         }
     }
 
-    /// Zwraca referencję do wewnętrznego obiektu graficznego.
-    /// Alternatywnie użyj deref-coercion: pola i metody `Inner` są dostępne
-    /// bezpośrednio na `Behavior` gdy zaimplementowane jest `Deref`.
+    /// Returns a reference to the inner entity object.
     pub fn inner(&self) -> &Inner {
         &self.inner
     }
 
-    /// Zwraca mutowalną referencję do wewnętrznego obiektu graficznego.
+    /// Returns a mutable reference to the inner entity object.
     pub fn inner_mut(&mut self) -> &mut Inner {
         &mut self.inner
     }
@@ -348,17 +347,7 @@ impl<Inner, Data> Behavior<Inner, Data> {
 // GameObject<Data> = Behavior<Sprite, Data>
 // ---------------------------------------------------------------------------
 
-/// Obiekt gry ze sprajtem i dowolnymi danymi.
-///
-/// `pub type GameObject<Data> = Behavior<Sprite, Data>;`
-///
-/// Dzięki `Deref<Target = Sprite>` pola i metody `Sprite` są dostępne
-/// bezpośrednio na `GameObject` bez żadnego prefiksu:
-/// - `obj.position`, `obj.color`, `obj.size`, `obj.rotation`
-/// - `obj.click_ctx(ctx, Side::Left)`, `obj.is_hovered_ctx(ctx)`
-/// - `obj.set_texture(...)`, `obj.collides(&other)`
-///
-/// Dane gracza: `obj.data.hp`, `obj.data.speed` itd.
+/// Type alias for a sprite object combined with game data and per-frame update closure.
 pub type GameObject<Data> = Behavior<Sprite, Data>;
 
 impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
@@ -384,8 +373,6 @@ impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
     }
 }
 
-/// `Deref` umożliwia bezpośredni dostęp do pól i metod `Sprite` na `GameObject`.
-/// Nie istnieje pole `.sprite` — używaj deref-coercion lub `obj.inner`.
 impl<Data> std::ops::Deref for Behavior<Sprite, Data> {
     type Target = Sprite;
     fn deref(&self) -> &Self::Target {

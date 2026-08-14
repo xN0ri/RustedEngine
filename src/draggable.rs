@@ -6,11 +6,12 @@ use macroquad::{
 use crate::engine::Context;
 
 // ---------------------------------------------------------------------------
-// DragState — pomocnicza struktura do trzymania stanu przeciągania
+// DragState — Dragging state tracker struct
 // ---------------------------------------------------------------------------
 
-/// Przechowuj jako pole w obiektach implementujących `Draggable`.
+/// Helper struct for holding mouse dragging state. Include as a field inside structs implementing [`Draggable`].
 ///
+/// # Example
 /// ```ignore
 /// struct MyWindow {
 ///     position: Vec2,
@@ -19,13 +20,14 @@ use crate::engine::Context;
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct DragState {
-    /// Czy obiekt jest aktualnie przeciągany.
+    /// Indicates whether the entity is currently being dragged.
     pub is_dragging: bool,
-    /// Offset między pozycją myszy a anchor obiektu w chwili chwycenia.
+    /// Offset between the mouse grab point and the entity anchor position.
     pub offset: Vec2,
 }
 
 impl DragState {
+    /// Creates a new un-grabbed [`DragState`].
     pub fn new() -> Self {
         Self {
             is_dragging: false,
@@ -35,25 +37,20 @@ impl DragState {
 }
 
 // ---------------------------------------------------------------------------
-// Draggable trait — analogiczny do Clickable
+// Draggable trait — Mouse drag-and-drop interaction trait
 // ---------------------------------------------------------------------------
 
-/// Trait ogólnego przeciągania myszą (drag & drop).
+/// Trait providing drag-and-drop interaction mechanics for entities.
 ///
-/// Implementuj `drag_anchor_mut()`, `drag_state()` oraz `drag_state_mut()`.
-/// Domyślne metody obsługują pełny cykl: start → update → end.
+/// Implement [`Draggable::drag_anchor_mut`], [`Draggable::drag_state`], and [`Draggable::drag_state_mut`].
+/// Default methods manage the full dragging lifecycle: `start_drag` -> `update_drag` -> `end_drag`.
 ///
-/// # Uwaga: przestrzenie współrzędnych
+/// # Coordinate Spaces
 ///
-/// Metody **bez** sufiksu `_ctx` (`start_drag`, `update_drag`) operują
-/// w **przestrzeni ekranu** (surowe piksele myszy). Są odpowiednie dla
-/// elementów UI (`Panel`).
+/// - Methods **without** the `_ctx` suffix ([`start_drag`](Draggable::start_drag), [`update_drag`](Draggable::update_drag)) operate in **screen space** (raw pixel mouse coordinates). Use these for UI components ([`Panel`](crate::ui::Panel)).
+/// - For world-space entities (such as [`Sprite`](crate::object::Sprite) rendered through a 2D camera), **use the `_ctx` variants** ([`start_drag_ctx`](Draggable::start_drag_ctx), [`update_drag_ctx`](Draggable::update_drag_ctx)), which convert mouse position via `ctx.camera.screen_to_world()`.
 ///
-/// Dla obiektów w przestrzeni świata (np. `Sprite` z aktywną kamerą 2D)
-/// **używaj wariantów `_ctx`** (`start_drag_ctx`, `update_drag_ctx`), które
-/// przeliczają pozycję myszy przez `ctx.camera.screen_to_world()`.
-///
-/// # Wzorzec użycia w `update` closurze GameObject:
+/// # Example
 /// ```ignore
 /// if ctx.input.is_mouse_button_pressed(MouseButton::Left) && obj.is_drag_hovered() {
 ///     obj.start_drag_ctx(ctx);
@@ -64,24 +61,24 @@ impl DragState {
 /// }
 /// ```
 pub trait Draggable {
-    /// Mutowalny dostęp do pozycji obiektu (punkt chwytania).
+    /// Returns a mutable reference to the entity's position anchor point.
     fn drag_anchor_mut(&mut self) -> &mut Vec2;
 
-    /// Dostęp tylko do odczytu stanu przeciągania.
+    /// Returns a read-only reference to the entity's [`DragState`].
     fn drag_state(&self) -> &DragState;
 
-    /// Mutowalny dostęp do stanu przeciągania.
+    /// Returns a mutable reference to the entity's [`DragState`].
     fn drag_state_mut(&mut self) -> &mut DragState;
 
-    /// Czy kursor jest nad obszarem "chwytania" tego obiektu.
-    /// Domyślnie: zawsze true — nadpisz jeśli chcesz ograniczyć obszar.
+    /// Checks whether the mouse cursor is currently over the draggable grab handle area.
+    /// Defaults to `true`. Override to restrict grab regions (e.g., window titlebar).
     fn is_drag_hovered(&self) -> bool {
         true
     }
 
-    /// Rozpoczyna przeciąganie (**przestrzeń ekranu**).
+    /// Begins dragging (**screen space**).
     ///
-    /// ⚠️ Dla obiektów w przestrzeni świata użyj [`start_drag_ctx`].
+    /// ⚠️ For world-space entities rendered with a 2D camera, use [`start_drag_ctx`](Draggable::start_drag_ctx).
     fn start_drag(&mut self) {
         let (mx, my) = mouse_position();
         let anchor = *self.drag_anchor_mut();
@@ -91,7 +88,7 @@ pub trait Draggable {
         state.offset = offset;
     }
 
-    /// Rozpoczyna przeciąganie (**przestrzeń świata**, z uwzględnieniem kamery).
+    /// Begins dragging (**world space** using camera matrix transformation).
     fn start_drag_ctx(&mut self, ctx: &Context) {
         let m_world = ctx.camera.screen_to_world(ctx.input.mouse_position());
         let anchor = *self.drag_anchor_mut();
@@ -101,9 +98,9 @@ pub trait Draggable {
         state.offset = offset;
     }
 
-    /// Aktualizuje pozycję obiektu (**przestrzeń ekranu**). Wywoływać co klatkę.
+    /// Updates the entity's position according to mouse movement (**screen space**). Call each frame.
     ///
-    /// ⚠️ Dla obiektów w przestrzeni świata użyj [`update_drag_ctx`].
+    /// ⚠️ For world-space entities rendered with a 2D camera, use [`update_drag_ctx`](Draggable::update_drag_ctx).
     fn update_drag(&mut self) {
         if !self.drag_state().is_dragging {
             return;
@@ -113,7 +110,7 @@ pub trait Draggable {
         *self.drag_anchor_mut() = vec2(mx, my) - offset;
     }
 
-    /// Aktualizuje pozycję obiektu (**przestrzeń świata**, z uwzględnieniem kamery).
+    /// Updates the entity's position according to mouse movement (**world space** using camera matrix transformation).
     fn update_drag_ctx(&mut self, ctx: &Context) {
         if !self.drag_state().is_dragging {
             return;
@@ -123,12 +120,12 @@ pub trait Draggable {
         *self.drag_anchor_mut() = m_world - offset;
     }
 
-    /// Kończy przeciąganie.
+    /// Concludes the dragging operation.
     fn end_drag(&mut self) {
         self.drag_state_mut().is_dragging = false;
     }
 
-    /// Czy obiekt jest aktualnie przeciągany.
+    /// Returns `true` if the entity is currently being dragged.
     fn is_dragging(&self) -> bool {
         self.drag_state().is_dragging
     }

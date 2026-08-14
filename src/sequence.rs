@@ -5,65 +5,58 @@ use crate::{
 };
 
 // ---------------------------------------------------------------------------
-// Step — pojedynczy krok sekwencji
+// Step — Scripted sequence step enum
 // ---------------------------------------------------------------------------
 
-/// Jeden krok w sekwencji narracyjnej lub zdarzeniowej.
-///
-/// Sekwencja jest niezależna od treści — te same `Step` warianty działają
-/// w dialogach, tutorialach, cutscenkach itp.
+/// Individual instruction step in a scripted narrative sequence or cutscene.
 #[derive(Clone, Debug)]
 pub enum Step {
-    /// Ustawia pole `content` na obiekcie `Text` z podanym tagiem (przez `find_ui_by_tag_mut`).
-    /// Jeśli obiekt Text ma włączony typewriter, uruchamia go od nowa.
+    /// Sets text content on entities with matching `target_tag` via [`Object::set_text`](crate::world::Object::set_text).
+    /// If the target text component has typewriter mode enabled, restarts the reveal animation.
     ShowText {
         target_tag: String,
         text: String,
     },
 
-    /// Czeka na wciśnięcie dowolnego klawisza/kliknięcia LPM przed przejściem dalej.
+    /// Awaits user input (Space, Enter, or Left Mouse Click) before advancing to the next step.
     WaitForInput,
 
-    /// Ustawia wartość w `ctx.state`.
+    /// Sets a key-value flag entry inside [`Context::state`](crate::engine::Context::state).
     SetFlag {
         key: String,
         value: StateValue,
     },
 
-    /// Czeka podaną liczbę sekund.
+    /// Delays execution for the specified duration in seconds.
     Wait {
         seconds: f32,
     },
 
-    /// Rozgałęzienie warunkowe — sprawdza flagę w StateStore.
-    /// `condition` = klucz Bool w `ctx.state`.
-    /// Jeśli true: skacze do kroku `if_true`, jeśli false: do `if_false`.
+    /// Conditional branch based on a boolean key in [`Context::state`](crate::engine::Context::state).
+    /// Jumps to index `if_true` when `true`, or `if_false` when `false`.
     Branch {
         condition: String,
         if_true: usize,
         if_false: usize,
     },
 
-    /// Natychmiastowe przeskoczenie do podanego indeksu kroku.
+    /// Unconditionally jumps execution to the specified step index.
     Jump(usize),
 
-    /// Kończy sekwencję.
+    /// Concludes the sequence execution.
     End,
 }
 
 // ---------------------------------------------------------------------------
-// Sequence — runner kroków
+// Sequence — Scripted step runner engine
 // ---------------------------------------------------------------------------
 
-/// Generyczny runner sekwencji kroków.
+/// Sequence runner for executing linear or branching cutscenes, tutorials, and dialogue flows.
 ///
-/// Przechowuj jako pole w strukturze danych obiektu (np. `Behavior`) lub
-/// bezpośrednio w scenie. Wywołuj `sequence.update(ctx, world)` w każdej klatce.
-///
-/// # Przykład
+/// # Example
 /// ```ignore
 /// let seq = Sequence::new(vec![
-///     Step::ShowText { target_tag: "dialog".into(), text: "Witaj, podróżniku!".into() },
+///     Step::ShowText { target_tag: "dialog".into(), text: "Welcome, Traveler!".into() },
 ///     Step::WaitForInput,
 ///     Step::SetFlag { key: "met_npc".into(), value: StateValue::Bool(true) },
 ///     Step::End,
@@ -77,6 +70,7 @@ pub struct Sequence {
 }
 
 impl Sequence {
+    /// Creates a new [`Sequence`] with the provided step list.
     pub fn new(steps: Vec<Step>) -> Self {
         Self {
             steps,
@@ -86,21 +80,19 @@ impl Sequence {
         }
     }
 
-    /// Czy sekwencja dotarła do kroku `End` lub wyszła poza listę kroków.
+    /// Returns `true` if the sequence has reached an [`Step::End`] instruction or exceeded step bounds.
     pub fn is_finished(&self) -> bool {
         self.finished
     }
 
-    /// Resetuje sekwencję do pierwszego kroku.
+    /// Resets the sequence execution pointer back to the first step.
     pub fn reset(&mut self) {
         self.current = 0;
         self.wait_timer = 0.0;
         self.finished = false;
     }
 
-    /// Przetwarza bieżący krok. Wywołuj co klatkę.
-    ///
-    /// `world` jest potrzebny do znalezienia obiektów po tagu (`ShowText`).
+    /// Advances and executes the current step in the sequence. Call each frame update pass.
     pub fn update(&mut self, ctx: &mut Context, world: &mut World) {
         if self.finished {
             return;
@@ -110,24 +102,23 @@ impl Sequence {
             return;
         }
 
-        // Klonujemy krok żeby uniknąć borrow-conflict na self
         let step = self.steps[self.current].clone();
 
         match step {
             Step::ShowText { ref target_tag, ref text } => {
                 let mut found = false;
-                // Szukamy po tagu w warstwie UI i wywołujemy Object::set_text
+                // Search UI layer entities by tag and call set_text
                 for obj in world.find_ui_by_tag_mut(target_tag) {
                     obj.set_text(text);
                     found = true;
                 }
-                // Jeśli nie znaleziono w UI, szukamy w obiektach świata
+                // Fallback to world layer entities
                 if !found {
                     for obj in world.find_by_tag_mut(target_tag) {
                         obj.set_text(text);
                     }
                 }
-                // Opcjonalny zapis w StateStore (jako flaga pomocnicza / fallback)
+                // Record in StateStore as a fallback flag
                 ctx.state.set_text(&format!("__seq_text_{}", target_tag), text);
                 self.current += 1;
             }

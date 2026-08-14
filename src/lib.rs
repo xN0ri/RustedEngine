@@ -1,3 +1,17 @@
+//! # 🦀 RustyEngine
+//!
+//! A lightweight, modular 2D game engine framework in Rust built on top of [Macroquad](https://macroquad.rs/).
+//! Designed to eliminate repetitive boilerplate while maintaining performance, safety, and flexible control.
+//!
+//! ## Core Architecture
+//!
+//! - **World & UI Layering**: Separate rendering targets for 2D world camera entities vs screen-space UI elements.
+//! - **Generic Entity Behaviors**: Wrap any entity (`Sprite`, `Text`, `ParticleEmitter`, `ProgressBar`, `Panel`) in [`Behavior`](object::Behavior) to attach custom data and per-frame update closures.
+//! - **Declarative World Initialization**: Use [`world!`] and [`world_objects!`] macros to instantiate entity layers concisely.
+//! - **State Store & Save Files**: Built-in [`StateStore`](state::StateStore) with JSON serialization support via Serde.
+//! - **Action Mapping**: Bind hardware inputs (keys and mouse buttons) to high-level named actions with [`ActionMap`](actions::ActionMap).
+//! - **Post-Processing Shaders**: Custom material GLSL post-processing pipeline ([`PostProcess`](postprocess::PostProcess)) with nearest-neighbor pixel art filtering.
+
 pub mod actions;
 pub mod asset_manager;
 pub mod audio;
@@ -84,9 +98,9 @@ mod tests {
 
     #[test]
     fn test_object_set_text() {
-        let mut text = Text::new("Stary tekst", vec2(0.0, 0.0), 20.0, WHITE);
-        text.set_text("Nowy tekst");
-        assert_eq!(text.content, "Nowy tekst");
+        let mut text = Text::new("Old text", vec2(0.0, 0.0), 20.0, WHITE);
+        text.set_text("New text");
+        assert_eq!(text.content, "New text");
     }
 
     #[test]

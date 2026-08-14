@@ -1,3 +1,5 @@
+//! Prelude re-exporting common structs, traits, enums, and macros for easy importing via `use RustyEngine::prelude::*;`.
+
 pub use crate::{
     actions::ActionMap,
     asset_manager::Assets,

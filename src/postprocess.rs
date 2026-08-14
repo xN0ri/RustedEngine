@@ -11,28 +11,24 @@ use macroquad::{
 };
 
 // ---------------------------------------------------------------------------
-// PostProcess — infrastruktura post-processingu przez RenderTarget
+// PostProcess — Fullscreen shader post-processing pipeline
 // ---------------------------------------------------------------------------
 
-/// Render target do rysowania sceny przed post-processingiem.
+/// Post-processing pipeline manager storing a GLSL material shader and custom uniforms.
 ///
-/// # Ograniczenia macroquad
-/// macroquad **posiada** `RenderTarget`, `Material` i `gl_use_material` —
-/// są to stabilne API (wersja 0.4+). Shadery pisane w GLSL (330 core).
-///
-/// # Użycie
+/// # Example
 /// ```ignore
-/// engine.post_process = Some(PostProcess::passthrough());
+/// engine.post_process = Some(PostProcess::passthrough().unwrap());
 /// ```
 pub struct PostProcess {
-    /// Materiał (shader) stosowany do render targetu.
+    /// Material shader applied to the rendered scene target.
     pub material: macroquad::material::Material,
-    /// Uniformy przekazywane do shadera (np. `time`, `strength`).
+    /// Uniform parameters passed to the shader (e.g. `time`, `intensity`).
     pub uniforms: HashMap<String, f32>,
 }
 
 impl PostProcess {
-    /// Tworzy PostProcess z istniejącym materiałem.
+    /// Creates a new [`PostProcess`] pipeline wrapper with the given [`Material`](macroquad::material::Material).
     pub fn new(material: macroquad::material::Material) -> Self {
         Self {
             material,
@@ -40,13 +36,13 @@ impl PostProcess {
         }
     }
 
-    /// Ustawia uniform f32 na shaderze.
+    /// Sets an `f32` uniform variable on the post-processing shader.
     pub fn set_uniform(&mut self, name: &str, value: f32) {
         self.uniforms.insert(name.to_string(), value);
     }
 
-    /// Tworzy trywialny passthrough shader — przepuszcza obraz bez zmian.
-    /// Użyj jako przykład i punkt startowy własnych efektów.
+    /// Creates a default passthrough GLSL shader pipeline that renders the scene as-is.
+    /// Useful as a baseline or starting template for custom visual effects (CRT, Bloom, Vignette, etc.).
     pub fn passthrough() -> Result<Self, macroquad::Error> {
         let mat = macroquad::material::load_material(
             ShaderSource::Glsl {
@@ -63,7 +59,7 @@ impl PostProcess {
     }
 }
 
-// Trywialny vertex shader (passthrough)
+// Passthrough vertex shader (GLSL 330 core)
 const PASSTHROUGH_VERT: &str = r#"
 #version 330 core
 in vec3 position;
@@ -77,7 +73,7 @@ void main() {
 }
 "#;
 
-// Trywialny fragment shader (passthrough)
+// Passthrough fragment shader (GLSL 330 core)
 const PASSTHROUGH_FRAG: &str = r#"
 #version 330 core
 in vec2 uv;
@@ -89,44 +85,44 @@ void main() {
 "#;
 
 // ---------------------------------------------------------------------------
-// SceneRenderTarget — helper do tworzenia i odnawiania render targetu
+// SceneRenderTarget — Render target texture helper
 // ---------------------------------------------------------------------------
 
-/// Zarządza `RenderTarget` dopasowanym do rozmiaru okna.
-/// Odnawiaj co klatkę jeśli okno może zmieniać rozmiar.
+/// Manages off-screen GPU [`RenderTarget`] textures matching screen resolution.
 pub struct SceneRenderTarget {
+    /// Underlying Macroquad render target handle.
     pub target: RenderTarget,
     width: u32,
     height: u32,
 }
 
 impl SceneRenderTarget {
-    /// Tworzy render target o podanym rozmiarze.
+    /// Creates a new [`SceneRenderTarget`] with specified pixel dimensions.
     pub fn new(width: u32, height: u32) -> Self {
         let target = render_target(width, height);
-        // Filtr nearest żeby zachować ostrość pikseli przy pixel art
+        // Set nearest filtering to preserve pixel-art crispness
         target.texture.set_filter(FilterMode::Nearest);
         Self { target, width, height }
     }
 
-    /// Tworzy render target dopasowany do aktualnego rozmiaru ekranu.
+    /// Creates a [`SceneRenderTarget`] sized to match the current viewport dimensions.
     pub fn fullscreen() -> Self {
         let w = screen_width() as u32;
         let h = screen_height() as u32;
         Self::new(w, h)
     }
 
-    /// Sprawdza, czy zapamiętana rozdzielczość odpowiada bieżącemu rozmiarowi ekranu.
+    /// Checks if the cached render target dimensions match current window dimensions.
     pub fn matches_screen_size(&self) -> bool {
         let w = screen_width() as u32;
         let h = screen_height() as u32;
         self.width == w && self.height == h
     }
 
-    /// Aktywuje render target jako cel rysowania.
+    /// Activates the render target as the current drawing target.
     ///
-    /// ⚠️ **Deprecated:** Użyj `ctx.camera.begin_to_target(&rt.target)` aby zachować parametry kamery (zoom, target, shake).
-    #[deprecated(note = "Użyj ctx.camera.begin_to_target(&rt.target) aby zachować parametry kamery (zoom, target, shake)")]
+    /// ⚠️ **Deprecated:** Use `ctx.camera.begin_to_target(&rt.target)` to retain camera settings (zoom, target, shake).
+    #[deprecated(note = "Use ctx.camera.begin_to_target(&rt.target) to retain camera properties (zoom, target, shake)")]
     pub fn begin(&self) {
         let cam = Camera2D {
             zoom: vec2(2.0 / self.width as f32, 2.0 / self.height as f32),
@@ -137,14 +133,13 @@ impl SceneRenderTarget {
         set_camera(&cam);
     }
 
-    /// Kończy render do targetu, wraca do domyślnej kamery.
+    /// Concludes rendering to target and restores the default camera.
     pub fn end(&self) {
         set_default_camera();
     }
 
-    /// Rysuje texture z render targetu przez podany PostProcess material na ekranie.
+    /// Renders the target texture to the screen applying the [`PostProcess`] material shader.
     pub fn draw_with_postprocess(&self, pp: &mut PostProcess) {
-        // Ustaw uniformy na materiale
         for (name, value) in &pp.uniforms {
             pp.material.set_uniform(name, *value);
         }
@@ -156,14 +151,14 @@ impl SceneRenderTarget {
             WHITE,
             DrawTextureParams {
                 dest_size: Some(vec2(screen_width(), screen_height())),
-                flip_y: true, // render targets są odwrócone w macroquad
+                flip_y: true, // Macroquad render targets are vertically flipped
                 ..Default::default()
             },
         );
         macroquad::material::gl_use_default_material();
     }
 
-    /// Rysuje texture z render targetu bezpośrednio (bez shadera).
+    /// Renders the target texture directly to the screen without applying custom shaders.
     pub fn draw_raw(&self) {
         draw_texture_ex(
             &self.target.texture,

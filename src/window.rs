@@ -1,5 +1,6 @@
 use macroquad::{math::Vec2, window::Conf};
 
+/// Window configuration builder helper.
 pub struct Window {
     pub size: Vec2,
     pub name: String,
@@ -7,6 +8,7 @@ pub struct Window {
 }
 
 impl Window {
+    /// Creates a Macroquad [`Conf`] object for configuring main window properties.
     pub fn conf(size: Vec2, name: &str, resizable: bool) -> Conf {
         Conf {
             window_title: name.to_string(),
@@ -17,6 +19,7 @@ impl Window {
         }
     }
 
+    /// Creates a new [`Window`] configuration helper struct.
     pub fn new(size: Vec2, name: &str, resizable: bool) -> Self {
         Self {
             size,
