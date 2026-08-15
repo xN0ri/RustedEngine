@@ -12,6 +12,7 @@ use crate::{
     audio::Audio,
     camera::Camera,
     input::Input,
+    resources::Resources,
     scene::{Scene, SceneManager},
     state::StateStore,
     time::Time,
@@ -69,6 +70,8 @@ pub struct Context {
     pub state: StateStore,
     /// High-level named action binding map.
     pub actions: ActionMap,
+    /// Type-keyed generic resource store for arbitrary per-context data.
+    pub resources: Resources,
     /// Internal active custom mouse cursor override.
     pub(crate) cursor: Option<CustomCursor>,
 }
@@ -84,6 +87,7 @@ impl Context {
             camera: Camera::new(),
             state: StateStore::new(),
             actions: ActionMap::new(),
+            resources: Resources::new(),
             cursor: None,
         }
     }

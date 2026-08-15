@@ -55,7 +55,8 @@ async fn main() {
 
     // 3. Budujemy świat używając makra world!
     let world = world! {
-        objects: [player],
+        objects: [player],cargo run --example resources_demo
+
         ui: [ui_info],
     };
     let main_scene = Scene::new("Main", world);

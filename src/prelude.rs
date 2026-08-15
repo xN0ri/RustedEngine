@@ -17,6 +17,7 @@ pub use crate::{
     time::{Time, Timer},
     ui::{Button, Panel, ProgressBar, RevealMode, Text, TextField, TextFieldObject, TextObject, UI},
     window::Window,
+    resources::Resources,
     world::{Object, World},
     world, world_objects,
 };

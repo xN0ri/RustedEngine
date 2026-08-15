@@ -11,6 +11,7 @@
 //! - **State Store & Save Files**: Built-in [`StateStore`](state::StateStore) with JSON serialization support via Serde.
 //! - **Action Mapping**: Bind hardware inputs (keys and mouse buttons) to high-level named actions with [`ActionMap`](actions::ActionMap).
 //! - **Post-Processing Shaders**: Custom material GLSL post-processing pipeline ([`PostProcess`](postprocess::PostProcess)) with nearest-neighbor pixel art filtering.
+//! - **Generic Resources**: Type-keyed global resource store ([`Resources`](resources::Resources)) available on every [`Context`](engine::Context) via `ctx.resources`.
 
 pub mod actions;
 pub mod asset_manager;
@@ -23,6 +24,7 @@ pub mod object;
 pub mod particles;
 pub mod postprocess;
 pub mod prelude;
+pub mod resources;
 pub mod scene;
 pub mod sequence;
 pub mod state;
@@ -30,6 +32,8 @@ pub mod time;
 pub mod ui;
 pub mod window;
 pub mod world;
+
+pub use resources::Resources;
 
 #[cfg(test)]
 mod tests {
