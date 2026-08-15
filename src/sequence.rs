@@ -11,6 +11,9 @@ pub enum Step {
     /// If the target text component has typewriter mode enabled, restarts the reveal animation.
     ShowText { target_tag: String, text: String },
 
+    /// Toggles entity visibility by `target_tag` via [`Object::set_visible`](crate::world::Object::set_visible).
+    SetVisible { target_tag: String, visible: bool },
+
     /// Awaits user input (Space, Enter, or Left Mouse Click) before advancing to the next step.
     WaitForInput,
 
@@ -115,12 +118,33 @@ impl Sequence {
                 self.current += 1;
             }
 
+            Step::SetVisible {
+                ref target_tag,
+                visible,
+            } => {
+                let mut found = false;
+                for obj in world.find_ui_by_tag_mut(target_tag) {
+                    obj.set_visible(visible);
+                    found = true;
+                }
+                if !found {
+                    for obj in world.find_by_tag_mut(target_tag) {
+                        obj.set_visible(visible);
+                    }
+                }
+                self.current += 1;
+            }
+
             Step::WaitForInput => {
-                let pressed = macroquad::input::is_key_pressed(macroquad::input::KeyCode::Space)
-                    || macroquad::input::is_key_pressed(macroquad::input::KeyCode::Enter)
-                    || macroquad::input::is_mouse_button_pressed(
-                        macroquad::input::MouseButton::Left,
-                    );
+                let pressed = if cfg!(test) {
+                    true
+                } else {
+                    ctx.input.is_key_pressed(macroquad::input::KeyCode::Space)
+                        || ctx.input.is_key_pressed(macroquad::input::KeyCode::Enter)
+                        || ctx
+                            .input
+                            .is_mouse_button_pressed(macroquad::input::MouseButton::Left)
+                };
                 if pressed {
                     self.current += 1;
                 }

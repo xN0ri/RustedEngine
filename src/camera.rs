@@ -41,8 +41,11 @@ impl Camera {
 
     /// Builds a Macroquad [`Camera2D`] instance from target, zoom, rotation, and shake offset.
     pub fn build_camera2d(target: Vec2, zoom: f32, rotation: f32, shake_offset: Vec2) -> Camera2D {
-        let sw = screen_width();
-        let sh = screen_height();
+        let (sw, sh) = if cfg!(test) {
+            (800.0, 600.0)
+        } else {
+            (screen_width(), screen_height())
+        };
         let zoom_vec = vec2((2.0 / sw) * zoom, (2.0 / sh) * zoom);
         Camera2D {
             target: target + shake_offset,

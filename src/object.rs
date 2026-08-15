@@ -195,6 +195,17 @@ impl Sprite {
         self.texture = texture;
     }
 
+    /// Updates the sprite texture directly from the asset manager by asset key.
+    /// Returns `true` if the asset was found and updated successfully.
+    pub fn set_texture_by_name(&mut self, ctx: &Context, name: &str) -> bool {
+        if let Some(tex) = ctx.assets.get_texture(name) {
+            self.texture = tex.clone();
+            true
+        } else {
+            false
+        }
+    }
+
     /// Returns the bounding rectangle of the sprite.
     pub fn rect(&self) -> Rect {
         Rect {
@@ -557,10 +568,23 @@ impl<Inner, Data> Behavior<Inner, Data> {
 
 // ---------------------------------------------------------------------------
 // GameObject<Data> = Behavior<Sprite, Data>
+// LogicObject<Data> = Behavior<Rectangle, Data>
 // ---------------------------------------------------------------------------
 
 /// Type alias for a sprite object combined with game data and per-frame update closure.
 pub type GameObject<Data> = Behavior<Sprite, Data>;
+
+/// Type alias for an invisible logic-only behavior object designed for system updates and `ctx` access.
+pub type LogicObject<Data> = Behavior<Rectangle, Data>;
+
+impl<Data> Behavior<Rectangle, Data> {
+    /// Creates an invisible logic-only [`Behavior`] object for system controllers with full `ctx` access.
+    pub fn logic(data: Data) -> Self {
+        let mut rect = Rectangle::new(Vec2::ZERO, Vec2::ZERO, 0.0, Color::new(0.0, 0.0, 0.0, 0.0));
+        rect.visible = false;
+        Self::new(rect, data)
+    }
+}
 
 impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
     fn update(&mut self, ctx: &mut Context) {

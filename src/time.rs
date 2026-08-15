@@ -11,17 +11,17 @@ impl Time {
 
     /// Returns the frame delta time in seconds.
     pub fn deltatime(&self) -> f32 {
-        get_frame_time()
+        if cfg!(test) { 0.016 } else { get_frame_time() }
     }
 
     /// Returns the current frames-per-second (FPS) counter.
     pub fn fps(&self) -> i32 {
-        get_fps()
+        if cfg!(test) { 60 } else { get_fps() }
     }
 
     /// Returns total elapsed application time in seconds since start.
     pub fn elapsed_time(&self) -> f64 {
-        get_time()
+        if cfg!(test) { 0.0 } else { get_time() }
     }
 }
 

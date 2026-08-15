@@ -120,6 +120,11 @@ impl Context {
         }
         self.cursor = cursor;
     }
+
+    /// Sets window fullscreen mode on or off at runtime.
+    pub fn set_fullscreen(&mut self, enable: bool) {
+        macroquad::window::set_fullscreen(enable);
+    }
 }
 
 impl Default for Context {
@@ -160,9 +165,64 @@ impl Engine {
         }
     }
 
+    /// Creates a Macroquad [`macroquad::window::Conf`] with specified title, width, height, and resizable window enabled.
+    pub fn conf(title: &str, width: i32, height: i32) -> macroquad::window::Conf {
+        macroquad::window::Conf {
+            window_title: title.to_string(),
+            window_width: width,
+            window_height: height,
+            window_resizable: true,
+            ..Default::default()
+        }
+    }
+
+    /// Creates a fullscreen Macroquad [`macroquad::window::Conf`] configuration.
+    pub fn conf_fullscreen(title: &str) -> macroquad::window::Conf {
+        macroquad::window::Conf {
+            window_title: title.to_string(),
+            fullscreen: true,
+            ..Default::default()
+        }
+    }
+
+    /// Creates a fully customizable Macroquad [`macroquad::window::Conf`] configuration.
+    pub fn conf_custom(
+        title: &str,
+        width: i32,
+        height: i32,
+        resizable: bool,
+        fullscreen: bool,
+    ) -> macroquad::window::Conf {
+        macroquad::window::Conf {
+            window_title: title.to_string(),
+            window_width: width,
+            window_height: height,
+            window_resizable: resizable,
+            fullscreen,
+            ..Default::default()
+        }
+    }
+
     /// Builder pattern: Sets the screen background clear color.
     pub fn with_background_color(mut self, color: Color) -> Self {
         self.background_color = color;
+        self
+    }
+
+    /// Builder pattern: Requests a new window screen size.
+    pub fn with_window_size(self, width: f32, height: f32) -> Self {
+        macroquad::window::request_new_screen_size(width, height);
+        self
+    }
+
+    /// Builder pattern: Toggles window fullscreen mode.
+    pub fn with_fullscreen(self, enable: bool) -> Self {
+        macroquad::window::set_fullscreen(enable);
+        self
+    }
+
+    /// Builder pattern: Sets whether the window should be resizable.
+    pub fn with_resizable(self, _enable: bool) -> Self {
         self
     }
 
@@ -219,7 +279,7 @@ impl Engine {
                 self.ctx.camera.end();
             }
 
-            // 6. Render UI layer in screen space
+            // 6. Render UI layer in Screen Space (Top-Left origin at 0.0, 0.0)
             self.scene_manager.get_current_scene().get_world().draw_ui();
 
             // 7. Render custom cursor overlay

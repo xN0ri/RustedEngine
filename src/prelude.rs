@@ -10,7 +10,7 @@ pub use crate::{
     draggable::{DragState, Draggable},
     engine::{Context, CustomCursor, Engine},
     input::Input,
-    object::{Behavior, Clickable, GameObject, Rectangle, Side, Sprite},
+    object::{Behavior, Clickable, GameObject, LogicObject, Rectangle, Side, Sprite},
     panel_manager::{Panel, PanelId, PanelManager},
     particles::{Particle, ParticleEmitter},
     postprocess::{PostProcess, SceneRenderTarget},

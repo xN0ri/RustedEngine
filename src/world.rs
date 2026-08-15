@@ -74,6 +74,7 @@ pub trait Object: 'static {
 pub struct World {
     objects: Vec<Box<dyn Object>>,
     ui_objects: Vec<Box<dyn Object>>,
+    sequences: Vec<crate::sequence::Sequence>,
 }
 
 impl World {
@@ -82,6 +83,7 @@ impl World {
         Self {
             objects: Vec::new(),
             ui_objects: Vec::new(),
+            sequences: Vec::new(),
         }
     }
 
@@ -90,6 +92,7 @@ impl World {
         Self {
             objects,
             ui_objects: Vec::new(),
+            sequences: Vec::new(),
         }
     }
 
@@ -98,6 +101,7 @@ impl World {
         Self {
             objects,
             ui_objects,
+            sequences: Vec::new(),
         }
     }
 
@@ -207,13 +211,26 @@ impl World {
         self.ui_objects.iter().filter(|o| o.has_tag(tag)).count()
     }
 
-    /// Updates all world and UI objects.
+    /// Adds a scripted [`Sequence`](crate::sequence::Sequence) to be updated automatically on frame logic passes.
+    pub fn add_sequence(&mut self, sequence: crate::sequence::Sequence) {
+        self.sequences.push(sequence);
+    }
+
+    /// Updates all world, UI objects, and scripted sequences.
     pub fn update(&mut self, ctx: &mut Context) {
         for obj in self.objects.iter_mut() {
             obj.update(ctx);
         }
         for obj in self.ui_objects.iter_mut() {
             obj.update(ctx);
+        }
+        if !self.sequences.is_empty() {
+            let mut seqs = std::mem::take(&mut self.sequences);
+            for seq in &mut seqs {
+                seq.update(ctx, self);
+            }
+            seqs.retain(|seq| !seq.is_finished());
+            self.sequences.extend(seqs);
         }
     }
 

@@ -33,6 +33,11 @@ impl Scene {
         self.world.add_ui(object);
     }
 
+    /// Adds a scripted [`Sequence`](crate::sequence::Sequence) to the scene.
+    pub fn add_sequence(&mut self, sequence: crate::sequence::Sequence) {
+        self.world.add_sequence(sequence);
+    }
+
     /// Returns the scene identifier name.
     pub fn name(&self) -> &str {
         &self.name

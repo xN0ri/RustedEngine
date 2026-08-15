@@ -313,4 +313,37 @@ mod tests {
         assert_eq!(scene.get_world().objects().len(), 1);
         assert_eq!(scene.get_world().ui_objects().len(), 2);
     }
+
+    #[test]
+    fn test_logic_object() {
+        struct Counter {
+            val: i32,
+        }
+        let logic = LogicObject::logic(Counter { val: 10 }).update(|obj, _ctx| {
+            obj.data.val += 1;
+        });
+
+        let mut world = World::new();
+        world.add(logic);
+        assert_eq!(world.objects().len(), 1);
+    }
+
+    #[test]
+    fn test_scene_add_sequence() {
+        let mut scene = Scene::new_empty("Boot");
+
+        let seq = Sequence::new(vec![
+            Step::SetFlag {
+                key: "seq_done".into(),
+                value: StateValue::Bool(true),
+            },
+            Step::End,
+        ]);
+        scene.add_sequence(seq);
+
+        let mut ctx = Context::new();
+        scene.get_world().update(&mut ctx);
+
+        assert!(ctx.state.get_bool("seq_done"));
+    }
 }

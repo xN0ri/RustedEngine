@@ -161,6 +161,18 @@ impl Text {
         self
     }
 
+    /// Builder pattern: Sets a custom TTF font loaded in the asset manager by name.
+    pub fn with_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(font) = assets.get_font(name) {
+            self.font = Some(font.clone());
+        }
+        self
+    }
+
     /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
         self.tag = tag.into();
