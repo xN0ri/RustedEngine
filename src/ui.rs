@@ -20,6 +20,7 @@ use macroquad::{
     math::{vec2, Rect, Vec2},
     shapes::draw_rectangle,
     text::{draw_text, draw_text_ex, measure_text, Font, TextParams},
+    texture::{draw_texture_ex, DrawTextureParams, Texture2D},
 };
 
 use crate::{
@@ -47,16 +48,40 @@ fn intersect_rects(r1: Rect, r2: Rect) -> Rect {
 
 fn apply_gl_scissor(clip: Option<Rect>) {
     let gl = unsafe { macroquad::window::get_internal_gl() };
+    let dpi = macroquad::window::screen_dpi_scale();
     if let Some(rect) = clip {
-        let s_height = macroquad::window::screen_height();
-        let x = rect.x as i32;
-        let y = (s_height - (rect.y + rect.h)) as i32;
-        let w = rect.w.max(0.0) as i32;
-        let h = rect.h.max(0.0) as i32;
+        let x = (rect.x * dpi) as i32;
+        let y = (rect.y * dpi) as i32;
+        let w = (rect.w.max(0.0) * dpi) as i32;
+        let h = (rect.h.max(0.0) * dpi) as i32;
         gl.quad_gl.scissor(Some((x, y, w, h)));
     } else {
         gl.quad_gl.scissor(None);
     }
+}
+
+thread_local! {
+    static DRAW_OFFSET_STACK: RefCell<Vec<Vec2>> = const { RefCell::new(Vec::new()) };
+}
+
+pub fn push_draw_offset(offset: Vec2) {
+    DRAW_OFFSET_STACK.with(|stack| {
+        let mut stack = stack.borrow_mut();
+        let current = stack.last().copied().unwrap_or(Vec2::ZERO);
+        stack.push(current + offset);
+    });
+}
+
+pub fn pop_draw_offset() {
+    DRAW_OFFSET_STACK.with(|stack| {
+        stack.borrow_mut().pop();
+    });
+}
+
+pub fn get_draw_offset() -> Vec2 {
+    DRAW_OFFSET_STACK.with(|stack| {
+        stack.borrow().last().copied().unwrap_or(Vec2::ZERO)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +293,32 @@ impl Text {
         lines
     }
 
+    /// Returns effective vertical line spacing when word-wrapping.
+    pub fn effective_line_spacing(&self) -> f32 {
+        if self.line_spacing > 0.0 {
+            self.line_spacing
+        } else {
+            self.font_size * 1.2
+        }
+    }
+
+    /// Wraps text using `self.max_width` (or `f32::MAX` if unset) and provided measurement closure.
+    pub fn wrap_lines<F>(&self, measure: F) -> Vec<String>
+    where
+        F: Fn(&str) -> f32,
+    {
+        let max_w = self.max_width.unwrap_or(f32::MAX);
+        self.wrap_lines_with(&self.content, max_w, measure)
+    }
+
+    /// Calculates total rendered text height after word-wrapping using macroquad's `measure_text`.
+    pub fn wrapped_height(&self) -> f32 {
+        let font_ref = self.font.as_ref();
+        let font_size = self.font_size;
+        let lines = self.wrap_lines(|s| measure_text(s, font_ref, font_size as u16, 1.0).width);
+        lines.len() as f32 * self.effective_line_spacing()
+    }
+
     /// Returns `true` if the text reveal animation has finished displaying all characters.
     pub fn is_finished(&self) -> bool {
         self.revealed_chars >= self.full_content.len() as f32
@@ -298,6 +349,7 @@ impl Object for Text {
         if !self.visible {
             return;
         }
+        let pos = self.position + get_draw_offset();
         let line_spacing = if self.line_spacing > 0.0 {
             self.line_spacing
         } else {
@@ -312,11 +364,11 @@ impl Object for Text {
             });
 
             for (i, line) in lines.iter().enumerate() {
-                let y = self.position.y + (i as f32) * line_spacing;
+                let y = pos.y + (i as f32) * line_spacing;
                 if let Some(ref font) = self.font {
                     draw_text_ex(
                         line,
-                        self.position.x,
+                        pos.x,
                         y,
                         TextParams {
                             font: Some(font),
@@ -328,7 +380,7 @@ impl Object for Text {
                 } else {
                     draw_text(
                         line,
-                        self.position.x,
+                        pos.x,
                         y,
                         self.font_size,
                         self.color,
@@ -339,8 +391,8 @@ impl Object for Text {
             if let Some(ref font) = self.font {
                 draw_text_ex(
                     &self.content,
-                    self.position.x,
-                    self.position.y,
+                    pos.x,
+                    pos.y,
                     TextParams {
                         font: Some(font),
                         font_size: self.font_size as u16,
@@ -351,8 +403,8 @@ impl Object for Text {
             } else {
                 draw_text(
                     &self.content,
-                    self.position.x,
-                    self.position.y,
+                    pos.x,
+                    pos.y,
                     self.font_size,
                     self.color,
                 );
@@ -382,6 +434,10 @@ impl Object for Text {
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+
+    fn content_height(&self) -> Option<f32> {
+        Some(self.position.y + self.wrapped_height())
     }
 }
 
@@ -520,20 +576,21 @@ impl Object for Button {
         if !self.visible {
             return;
         }
+        let pos = self.position + get_draw_offset();
         let bg_color = if self.is_hovered() {
             self.hover_color
         } else {
             self.color
         };
         draw_rectangle(
-            self.position.x,
-            self.position.y,
+            pos.x,
+            pos.y,
             self.size.x,
             self.size.y,
             bg_color,
         );
-        let tx = self.position.x + 10.0;
-        let ty = self.position.y + (self.size.y / 2.0) + (self.font_size / 3.0);
+        let tx = pos.x + 10.0;
+        let ty = pos.y + (self.size.y / 2.0) + (self.font_size / 3.0);
         if let Some(ref font) = self.font {
             draw_text_ex(
                 &self.label,
@@ -684,9 +741,10 @@ impl Object for ProgressBar {
         if !self.visible {
             return;
         }
+        let pos = self.position + get_draw_offset();
         draw_rectangle(
-            self.position.x,
-            self.position.y,
+            pos.x,
+            pos.y,
             self.size.x,
             self.size.y,
             self.bg_color,
@@ -694,8 +752,8 @@ impl Object for ProgressBar {
         let fill_w = self.size.x * self.progress;
         if fill_w > 0.0 {
             draw_rectangle(
-                self.position.x,
-                self.position.y,
+                pos.x,
+                pos.y,
                 fill_w,
                 self.size.y,
                 self.fill_color,
@@ -742,6 +800,8 @@ pub struct Panel {
     pub position: Vec2,
     pub size: Vec2,
     pub background_color: Color,
+    pub background_texture: Option<Texture2D>,
+    pub texture_tint: Color,
     pub border_color: Option<Color>,
     pub border_width: f32,
     pub children: Vec<Box<dyn Object>>,
@@ -755,6 +815,10 @@ pub struct Panel {
     /// inside a scrolled panel with non-zero `scroll_offset` will have unshifted hit-testing bounds.
     /// Recommended primarily for display content (text logs, document viewers, file lists).
     pub scroll_offset: Vec2,
+    /// Target scroll offset for smooth frame-by-frame interpolation.
+    pub target_scroll_offset: Vec2,
+    /// Whether to enable smooth frame-by-frame lerp scrolling. Defaults to `true`.
+    pub smooth_scroll: bool,
     /// Whether to clip children rendering to panel bounds via scissor test. Defaults to `true`.
     pub clip_content: bool,
     /// Optional total content height for clamping scroll offset. `None` = unlimited scroll.
@@ -780,6 +844,8 @@ impl Panel {
             position,
             size,
             background_color: Color::from_rgba(30, 30, 40, 220),
+            background_texture: None,
+            texture_tint: WHITE,
             border_color: Some(Color::from_rgba(80, 80, 100, 255)),
             border_width: 1.5,
             children: Vec::new(),
@@ -788,6 +854,8 @@ impl Panel {
             active: true,
             drag: DragState::new(),
             scroll_offset: Vec2::ZERO,
+            target_scroll_offset: Vec2::ZERO,
+            smooth_scroll: true,
             clip_content: true,
             content_height: None,
             draggable: true,
@@ -845,6 +913,18 @@ impl Panel {
         self
     }
 
+    /// Builder pattern: Sets a custom background texture skin for the panel.
+    pub fn with_texture(mut self, texture: Texture2D) -> Self {
+        self.background_texture = Some(texture);
+        self
+    }
+
+    /// Builder pattern: Sets tint color applied when rendering the background texture.
+    pub fn with_texture_tint(mut self, tint: Color) -> Self {
+        self.texture_tint = tint;
+        self
+    }
+
     /// Builder pattern: Sets panel border color and width.
     pub fn with_border(mut self, color: Color, width: f32) -> Self {
         self.border_color = Some(color);
@@ -888,6 +968,7 @@ impl Panel {
     /// Builder pattern: Sets initial scroll offset.
     pub fn with_scroll_offset(mut self, offset: Vec2) -> Self {
         self.scroll_offset = offset;
+        self.target_scroll_offset = offset;
         self
     }
 
@@ -895,6 +976,66 @@ impl Panel {
     pub fn with_content_height(mut self, height: f32) -> Self {
         self.content_height = Some(height);
         self
+    }
+
+    /// Builder pattern: Enables or disables smooth frame-by-frame lerp scrolling.
+    pub fn with_smooth_scroll(mut self, enabled: bool) -> Self {
+        self.smooth_scroll = enabled;
+        self
+    }
+
+    /// Builder pattern: Adds a child entity object to the panel container.
+    pub fn with_child(mut self, child: Box<dyn Object>) -> Self {
+        self.add_child(child);
+        self
+    }
+
+    /// Automatically calculates and sets `content_height` based on maximum bottom Y bound of all children.
+    pub fn auto_fit_content_height(&mut self) {
+        let mut max_h: f32 = 0.0;
+        for child in self.children.iter() {
+            if let Some(ch) = child.content_height() {
+                max_h = max_h.max(ch);
+            } else if let Some(b) = child.bounds() {
+                max_h = max_h.max(b.y + b.h);
+            }
+        }
+        if max_h > 0.0 {
+            self.content_height = Some(max_h + 15.0);
+        }
+    }
+
+    /// Builder pattern: Automatically calculates and sets `content_height` based on children.
+    pub fn fit_content_height(mut self) -> Self {
+        self.auto_fit_content_height();
+        self
+    }
+
+    /// Factory: Creates a pre-configured scrollable UI panel containing word-wrapped text.
+    ///
+    /// Automatically calculates padding (15px), max width, and total content height.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let panel = Panel::scrollable_text(vec2(100.0, 80.0), vec2(360.0, 240.0), long_text, 16.0, WHITE);
+    /// ```
+    pub fn scrollable_text(
+        position: Vec2,
+        size: Vec2,
+        text: &str,
+        font_size: f32,
+        text_color: Color,
+    ) -> Self {
+        let padding = 15.0;
+        let text_w = (size.x - padding * 2.0).max(10.0);
+        let text_element = Text::new(text, vec2(padding, padding), font_size, text_color)
+            .with_max_width(text_w);
+        let total_h = text_element.wrapped_height() + padding * 2.0;
+
+        Self::new(position, size)
+            .with_clip_content(true)
+            .with_content_height(total_h)
+            .with_child(Box::new(text_element))
     }
 
     /// Returns `true` if the panel is currently being dragged by the mouse.
@@ -965,10 +1106,20 @@ impl Object for Panel {
         if self.rect().contains(vec2(mx, my)) {
             let (_wheel_x, wheel_y) = macroquad::input::mouse_wheel();
             if wheel_y != 0.0 {
-                self.scroll_offset.y -= wheel_y * 15.0;
+                self.target_scroll_offset.y -= wheel_y * 35.0;
                 let max_scroll = self.content_height.map_or(f32::MAX, |h| (h - self.size.y).max(0.0));
-                self.scroll_offset.y = self.scroll_offset.y.clamp(0.0, max_scroll);
+                self.target_scroll_offset.y = self.target_scroll_offset.y.clamp(0.0, max_scroll);
             }
+        }
+
+        // Frame-by-frame scroll offset update (smooth lerp or instant)
+        if self.smooth_scroll {
+            let dt = ctx.time.deltatime();
+            let lerp_factor = (16.0 * dt).min(1.0);
+            self.scroll_offset.y += (self.target_scroll_offset.y - self.scroll_offset.y) * lerp_factor;
+            self.scroll_offset.x += (self.target_scroll_offset.x - self.scroll_offset.x) * lerp_factor;
+        } else {
+            self.scroll_offset = self.target_scroll_offset;
         }
 
         for child in self.children.iter_mut() {
@@ -980,51 +1131,53 @@ impl Object for Panel {
         if !self.visible {
             return;
         }
-        draw_rectangle(
-            self.position.x,
-            self.position.y,
-            self.size.x,
-            self.size.y,
-            self.background_color,
-        );
+        let pos = self.position + get_draw_offset();
+        if let Some(ref tex) = self.background_texture {
+            draw_texture_ex(
+                tex,
+                pos.x,
+                pos.y,
+                self.texture_tint,
+                DrawTextureParams {
+                    dest_size: Some(self.size),
+                    ..Default::default()
+                },
+            );
+        } else {
+            draw_rectangle(
+                pos.x,
+                pos.y,
+                self.size.x,
+                self.size.y,
+                self.background_color,
+            );
+        }
         if let Some(bc) = self.border_color {
             let bw = self.border_width;
-            draw_rectangle(self.position.x, self.position.y, self.size.x, bw, bc);
-            draw_rectangle(self.position.x, self.position.y + self.size.y - bw, self.size.x, bw, bc);
-            draw_rectangle(self.position.x, self.position.y, bw, self.size.y, bc);
-            draw_rectangle(self.position.x + self.size.x - bw, self.position.y, bw, self.size.y, bc);
+            draw_rectangle(pos.x, pos.y, self.size.x, bw, bc);
+            draw_rectangle(pos.x, pos.y + self.size.y - bw, self.size.x, bw, bc);
+            draw_rectangle(pos.x, pos.y, bw, self.size.y, bc);
+            draw_rectangle(pos.x + self.size.x - bw, pos.y, bw, self.size.y, bc);
         }
 
-        let render_children = || {
-            let has_scroll = self.scroll_offset != Vec2::ZERO;
-            if has_scroll {
-                let sw = macroquad::window::screen_width();
-                let sh = macroquad::window::screen_height();
-                let cam = macroquad::camera::Camera2D {
-                    target: vec2(
-                        sw / 2.0 + self.scroll_offset.x,
-                        sh / 2.0 + self.scroll_offset.y,
-                    ),
-                    zoom: vec2(2.0 / sw, -2.0 / sh),
-                    offset: vec2(0.0, 0.0),
-                    ..Default::default()
-                };
-                macroquad::camera::set_camera(&cam);
-            }
+        let my_rect = Rect {
+            x: pos.x,
+            y: pos.y,
+            w: self.size.x,
+            h: self.size.y,
+        };
 
+        let render_children = || {
+            push_draw_offset(self.position - self.scroll_offset);
             for child in self.children.iter() {
                 child.draw();
             }
-
-            if has_scroll {
-                macroquad::camera::set_default_camera();
-            }
+            pop_draw_offset();
         };
 
         if self.clip_content {
             let current_clip = SCISSOR_STACK.with(|stack| {
                 let mut stack = stack.borrow_mut();
-                let my_rect = self.rect();
                 let new_clip = if let Some(&parent_clip) = stack.last() {
                     intersect_rects(parent_clip, my_rect)
                 } else {
@@ -1072,6 +1225,25 @@ impl Object for Panel {
 
     fn bounds(&self) -> Option<Rect> {
         Some(self.rect())
+    }
+
+    fn content_height(&self) -> Option<f32> {
+        if self.content_height.is_some() {
+            return self.content_height;
+        }
+        let mut max_h: f32 = 0.0;
+        for child in self.children.iter() {
+            if let Some(ch) = child.content_height() {
+                max_h = max_h.max(ch);
+            } else if let Some(b) = child.bounds() {
+                max_h = max_h.max(b.y + b.h);
+            }
+        }
+        if max_h > 0.0 {
+            Some(max_h)
+        } else {
+            None
+        }
     }
 }
 
@@ -1472,10 +1644,12 @@ impl Object for TextField {
             return;
         }
 
+        let pos = self.position + get_draw_offset();
+
         if self.decorated {
             draw_rectangle(
-                self.position.x,
-                self.position.y,
+                pos.x,
+                pos.y,
                 self.size.x,
                 self.size.y,
                 self.bg_color,
@@ -1489,10 +1663,10 @@ impl Object for TextField {
 
             if let Some(border_color) = bc {
                 let bw = self.border_width;
-                draw_rectangle(self.position.x, self.position.y, self.size.x, bw, border_color);
-                draw_rectangle(self.position.x, self.position.y + self.size.y - bw, self.size.x, bw, border_color);
-                draw_rectangle(self.position.x, self.position.y, bw, self.size.y, border_color);
-                draw_rectangle(self.position.x + self.size.x - bw, self.position.y, bw, self.size.y, border_color);
+                draw_rectangle(pos.x, pos.y, self.size.x, bw, border_color);
+                draw_rectangle(pos.x, pos.y + self.size.y - bw, self.size.x, bw, border_color);
+                draw_rectangle(pos.x, pos.y, bw, self.size.y, border_color);
+                draw_rectangle(pos.x + self.size.x - bw, pos.y, bw, self.size.y, border_color);
             }
         }
 
@@ -1507,8 +1681,8 @@ impl Object for TextField {
             self.text_color
         };
 
-        let tx = if self.decorated { self.position.x + 8.0 } else { self.position.x };
-        let ty = self.position.y + (self.size.y / 2.0) + (self.font_size / 3.0);
+        let tx = if self.decorated { pos.x + 8.0 } else { pos.x };
+        let ty = pos.y + (self.size.y / 2.0) + (self.font_size / 3.0);
 
         if let Some(ref font) = self.font {
             draw_text_ex(
@@ -1534,7 +1708,7 @@ impl Object for TextField {
                 1.0,
             );
             let cursor_x = tx + text_dim.width + 2.0;
-            let cursor_top = self.position.y + 4.0;
+            let cursor_top = pos.y + 4.0;
             let cursor_height = (self.size.y - 8.0).max(self.font_size);
             draw_rectangle(cursor_x, cursor_top, 2.0, cursor_height, self.text_color);
         }

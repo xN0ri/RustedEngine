@@ -196,11 +196,12 @@ impl Object for AnimatedSprite {
         if !self.visible || self.frames.is_empty() {
             return;
         }
+        let pos = self.position + crate::ui::get_draw_offset();
         let texture = &self.frames[self.current_frame];
         draw_texture_ex(
             texture,
-            self.position.x,
-            self.position.y,
+            pos.x,
+            pos.y,
             self.color,
             DrawTextureParams {
                 dest_size: Some(self.size),

@@ -245,4 +245,16 @@ mod tests {
         assert_eq!(anim.current_frame(), 0);
         assert_eq!(anim.bounds(), Some(macroquad::math::Rect::new(10.0, 10.0, 32.0, 32.0)));
     }
+
+    #[test]
+    fn test_panel_scroll_options() {
+        let panel = UiPanel::new(vec2(0.0, 0.0), vec2(100.0, 100.0))
+            .with_clip_content(true)
+            .with_smooth_scroll(false)
+            .with_content_height(500.0);
+
+        assert_eq!(panel.clip_content, true);
+        assert_eq!(panel.smooth_scroll, false);
+        assert_eq!(panel.content_height, Some(500.0));
+    }
 }

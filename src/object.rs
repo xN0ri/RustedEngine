@@ -237,10 +237,11 @@ impl Object for Sprite {
         if !self.visible {
             return;
         }
+        let pos = self.position + crate::ui::get_draw_offset();
         draw_texture_ex(
             &self.texture,
-            self.position.x,
-            self.position.y,
+            pos.x,
+            pos.y,
             self.color,
             DrawTextureParams {
                 dest_size: Some(self.size),
@@ -357,9 +358,10 @@ impl Object for Rectangle {
         if !self.visible {
             return;
         }
+        let pos = self.position + crate::ui::get_draw_offset();
         draw_rectangle(
-            self.position.x,
-            self.position.y,
+            pos.x,
+            pos.y,
             self.size.x,
             self.size.y,
             self.color,

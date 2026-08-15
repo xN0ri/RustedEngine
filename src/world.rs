@@ -47,6 +47,13 @@ pub trait Object {
     fn bounds(&self) -> Option<Rect> {
         None
     }
+
+    /// Returns the total content height of this entity, or `None` if unspecified.
+    ///
+    /// Used by [`Panel::fit_content_height`](crate::ui::Panel::fit_content_height) to calculate scroll boundaries.
+    fn content_height(&self) -> Option<f32> {
+        None
+    }
 }
 
 /// Game world container holding separate entity rendering layers:
