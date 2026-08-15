@@ -1,6 +1,6 @@
 use macroquad::{
     input::mouse_position,
-    math::{vec2, Vec2},
+    math::{Vec2, vec2},
 };
 
 use crate::engine::Context;

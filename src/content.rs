@@ -15,10 +15,7 @@ use std::{fmt, fs, io, path::Path};
 #[derive(Debug)]
 pub enum ContentError {
     /// An IO error (e.g. file not found, permission denied).
-    Io {
-        path: String,
-        source: io::Error,
-    },
+    Io { path: String, source: io::Error },
     /// JSON deserialization failed.
     Parse {
         path: String,
@@ -141,7 +138,13 @@ mod tests {
         writeln!(f, r#"{{"id":"test","value":42}}"#).unwrap();
         let path = f.path().to_string_lossy().into_owned();
         let d: Dummy = load_content(&path).unwrap();
-        assert_eq!(d, Dummy { id: "test".into(), value: 42 });
+        assert_eq!(
+            d,
+            Dummy {
+                id: "test".into(),
+                value: 42
+            }
+        );
     }
 
     #[test]

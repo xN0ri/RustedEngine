@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use macroquad::{
-    audio::{load_sound, Sound},
-    text::{load_ttf_font, Font},
-    texture::{load_texture, Texture2D},
+    audio::{Sound, load_sound},
+    text::{Font, load_ttf_font},
+    texture::{Texture2D, load_texture},
 };
+use std::collections::HashMap;
 
 /// Central asset manager storing loaded textures, sounds, and fonts.
 /// Serves as the single source of truth for game resources.
@@ -27,7 +27,11 @@ impl Assets {
     }
 
     /// Asynchronously loads a texture from the given file path and stores it under `name`.
-    pub async fn load_texture(&mut self, name: &str, path: &str) -> Result<Texture2D, macroquad::Error> {
+    pub async fn load_texture(
+        &mut self,
+        name: &str,
+        path: &str,
+    ) -> Result<Texture2D, macroquad::Error> {
         let texture = load_texture(path).await?;
         self.textures.insert(name.to_string(), texture.clone());
         Ok(texture)
@@ -73,8 +77,8 @@ impl Assets {
     }
 
     /// Retrieves a reference to a stored frame sequence by name.
-    pub fn get_sequence(&self, name: &str) -> Option<&Vec<Texture2D>> {
-        self.sequences.get(name)
+    pub fn get_sequence(&self, name: &str) -> Option<&[Texture2D]> {
+        self.sequences.get(name).map(|v| v.as_slice())
     }
 
     /// Asynchronously loads a sound effect from the given file path and stores it under `name`.

@@ -1,8 +1,4 @@
-use crate::{
-    engine::Context,
-    state::StateValue,
-    world::World,
-};
+use crate::{engine::Context, state::StateValue, world::World};
 
 // ---------------------------------------------------------------------------
 // Step — Scripted sequence step enum
@@ -13,24 +9,16 @@ use crate::{
 pub enum Step {
     /// Sets text content on entities with matching `target_tag` via [`Object::set_text`](crate::world::Object::set_text).
     /// If the target text component has typewriter mode enabled, restarts the reveal animation.
-    ShowText {
-        target_tag: String,
-        text: String,
-    },
+    ShowText { target_tag: String, text: String },
 
     /// Awaits user input (Space, Enter, or Left Mouse Click) before advancing to the next step.
     WaitForInput,
 
     /// Sets a key-value flag entry inside [`Context::state`](crate::engine::Context::state).
-    SetFlag {
-        key: String,
-        value: StateValue,
-    },
+    SetFlag { key: String, value: StateValue },
 
     /// Delays execution for the specified duration in seconds.
-    Wait {
-        seconds: f32,
-    },
+    Wait { seconds: f32 },
 
     /// Conditional branch based on a boolean key in [`Context::state`](crate::engine::Context::state).
     /// Jumps to index `if_true` when `true`, or `if_false` when `false`.
@@ -105,7 +93,10 @@ impl Sequence {
         let step = self.steps[self.current].clone();
 
         match step {
-            Step::ShowText { ref target_tag, ref text } => {
+            Step::ShowText {
+                ref target_tag,
+                ref text,
+            } => {
                 let mut found = false;
                 // Search UI layer entities by tag and call set_text
                 for obj in world.find_ui_by_tag_mut(target_tag) {
@@ -119,14 +110,17 @@ impl Sequence {
                     }
                 }
                 // Record in StateStore as a fallback flag
-                ctx.state.set_text(&format!("__seq_text_{}", target_tag), text);
+                ctx.state
+                    .set_text(&format!("__seq_text_{}", target_tag), text);
                 self.current += 1;
             }
 
             Step::WaitForInput => {
                 let pressed = macroquad::input::is_key_pressed(macroquad::input::KeyCode::Space)
                     || macroquad::input::is_key_pressed(macroquad::input::KeyCode::Enter)
-                    || macroquad::input::is_mouse_button_pressed(macroquad::input::MouseButton::Left);
+                    || macroquad::input::is_mouse_button_pressed(
+                        macroquad::input::MouseButton::Left,
+                    );
                 if pressed {
                     self.current += 1;
                 }
@@ -145,7 +139,11 @@ impl Sequence {
                 }
             }
 
-            Step::Branch { condition, if_true, if_false } => {
+            Step::Branch {
+                condition,
+                if_true,
+                if_false,
+            } => {
                 if ctx.state.get_bool(&condition) {
                     self.current = if_true;
                 } else {

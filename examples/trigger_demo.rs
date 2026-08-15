@@ -3,8 +3,8 @@
 //! Demonstrates a one-shot and a repeating trigger.
 //! Uses a generic `Counter` resource — the engine knows nothing about it.
 
-use macroquad::prelude::*;
 use RustedEngine::prelude::*;
+use macroquad::prelude::*;
 
 // Generic test resource — lives in the game, not the engine
 struct Counter {
@@ -41,9 +41,7 @@ async fn main() {
     .with_tag("counter_display")
     .update(|obj, ctx| {
         if let Some(c) = ctx.resources.get::<Counter>() {
-            obj.set_text(
-                format!("Counter: {}  |  Resets: {}", c.value, c.resets).as_str(),
-            );
+            obj.set_text(format!("Counter: {}  |  Resets: {}", c.value, c.resets).as_str());
         }
     });
 
@@ -72,7 +70,10 @@ async fn main() {
     // -----------------------------------------------------------------------
     // Insert resource
     // -----------------------------------------------------------------------
-    engine.ctx.resources.insert(Counter { value: 0, resets: 0 });
+    engine.ctx.resources.insert(Counter {
+        value: 0,
+        resets: 0,
+    });
 
     // -----------------------------------------------------------------------
     // Register triggers

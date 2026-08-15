@@ -1,14 +1,12 @@
-use std::collections::HashMap;
 use macroquad::{
-    camera::{set_camera, set_default_camera, Camera2D},
+    camera::{Camera2D, set_camera, set_default_camera},
     color::WHITE,
     math::vec2,
     miniquad::ShaderSource,
-    texture::{
-        draw_texture_ex, render_target, DrawTextureParams, FilterMode, RenderTarget,
-    },
+    texture::{DrawTextureParams, FilterMode, RenderTarget, draw_texture_ex, render_target},
     window::{screen_height, screen_width},
 };
+use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // PostProcess — Fullscreen shader post-processing pipeline
@@ -102,7 +100,11 @@ impl SceneRenderTarget {
         let target = render_target(width, height);
         // Set nearest filtering to preserve pixel-art crispness
         target.texture.set_filter(FilterMode::Nearest);
-        Self { target, width, height }
+        Self {
+            target,
+            width,
+            height,
+        }
     }
 
     /// Creates a [`SceneRenderTarget`] sized to match the current viewport dimensions.
@@ -122,7 +124,9 @@ impl SceneRenderTarget {
     /// Activates the render target as the current drawing target.
     ///
     /// ⚠️ **Deprecated:** Use `ctx.camera.begin_to_target(&rt.target)` to retain camera settings (zoom, target, shake).
-    #[deprecated(note = "Use ctx.camera.begin_to_target(&rt.target) to retain camera properties (zoom, target, shake)")]
+    #[deprecated(
+        note = "Use ctx.camera.begin_to_target(&rt.target) to retain camera properties (zoom, target, shake)"
+    )]
     pub fn begin(&self) {
         let cam = Camera2D {
             zoom: vec2(2.0 / self.width as f32, 2.0 / self.height as f32),

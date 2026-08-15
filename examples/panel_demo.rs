@@ -6,8 +6,8 @@
 //!
 //! The `PanelManager` is an `Object` added to the `World` UI layer.
 
-use macroquad::prelude::*;
 use RustedEngine::prelude::*;
+use macroquad::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Concrete panel A: draggable, colored rectangle with a label
@@ -51,7 +51,13 @@ impl Panel for StaticPanel {
     fn update(&mut self, _dt: f32) {}
 
     fn draw(&self, rect: Rect) {
-        draw_rectangle(rect.x, rect.y, rect.w, rect.h, Color::new(0.1, 0.2, 0.45, 0.95));
+        draw_rectangle(
+            rect.x,
+            rect.y,
+            rect.w,
+            rect.h,
+            Color::new(0.1, 0.2, 0.45, 0.95),
+        );
         draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 2.0, SKYBLUE);
         draw_text(&self.label, rect.x + 12.0, rect.y + 30.0, 20.0, WHITE);
         draw_text(

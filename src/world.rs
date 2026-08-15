@@ -86,7 +86,10 @@ impl World {
 
     /// Creates a new [`World`] with both world-space entities and screen-space UI components.
     pub fn new_with_ui(objects: Vec<Box<dyn Object>>, ui_objects: Vec<Box<dyn Object>>) -> Self {
-        Self { objects, ui_objects }
+        Self {
+            objects,
+            ui_objects,
+        }
     }
 
     /// Adds a new object to the world-space layer at runtime.
@@ -158,10 +161,8 @@ impl World {
     /// Returns a mutable reference to the first UI-space object matching concrete type `T`, or `None`.
     pub fn find_ui_typed_mut<T: 'static>(&mut self) -> Option<&mut T> {
         for obj in self.ui_objects.iter_mut() {
-            if let Some(any) = obj.as_any_mut() {
-                if let Some(concrete) = any.downcast_mut::<T>() {
-                    return Some(concrete);
-                }
+            if let Some(concrete) = obj.as_any_mut().and_then(|any| any.downcast_mut::<T>()) {
+                return Some(concrete);
             }
         }
         None
@@ -170,10 +171,8 @@ impl World {
     /// Returns a mutable reference to the first world-space object matching concrete type `T`, or `None`.
     pub fn find_typed_mut<T: 'static>(&mut self) -> Option<&mut T> {
         for obj in self.objects.iter_mut() {
-            if let Some(any) = obj.as_any_mut() {
-                if let Some(concrete) = any.downcast_mut::<T>() {
-                    return Some(concrete);
-                }
+            if let Some(concrete) = obj.as_any_mut().and_then(|any| any.downcast_mut::<T>()) {
+                return Some(concrete);
             }
         }
         None

@@ -41,7 +41,7 @@ pub mod window;
 pub mod world;
 
 pub use animated_texture::AnimatedSprite;
-pub use content::{load_content, load_content_dir, ContentError};
+pub use content::{ContentError, load_content, load_content_dir};
 pub use panel_manager::{PanelId, PanelManager};
 pub use resources::Resources;
 pub use trigger::{Trigger, TriggerSystem};
@@ -49,9 +49,9 @@ pub use trigger::{Trigger, TriggerSystem};
 #[cfg(test)]
 mod tests {
     use super::prelude::*;
+    use macroquad::color::WHITE;
     use macroquad::input::KeyCode;
     use macroquad::math::vec2;
-    use macroquad::color::WHITE;
 
     #[test]
     fn test_state_store_and_serde() {
@@ -91,8 +91,7 @@ mod tests {
 
     #[test]
     fn test_text_typewriter() {
-        let mut text = Text::new("Hello", vec2(0.0, 0.0), 20.0, WHITE)
-            .with_typewriter(10.0);
+        let mut text = Text::new("Hello", vec2(0.0, 0.0), 20.0, WHITE).with_typewriter(10.0);
 
         assert_eq!(text.is_finished(), false);
         text.skip();
@@ -173,9 +172,12 @@ mod tests {
         assert_eq!(progress.is_visible(), false);
         assert_eq!(progress.is_active(), false);
 
-        let behavior_obj = Behavior::new(Rectangle::new(vec2(0.0, 0.0), vec2(10.0, 10.0), 0.0, WHITE), ())
-            .hidden()
-            .desactivated();
+        let behavior_obj = Behavior::new(
+            Rectangle::new(vec2(0.0, 0.0), vec2(10.0, 10.0), 0.0, WHITE),
+            (),
+        )
+        .hidden()
+        .desactivated();
         assert_eq!(behavior_obj.is_visible(), false);
         assert_eq!(behavior_obj.is_active(), false);
 
@@ -205,8 +207,13 @@ mod tests {
 
     #[test]
     fn test_text_word_wrap() {
-        let text = Text::new("Hello world this is a long line", vec2(0.0, 0.0), 16.0, WHITE)
-            .with_max_width(100.0);
+        let text = Text::new(
+            "Hello world this is a long line",
+            vec2(0.0, 0.0),
+            16.0,
+            WHITE,
+        )
+        .with_max_width(100.0);
 
         // Dummy measure: 10 pixels per char
         let measure = |s: &str| s.len() as f32 * 10.0;
@@ -243,7 +250,10 @@ mod tests {
         assert_eq!(anim.is_visible(), false);
         assert_eq!(anim.is_active(), false);
         assert_eq!(anim.current_frame(), 0);
-        assert_eq!(anim.bounds(), Some(macroquad::math::Rect::new(10.0, 10.0, 32.0, 32.0)));
+        assert_eq!(
+            anim.bounds(),
+            Some(macroquad::math::Rect::new(10.0, 10.0, 32.0, 32.0))
+        );
     }
 
     #[test]
@@ -278,7 +288,10 @@ mod tests {
         let pm = found.unwrap();
         assert_eq!(pm.len(), 0);
 
-        pm.add(DummyPanel, macroquad::math::Rect::new(0.0, 0.0, 100.0, 100.0));
+        pm.add(
+            DummyPanel,
+            macroquad::math::Rect::new(0.0, 0.0, 100.0, 100.0),
+        );
         assert_eq!(pm.len(), 1);
     }
 }

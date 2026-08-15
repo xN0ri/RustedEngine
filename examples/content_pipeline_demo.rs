@@ -4,9 +4,9 @@
 //! using a simple `ExampleData { id, value }` struct.
 //! The engine knows nothing about `ExampleData` — the type lives here, in the game.
 
-use macroquad::prelude::*;
 use RustedEngine::prelude::*;
 use RustedEngine::{load_content, load_content_dir};
+use macroquad::prelude::*;
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------

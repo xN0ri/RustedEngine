@@ -6,7 +6,7 @@ pub use crate::{
     asset_manager::Assets,
     audio::{AmbientPool, Audio},
     camera::Camera,
-    content::{load_content, load_content_dir, ContentError},
+    content::{ContentError, load_content, load_content_dir},
     draggable::{DragState, Draggable},
     engine::{Context, CustomCursor, Engine},
     input::Input,
@@ -20,8 +20,12 @@ pub use crate::{
     state::{StateStore, StateValue},
     time::{Time, Timer},
     trigger::{Trigger, TriggerSystem},
-    ui::{Button, Panel as UiPanel, ProgressBar, RevealMode, Text, TextField, TextFieldObject, TextObject, UI},
+    ui::{
+        Button, Panel as UiPanel, ProgressBar, RevealMode, Text, TextField, TextFieldObject,
+        TextObject, UI,
+    },
     window::Window,
+    world,
     world::{Object, World},
-    world, world_objects,
+    world_objects,
 };

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use macroquad::input::{
-    is_key_down, is_key_pressed, is_key_released, is_mouse_button_down,
-    is_mouse_button_pressed, is_mouse_button_released, KeyCode, MouseButton,
+    KeyCode, MouseButton, is_key_down, is_key_pressed, is_key_released, is_mouse_button_down,
+    is_mouse_button_pressed, is_mouse_button_released,
 };
 
 use crate::object::Side;
@@ -38,10 +38,7 @@ impl ActionMap {
 
     /// Binds a keyboard key to an action name. Multiple keys can be bound to the same action.
     pub fn bind_key(&mut self, action: &str, key: KeyCode) {
-        self.keys
-            .entry(action.to_string())
-            .or_default()
-            .push(key);
+        self.keys.entry(action.to_string()).or_default().push(key);
     }
 
     /// Binds a mouse button to an action name. Multiple buttons can be bound to the same action.
@@ -60,46 +57,40 @@ impl ActionMap {
 
     /// Returns `true` if any bound key or mouse button for the action is currently held down.
     pub fn is_down(&self, action: &str) -> bool {
-        if let Some(keys) = self.keys.get(action) {
-            if keys.iter().any(|&k| is_key_down(k)) {
-                return true;
-            }
-        }
-        if let Some(btns) = self.mouse.get(action) {
-            if btns.iter().any(|&b| is_mouse_button_down(b)) {
-                return true;
-            }
-        }
-        false
+        let key_down = self
+            .keys
+            .get(action)
+            .is_some_and(|keys| keys.iter().any(|&k| is_key_down(k)));
+        let mouse_down = self
+            .mouse
+            .get(action)
+            .is_some_and(|btns| btns.iter().any(|&b| is_mouse_button_down(b)));
+        key_down || mouse_down
     }
 
     /// Returns `true` during the frame any bound key or mouse button for the action was pressed.
     pub fn is_pressed(&self, action: &str) -> bool {
-        if let Some(keys) = self.keys.get(action) {
-            if keys.iter().any(|&k| is_key_pressed(k)) {
-                return true;
-            }
-        }
-        if let Some(btns) = self.mouse.get(action) {
-            if btns.iter().any(|&b| is_mouse_button_pressed(b)) {
-                return true;
-            }
-        }
-        false
+        let key_pressed = self
+            .keys
+            .get(action)
+            .is_some_and(|keys| keys.iter().any(|&k| is_key_pressed(k)));
+        let mouse_pressed = self
+            .mouse
+            .get(action)
+            .is_some_and(|btns| btns.iter().any(|&b| is_mouse_button_pressed(b)));
+        key_pressed || mouse_pressed
     }
 
     /// Returns `true` during the frame any bound key or mouse button for the action was released.
     pub fn is_released(&self, action: &str) -> bool {
-        if let Some(keys) = self.keys.get(action) {
-            if keys.iter().any(|&k| is_key_released(k)) {
-                return true;
-            }
-        }
-        if let Some(btns) = self.mouse.get(action) {
-            if btns.iter().any(|&b| is_mouse_button_released(b)) {
-                return true;
-            }
-        }
-        false
+        let key_released = self
+            .keys
+            .get(action)
+            .is_some_and(|keys| keys.iter().any(|&k| is_key_released(k)));
+        let mouse_released = self
+            .mouse
+            .get(action)
+            .is_some_and(|btns| btns.iter().any(|&b| is_mouse_button_released(b)));
+        key_released || mouse_released
     }
 }

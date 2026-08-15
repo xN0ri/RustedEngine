@@ -1,9 +1,9 @@
 use macroquad::{
     color::{Color, WHITE},
-    input::{is_mouse_button_down, is_mouse_button_pressed, mouse_position, MouseButton},
-    math::{vec2, Rect, Vec2},
+    input::{MouseButton, is_mouse_button_down, is_mouse_button_pressed, mouse_position},
+    math::{Rect, Vec2, vec2},
     shapes::draw_rectangle,
-    texture::{draw_texture_ex, DrawTextureParams, Texture2D},
+    texture::{DrawTextureParams, Texture2D, draw_texture_ex},
 };
 
 use crate::{engine::Context, world::Object};
@@ -359,13 +359,7 @@ impl Object for Rectangle {
             return;
         }
         let pos = self.position + crate::ui::get_draw_offset();
-        draw_rectangle(
-            pos.x,
-            pos.y,
-            self.size.x,
-            self.size.y,
-            self.color,
-        );
+        draw_rectangle(pos.x, pos.y, self.size.x, self.size.y, self.color);
     }
 
     fn tag(&self) -> &str {
@@ -416,11 +410,14 @@ impl Object for Rectangle {
 /// obj.color = RED;
 /// obj.click_ctx(ctx, Side::Left);
 /// ```
+/// Type alias for per-frame update closure stored inside a [`Behavior`].
+pub type BehaviorUpdateFn<Inner, Data> = Box<dyn FnMut(&mut Behavior<Inner, Data>, &mut Context)>;
+
 pub struct Behavior<Inner, Data> {
     pub inner: Inner,
     pub data: Data,
     pub tag: String,
-    func: Option<Box<dyn FnMut(&mut Behavior<Inner, Data>, &mut Context)>>,
+    func: Option<BehaviorUpdateFn<Inner, Data>>,
 }
 
 impl<Inner, Data> Behavior<Inner, Data> {

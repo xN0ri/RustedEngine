@@ -1,6 +1,6 @@
 use macroquad::{
-    camera::{set_camera, set_default_camera, Camera2D},
-    math::{vec2, Vec2},
+    camera::{Camera2D, set_camera, set_default_camera},
+    math::{Vec2, vec2},
     rand::gen_range,
     window::{screen_height, screen_width},
 };

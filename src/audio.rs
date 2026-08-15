@@ -1,5 +1,5 @@
 use macroquad::{
-    audio::{play_sound, play_sound_once, stop_sound, PlaySoundParams},
+    audio::{PlaySoundParams, play_sound, play_sound_once, stop_sound},
     rand::gen_range,
 };
 
@@ -52,7 +52,14 @@ impl Audio {
     /// The `_duration` parameter is accepted for future engine expansions.
     pub fn crossfade(&self, assets: &Assets, from: &str, to: &str, _duration: f32) {
         self.stop(assets, from);
-        self.play_ex(assets, to, PlaySoundParams { looped: true, volume: 1.0 });
+        self.play_ex(
+            assets,
+            to,
+            PlaySoundParams {
+                looped: true,
+                volume: 1.0,
+            },
+        );
     }
 }
 

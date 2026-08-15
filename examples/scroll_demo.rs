@@ -5,8 +5,8 @@
 //! - `Text` with automatic word-wrapping via `with_max_width(...)`.
 //! - Scissor clipping keeping text inside panel boundaries during scroll.
 
-use macroquad::prelude::*;
 use RustedEngine::prelude::*;
+use macroquad::prelude::*;
 
 #[macroquad::main("RustedEngine - Scroll & Word-Wrap Demo")]
 async fn main() {
@@ -28,15 +28,10 @@ async fn main() {
 Use mouse wheel over this panel to scroll up and down!";
 
     // 2. Create scrollable ui::Panel container with word-wrapped text via one-line factory
-    let scroll_panel = UiPanel::scrollable_text(
-        vec2(100.0, 80.0),
-        vec2(360.0, 240.0),
-        long_log,
-        16.0,
-        BLACK,
-    )
-    .with_background(Color::from_rgba(15, 20, 35, 240))
-    .with_border(BLACK, 2.0);
+    let scroll_panel =
+        UiPanel::scrollable_text(vec2(100.0, 80.0), vec2(360.0, 240.0), long_log, 16.0, BLACK)
+            .with_background(Color::from_rgba(15, 20, 35, 240))
+            .with_border(BLACK, 2.0);
 
     let title = Text::new("Scroll & Word-Wrap Demo", vec2(20.0, 40.0), 26.0, WHITE);
     let hint = Text::new(

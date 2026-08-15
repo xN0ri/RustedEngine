@@ -27,6 +27,7 @@ impl Scene {
 }
 
 /// Controller managing scene navigation and pending scene switches.
+#[derive(Default)]
 pub struct SceneManager {
     current_scene: usize,
     scenes: Vec<Scene>,
@@ -34,6 +35,11 @@ pub struct SceneManager {
 }
 
 impl SceneManager {
+    /// Creates a new empty [`SceneManager`].
+    pub fn new_empty() -> Self {
+        Self::default()
+    }
+
     /// Creates a new [`SceneManager`] initialized with a list of scenes.
     pub fn new(scenes: Vec<Scene>) -> Self {
         Self {
@@ -41,6 +47,11 @@ impl SceneManager {
             scenes,
             pending_scene: None,
         }
+    }
+
+    /// Registers a new [`Scene`] with the manager.
+    pub fn add(&mut self, scene: Scene) {
+        self.scenes.push(scene);
     }
 
     /// Schedules a scene switch by numeric index.
@@ -60,12 +71,19 @@ impl SceneManager {
         }
     }
 
+    /// Alias for [`switch_to`](SceneManager::switch_to). Schedules scene switch by name.
+    pub fn set_current(&mut self, name: &str) -> bool {
+        self.switch_to(name)
+    }
+
     /// Internal: Applies queued scene transitions at frame boundaries.
     pub fn update_pending(&mut self) {
-        if let Some(next) = self.pending_scene.take() {
-            if next < self.scenes.len() {
-                self.current_scene = next;
-            }
+        if let Some(next) = self
+            .pending_scene
+            .take()
+            .filter(|&id| id < self.scenes.len())
+        {
+            self.current_scene = next;
         }
     }
 
@@ -76,6 +94,13 @@ impl SceneManager {
 
     /// Returns a mutable reference to the active [`Scene`].
     pub fn get_current_scene(&mut self) -> &mut Scene {
-        self.scenes.get_mut(self.current_scene).expect("Invalid scene index")
+        self.scenes
+            .get_mut(self.current_scene)
+            .expect("Invalid scene index")
+    }
+
+    /// Returns a slice of registered scenes.
+    pub fn scenes(&self) -> &[Scene] {
+        &self.scenes
     }
 }

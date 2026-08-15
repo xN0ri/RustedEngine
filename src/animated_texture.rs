@@ -3,7 +3,7 @@
 use macroquad::{
     color::{Color, WHITE},
     math::{Rect, Vec2},
-    texture::{draw_texture_ex, DrawTextureParams, Texture2D},
+    texture::{DrawTextureParams, Texture2D, draw_texture_ex},
 };
 
 use crate::{engine::Context, object::Clickable, world::Object};

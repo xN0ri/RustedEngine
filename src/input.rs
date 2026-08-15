@@ -1,9 +1,9 @@
 use macroquad::{
     input::{
-        is_key_down, is_key_pressed, is_key_released, is_mouse_button_down,
-        is_mouse_button_pressed, is_mouse_button_released, mouse_position, KeyCode, MouseButton,
+        KeyCode, MouseButton, is_key_down, is_key_pressed, is_key_released, is_mouse_button_down,
+        is_mouse_button_pressed, is_mouse_button_released, mouse_position,
     },
-    math::{vec2, Vec2},
+    math::{Vec2, vec2},
 };
 
 /// Hardware input wrapper exposing keyboard and mouse query methods.

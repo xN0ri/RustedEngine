@@ -25,7 +25,7 @@
 //! ```
 
 use macroquad::{
-    input::{is_mouse_button_down, is_mouse_button_pressed, mouse_position, MouseButton},
+    input::{MouseButton, is_mouse_button_down, is_mouse_button_pressed, mouse_position},
     math::{Rect, Vec2},
 };
 
@@ -180,7 +180,8 @@ impl PanelManager {
         let id = PanelId(self.next_id);
         self.next_id += 1;
         self.next_z += 1;
-        self.panels.push(PanelEntry::new(id, Box::new(panel), rect, self.next_z));
+        self.panels
+            .push(PanelEntry::new(id, Box::new(panel), rect, self.next_z));
         id
     }
 

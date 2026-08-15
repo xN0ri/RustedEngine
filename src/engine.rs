@@ -190,7 +190,11 @@ impl Engine {
             // 5. Render world space entities (with optional post-processing pass)
             if let Some(pp) = &mut self.post_process {
                 // 5a. Lazy allocation/resize of render target
-                if self.render_target.as_ref().is_none_or(|rt| !rt.matches_screen_size()) {
+                if self
+                    .render_target
+                    .as_ref()
+                    .is_none_or(|rt| !rt.matches_screen_size())
+                {
                     self.render_target = Some(crate::postprocess::SceneRenderTarget::fullscreen());
                 }
                 let rt = self.render_target.as_ref().unwrap();

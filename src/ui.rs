@@ -16,11 +16,11 @@
 //! Use `panel_manager::PanelManager` (added to `World` via `world.add_ui`) to manage the windows themselves.
 use macroquad::{
     color::{Color, GRAY, GREEN, LIGHTGRAY, RED, WHITE},
-    input::{is_key_pressed, is_mouse_button_pressed, mouse_position, KeyCode, MouseButton},
-    math::{vec2, Rect, Vec2},
+    input::{KeyCode, MouseButton, is_key_pressed, is_mouse_button_pressed, mouse_position},
+    math::{Rect, Vec2, vec2},
     shapes::draw_rectangle,
-    text::{draw_text, draw_text_ex, measure_text, Font, TextParams},
-    texture::{draw_texture_ex, DrawTextureParams, Texture2D},
+    text::{Font, TextParams, draw_text, draw_text_ex, measure_text},
+    texture::{DrawTextureParams, Texture2D, draw_texture_ex},
 };
 
 use crate::{
@@ -79,9 +79,7 @@ pub fn pop_draw_offset() {
 }
 
 pub fn get_draw_offset() -> Vec2 {
-    DRAW_OFFSET_STACK.with(|stack| {
-        stack.borrow().last().copied().unwrap_or(Vec2::ZERO)
-    })
+    DRAW_OFFSET_STACK.with(|stack| stack.borrow().last().copied().unwrap_or(Vec2::ZERO))
 }
 
 // ---------------------------------------------------------------------------
@@ -89,18 +87,13 @@ pub fn get_draw_offset() -> Vec2 {
 // ---------------------------------------------------------------------------
 
 /// Text reveal animation mode for [`Text`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum RevealMode {
     /// Text appears instantly in full.
+    #[default]
     Instant,
     /// Text appears character-by-character at the specified speed.
     Typewriter { chars_per_sec: f32 },
-}
-
-impl Default for RevealMode {
-    fn default() -> Self {
-        RevealMode::Instant
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -330,18 +323,19 @@ impl Object for Text {
         if !self.active {
             return;
         }
-        if let RevealMode::Typewriter { chars_per_sec } = self.reveal_mode {
-            if !self.is_finished() {
-                self.revealed_chars += chars_per_sec * ctx.time.deltatime();
-                let count = (self.revealed_chars as usize).min(self.full_content.len());
-                self.content = self.full_content
-                    .char_indices()
-                    .take(count)
-                    .last()
-                    .map(|(i, c)| &self.full_content[..i + c.len_utf8()])
-                    .unwrap_or("")
-                    .to_string();
-            }
+        if let RevealMode::Typewriter { chars_per_sec } = self.reveal_mode
+            && !self.is_finished()
+        {
+            self.revealed_chars += chars_per_sec * ctx.time.deltatime();
+            let count = (self.revealed_chars as usize).min(self.full_content.len());
+            self.content = self
+                .full_content
+                .char_indices()
+                .take(count)
+                .last()
+                .map(|(i, c)| &self.full_content[..i + c.len_utf8()])
+                .unwrap_or("")
+                .to_string();
         }
     }
 
@@ -378,13 +372,7 @@ impl Object for Text {
                         },
                     );
                 } else {
-                    draw_text(
-                        line,
-                        pos.x,
-                        y,
-                        self.font_size,
-                        self.color,
-                    );
+                    draw_text(line, pos.x, y, self.font_size, self.color);
                 }
             }
         } else {
@@ -401,13 +389,7 @@ impl Object for Text {
                     },
                 );
             } else {
-                draw_text(
-                    &self.content,
-                    pos.x,
-                    pos.y,
-                    self.font_size,
-                    self.color,
-                );
+                draw_text(&self.content, pos.x, pos.y, self.font_size, self.color);
             }
         }
     }
@@ -582,13 +564,7 @@ impl Object for Button {
         } else {
             self.color
         };
-        draw_rectangle(
-            pos.x,
-            pos.y,
-            self.size.x,
-            self.size.y,
-            bg_color,
-        );
+        draw_rectangle(pos.x, pos.y, self.size.x, self.size.y, bg_color);
         let tx = pos.x + 10.0;
         let ty = pos.y + (self.size.y / 2.0) + (self.font_size / 3.0);
         if let Some(ref font) = self.font {
@@ -729,11 +705,11 @@ impl Object for ProgressBar {
         if !self.active {
             return;
         }
-        if let Some(key) = &self.state_binding {
-            if ctx.state.has_flag(key) {
-                let val = ctx.state.get_float(key) as f32;
-                self.set_progress(val);
-            }
+        if let Some(key) = &self.state_binding
+            && ctx.state.has_flag(key)
+        {
+            let val = ctx.state.get_float(key) as f32;
+            self.set_progress(val);
         }
     }
 
@@ -742,22 +718,10 @@ impl Object for ProgressBar {
             return;
         }
         let pos = self.position + get_draw_offset();
-        draw_rectangle(
-            pos.x,
-            pos.y,
-            self.size.x,
-            self.size.y,
-            self.bg_color,
-        );
+        draw_rectangle(pos.x, pos.y, self.size.x, self.size.y, self.bg_color);
         let fill_w = self.size.x * self.progress;
         if fill_w > 0.0 {
-            draw_rectangle(
-                pos.x,
-                pos.y,
-                fill_w,
-                self.size.y,
-                self.fill_color,
-            );
+            draw_rectangle(pos.x, pos.y, fill_w, self.size.y, self.fill_color);
         }
     }
 
@@ -1028,8 +992,8 @@ impl Panel {
     ) -> Self {
         let padding = 15.0;
         let text_w = (size.x - padding * 2.0).max(10.0);
-        let text_element = Text::new(text, vec2(padding, padding), font_size, text_color)
-            .with_max_width(text_w);
+        let text_element =
+            Text::new(text, vec2(padding, padding), font_size, text_color).with_max_width(text_w);
         let total_h = text_element.wrapped_height() + padding * 2.0;
 
         Self::new(position, size)
@@ -1107,7 +1071,9 @@ impl Object for Panel {
             let (_wheel_x, wheel_y) = macroquad::input::mouse_wheel();
             if wheel_y != 0.0 {
                 self.target_scroll_offset.y -= wheel_y * 35.0;
-                let max_scroll = self.content_height.map_or(f32::MAX, |h| (h - self.size.y).max(0.0));
+                let max_scroll = self
+                    .content_height
+                    .map_or(f32::MAX, |h| (h - self.size.y).max(0.0));
                 self.target_scroll_offset.y = self.target_scroll_offset.y.clamp(0.0, max_scroll);
             }
         }
@@ -1116,8 +1082,10 @@ impl Object for Panel {
         if self.smooth_scroll {
             let dt = ctx.time.deltatime();
             let lerp_factor = (16.0 * dt).min(1.0);
-            self.scroll_offset.y += (self.target_scroll_offset.y - self.scroll_offset.y) * lerp_factor;
-            self.scroll_offset.x += (self.target_scroll_offset.x - self.scroll_offset.x) * lerp_factor;
+            self.scroll_offset.y +=
+                (self.target_scroll_offset.y - self.scroll_offset.y) * lerp_factor;
+            self.scroll_offset.x +=
+                (self.target_scroll_offset.x - self.scroll_offset.x) * lerp_factor;
         } else {
             self.scroll_offset = self.target_scroll_offset;
         }
@@ -1239,11 +1207,7 @@ impl Object for Panel {
                 max_h = max_h.max(b.y + b.h);
             }
         }
-        if max_h > 0.0 {
-            Some(max_h)
-        } else {
-            None
-        }
+        if max_h > 0.0 { Some(max_h) } else { None }
     }
 }
 
@@ -1647,13 +1611,7 @@ impl Object for TextField {
         let pos = self.position + get_draw_offset();
 
         if self.decorated {
-            draw_rectangle(
-                pos.x,
-                pos.y,
-                self.size.x,
-                self.size.y,
-                self.bg_color,
-            );
+            draw_rectangle(pos.x, pos.y, self.size.x, self.size.y, self.bg_color);
 
             let bc = if self.focused {
                 Some(self.focus_border_color)
@@ -1664,9 +1622,21 @@ impl Object for TextField {
             if let Some(border_color) = bc {
                 let bw = self.border_width;
                 draw_rectangle(pos.x, pos.y, self.size.x, bw, border_color);
-                draw_rectangle(pos.x, pos.y + self.size.y - bw, self.size.x, bw, border_color);
+                draw_rectangle(
+                    pos.x,
+                    pos.y + self.size.y - bw,
+                    self.size.x,
+                    bw,
+                    border_color,
+                );
                 draw_rectangle(pos.x, pos.y, bw, self.size.y, border_color);
-                draw_rectangle(pos.x + self.size.x - bw, pos.y, bw, self.size.y, border_color);
+                draw_rectangle(
+                    pos.x + self.size.x - bw,
+                    pos.y,
+                    bw,
+                    self.size.y,
+                    border_color,
+                );
             }
         }
 

@@ -1,6 +1,6 @@
 use macroquad::{
     color::Color,
-    math::{vec2, Vec2},
+    math::{Vec2, vec2},
     rand::gen_range,
     shapes::draw_circle,
 };
@@ -41,7 +41,15 @@ impl ParticleEmitter {
     }
 
     /// Emits a radial burst of particles at `pos`.
-    pub fn emit_burst(&mut self, pos: Vec2, count: usize, color: Color, speed_range: (f32, f32), size: f32, lifetime: f32) {
+    pub fn emit_burst(
+        &mut self,
+        pos: Vec2,
+        count: usize,
+        color: Color,
+        speed_range: (f32, f32),
+        size: f32,
+        lifetime: f32,
+    ) {
         for _ in 0..count {
             let angle = gen_range(0.0, std::f32::consts::TAU);
             let speed = gen_range(speed_range.0, speed_range.1);
