@@ -14,6 +14,48 @@ pub enum StateValue {
     Text(String),
 }
 
+impl From<bool> for StateValue {
+    fn from(v: bool) -> Self {
+        StateValue::Bool(v)
+    }
+}
+
+impl From<i32> for StateValue {
+    fn from(v: i32) -> Self {
+        StateValue::Int(v as i64)
+    }
+}
+
+impl From<i64> for StateValue {
+    fn from(v: i64) -> Self {
+        StateValue::Int(v)
+    }
+}
+
+impl From<f32> for StateValue {
+    fn from(v: f32) -> Self {
+        StateValue::Float(v as f64)
+    }
+}
+
+impl From<f64> for StateValue {
+    fn from(v: f64) -> Self {
+        StateValue::Float(v)
+    }
+}
+
+impl From<String> for StateValue {
+    fn from(v: String) -> Self {
+        StateValue::Text(v)
+    }
+}
+
+impl From<&str> for StateValue {
+    fn from(v: &str) -> Self {
+        StateValue::Text(v.to_string())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // StateStore — Global game state and flag storage
 // ---------------------------------------------------------------------------
