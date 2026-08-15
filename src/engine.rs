@@ -160,6 +160,12 @@ impl Engine {
         }
     }
 
+    /// Builder pattern: Sets the screen background clear color.
+    pub fn with_background_color(mut self, color: Color) -> Self {
+        self.background_color = color;
+        self
+    }
+
     /// Runs the main asynchronous game loop.
     ///
     /// # Execution Order Each Frame

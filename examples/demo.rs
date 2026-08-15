@@ -52,15 +52,11 @@ async fn main() {
         WHITE,
     );
 
-    // 3. Budujemy świat używając makra world!
-    let world = world! {
-        objects: [player],
+    // 3. Budujemy scenę używając czystego, ergonomicznego API
+    let mut main_scene = Scene::new_empty("Main");
+    main_scene.add(player);
+    main_scene.add_ui(ui_info);
 
-        ui: [ui_info],
-    };
-    let main_scene = Scene::new("Main", world);
-
-    let mut engine = Engine::new(vec![main_scene]);
-    engine.background_color = DARKGRAY;
+    let mut engine = Engine::new(vec![main_scene]).with_background_color(DARKGRAY);
     engine.run().await;
 }

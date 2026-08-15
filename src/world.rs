@@ -70,14 +70,23 @@ pub trait Object: 'static {
 ///
 /// - `objects` — Rendered in world space inside camera view bounds.
 /// - `ui_objects` — Rendered in screen space outside camera view bounds.
+#[derive(Default)]
 pub struct World {
     objects: Vec<Box<dyn Object>>,
     ui_objects: Vec<Box<dyn Object>>,
 }
 
 impl World {
+    /// Creates a new empty [`World`].
+    pub fn new() -> Self {
+        Self {
+            objects: Vec::new(),
+            ui_objects: Vec::new(),
+        }
+    }
+
     /// Creates a new [`World`] with world-space entities.
-    pub fn new(objects: Vec<Box<dyn Object>>) -> Self {
+    pub fn new_with_objects(objects: Vec<Box<dyn Object>>) -> Self {
         Self {
             objects,
             ui_objects: Vec::new(),
@@ -92,13 +101,23 @@ impl World {
         }
     }
 
-    /// Adds a new object to the world-space layer at runtime.
-    pub fn add(&mut self, object: Box<dyn Object>) {
+    /// Adds a new object implementing [`Object`] to the world-space layer at runtime.
+    pub fn add<O: Object + 'static>(&mut self, object: O) {
+        self.objects.push(Box::new(object));
+    }
+
+    /// Adds a pre-boxed object to the world-space layer (low-level escape hatch).
+    pub fn add_boxed(&mut self, object: Box<dyn Object>) {
         self.objects.push(object);
     }
 
-    /// Adds a new object to the screen-space UI layer at runtime.
-    pub fn add_ui(&mut self, object: Box<dyn Object>) {
+    /// Adds a new object implementing [`Object`] to the screen-space UI layer at runtime.
+    pub fn add_ui<O: Object + 'static>(&mut self, object: O) {
+        self.ui_objects.push(Box::new(object));
+    }
+
+    /// Adds a pre-boxed object to the screen-space UI layer (low-level escape hatch).
+    pub fn add_ui_boxed(&mut self, object: Box<dyn Object>) {
         self.ui_objects.push(object);
     }
 
@@ -213,12 +232,6 @@ impl World {
     }
 }
 
-impl Default for World {
-    fn default() -> Self {
-        Self::new(Vec::new())
-    }
-}
-
 // ---------------------------------------------------------------------------
 // World creation macros
 // ---------------------------------------------------------------------------
@@ -264,6 +277,6 @@ macro_rules! world {
         )
     };
     (objects: [$($obj:expr),* $(,)?] $(,)?) => {
-        $crate::world::World::new($crate::world_objects![$($obj),*])
+        $crate::world::World::new_with_objects($crate::world_objects![$($obj),*])
     };
 }

@@ -276,7 +276,11 @@ mod tests {
 
     #[test]
     fn test_panel_manager_as_object() {
-        let panel_mgr = PanelManager::new();
+        let mut panel_mgr = PanelManager::new();
+        panel_mgr.add(
+            DummyPanel,
+            macroquad::math::Rect::new(0.0, 0.0, 100.0, 100.0),
+        );
         let mut world = world! {
             objects: [],
             ui: [panel_mgr],
@@ -285,13 +289,28 @@ mod tests {
         assert_eq!(world.ui_objects().len(), 1);
         let found = world.find_ui_typed_mut::<PanelManager>();
         assert!(found.is_some());
-        let pm = found.unwrap();
-        assert_eq!(pm.len(), 0);
+        assert_eq!(found.unwrap().len(), 1);
+    }
 
-        pm.add(
-            DummyPanel,
-            macroquad::math::Rect::new(0.0, 0.0, 100.0, 100.0),
-        );
-        assert_eq!(pm.len(), 1);
+    #[test]
+    fn test_ergonomic_scene_and_world_api() {
+        let mut scene = Scene::new_empty("GameScene");
+
+        struct DummyObj;
+        impl Object for DummyObj {
+            fn draw(&self) {}
+        }
+
+        let obj_a = DummyObj;
+        let obj_b = DummyObj;
+        let obj_c = DummyObj;
+
+        scene.add(obj_a);
+        scene.add_ui(obj_b);
+        scene.add_ui(obj_c);
+
+        assert_eq!(scene.name(), "GameScene");
+        assert_eq!(scene.get_world().objects().len(), 1);
+        assert_eq!(scene.get_world().ui_objects().len(), 2);
     }
 }

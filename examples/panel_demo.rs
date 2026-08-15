@@ -121,14 +121,13 @@ async fn main() {
         Rect::new(340.0, 90.0, 280.0, 180.0),
     );
 
-    let world = world! {
-        objects: [],
-        ui: [label, hint, panel_mgr],
-    };
+    let mut scene = Scene::new_empty("Panel Demo");
+    scene.add_ui(label);
+    scene.add_ui(hint);
+    scene.add_ui(panel_mgr);
 
-    let scene = Scene::new("Panel Demo", world);
-    let mut engine = Engine::new(vec![scene]);
-    engine.background_color = Color::new(0.08, 0.08, 0.12, 1.0);
+    let mut engine =
+        Engine::new(vec![scene]).with_background_color(Color::new(0.08, 0.08, 0.12, 1.0));
 
     engine.run().await;
 }

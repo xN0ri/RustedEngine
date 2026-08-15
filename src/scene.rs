@@ -1,4 +1,4 @@
-use crate::world::World;
+use crate::world::{Object, World};
 
 /// Discrete game scene containing a [`World`] layer instance.
 pub struct Scene {
@@ -8,11 +8,29 @@ pub struct Scene {
 
 impl Scene {
     /// Creates a new [`Scene`] with the given name and [`World`].
-    pub fn new(name: &str, world: World) -> Self {
+    pub fn new(name: impl Into<String>, world: World) -> Self {
         Self {
             world,
-            name: name.to_string(),
+            name: name.into(),
         }
+    }
+
+    /// Creates a new empty [`Scene`] with an unpopulated [`World`].
+    pub fn new_empty(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            world: World::new(),
+        }
+    }
+
+    /// Adds a new entity to the scene's world-space layer.
+    pub fn add<O: Object + 'static>(&mut self, object: O) {
+        self.world.add(object);
+    }
+
+    /// Adds a new UI entity to the scene's screen-space UI layer.
+    pub fn add_ui<O: Object + 'static>(&mut self, object: O) {
+        self.world.add_ui(object);
     }
 
     /// Returns the scene identifier name.

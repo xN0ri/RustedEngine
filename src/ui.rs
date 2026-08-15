@@ -129,10 +129,12 @@ pub struct Text {
 
 impl Text {
     /// Creates a new [`Text`] component with instant reveal mode.
-    pub fn new(text: &str, position: Vec2, font_size: f32, color: Color) -> Self {
+    pub fn new(text: impl Into<String>, position: Vec2, font_size: f32, color: Color) -> Self {
+        let content = text.into();
+        let len = content.len() as f32;
         Self {
-            content: text.to_string(),
-            full_content: text.to_string(),
+            content: content.clone(),
+            full_content: content,
             position,
             font_size,
             font: None,
@@ -143,7 +145,7 @@ impl Text {
             reveal_mode: RevealMode::Instant,
             max_width: None,
             line_spacing: 0.0,
-            revealed_chars: text.len() as f32,
+            revealed_chars: len,
         }
     }
 
@@ -160,8 +162,8 @@ impl Text {
     }
 
     /// Builder pattern: Sets the entity tag.
-    pub fn with_tag(mut self, tag: &str) -> Self {
-        self.tag = tag.to_string();
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
         self
     }
 
@@ -464,11 +466,11 @@ pub struct Button {
 
 impl Button {
     /// Creates a new UI [`Button`].
-    pub fn new(position: Vec2, size: Vec2, label: &str) -> Self {
+    pub fn new(position: Vec2, size: Vec2, label: impl Into<String>) -> Self {
         Self {
             position,
             size,
-            label: label.to_string(),
+            label: label.into(),
             font_size: 20.0,
             font: None,
             color: GRAY,
@@ -481,8 +483,8 @@ impl Button {
     }
 
     /// Builder pattern: Sets the entity tag.
-    pub fn with_tag(mut self, tag: &str) -> Self {
-        self.tag = tag.to_string();
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
         self
     }
 
