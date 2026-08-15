@@ -3,7 +3,7 @@ use macroquad::math::Rect;
 use crate::engine::Context;
 
 /// Base trait implemented by all game world entities and UI components.
-pub trait Object {
+pub trait Object: 'static {
     /// Executes entity logic updates for the current frame.
     fn update(&mut self, _ctx: &mut Context) {}
 
@@ -52,6 +52,16 @@ pub trait Object {
     ///
     /// Used by [`Panel::fit_content_height`](crate::ui::Panel::fit_content_height) to calculate scroll boundaries.
     fn content_height(&self) -> Option<f32> {
+        None
+    }
+
+    /// Downcasting helper returning an immutable `&dyn Any` reference, or `None` by default.
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
+
+    /// Downcasting helper returning a mutable `&mut dyn Any` reference, or `None` by default.
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
 }
@@ -143,6 +153,30 @@ impl World {
             .filter(|o| o.has_tag(tag))
             .map(|o| o.as_mut())
             .collect()
+    }
+
+    /// Returns a mutable reference to the first UI-space object matching concrete type `T`, or `None`.
+    pub fn find_ui_typed_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        for obj in self.ui_objects.iter_mut() {
+            if let Some(any) = obj.as_any_mut() {
+                if let Some(concrete) = any.downcast_mut::<T>() {
+                    return Some(concrete);
+                }
+            }
+        }
+        None
+    }
+
+    /// Returns a mutable reference to the first world-space object matching concrete type `T`, or `None`.
+    pub fn find_typed_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        for obj in self.objects.iter_mut() {
+            if let Some(any) = obj.as_any_mut() {
+                if let Some(concrete) = any.downcast_mut::<T>() {
+                    return Some(concrete);
+                }
+            }
+        }
+        None
     }
 
     /// Counts world-space objects matching `tag`.

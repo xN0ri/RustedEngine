@@ -13,7 +13,7 @@
 //! | **Use case** | Group buttons/text inside one window pane | Moveable OS-style desktop windows |
 //!
 //! **Rule of thumb**: Use `ui::Panel` to lay out the interior of a window.
-//! Use `panel_manager::PanelManager` (via `ctx.panels`) to manage the windows themselves.
+//! Use `panel_manager::PanelManager` (added to `World` via `world.add_ui`) to manage the windows themselves.
 use macroquad::{
     color::{Color, GRAY, GREEN, LIGHTGRAY, RED, WHITE},
     input::{is_key_pressed, is_mouse_button_pressed, mouse_position, KeyCode, MouseButton},

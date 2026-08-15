@@ -4,7 +4,7 @@
 //! - `DraggablePanel`: is_draggable() → true, can be moved by the user.
 //! - `StaticPanel`:    is_draggable() → false (default), stays in place + is_resizable() → true.
 //!
-//! The engine automatically updates and renders `ctx.panels` on top of the UI layer.
+//! The `PanelManager` is an `Object` added to the `World` UI layer.
 
 use macroquad::prelude::*;
 use RustedEngine::prelude::*;
@@ -78,8 +78,6 @@ impl Panel for StaticPanel {
         );
     }
 
-    // is_draggable() left as default false — engine respects that
-
     fn is_resizable(&self) -> bool {
         true
     }
@@ -99,17 +97,10 @@ async fn main() {
         LIGHTGRAY,
     );
 
-    let world = world! {
-        objects: [],
-        ui: [label, hint],
-    };
+    // Create PanelManager as a UI Object
+    let mut panel_mgr = PanelManager::new();
 
-    let scene = Scene::new("Panel Demo", world);
-    let mut engine = Engine::new(vec![scene]);
-    engine.background_color = Color::new(0.08, 0.08, 0.12, 1.0);
-
-    // Register panels directly in ctx.panels
-    engine.ctx.panels.add(
+    panel_mgr.add(
         DraggablePanel {
             label: "Panel A (Draggable)".to_string(),
             color: Color::new(0.55, 0.15, 0.1, 0.95),
@@ -117,12 +108,21 @@ async fn main() {
         Rect::new(60.0, 90.0, 240.0, 160.0),
     );
 
-    engine.ctx.panels.add(
+    panel_mgr.add(
         StaticPanel {
             label: "Panel B (Static & Resizable)".to_string(),
         },
         Rect::new(340.0, 90.0, 280.0, 180.0),
     );
+
+    let world = world! {
+        objects: [],
+        ui: [label, hint, panel_mgr],
+    };
+
+    let scene = Scene::new("Panel Demo", world);
+    let mut engine = Engine::new(vec![scene]);
+    engine.background_color = Color::new(0.08, 0.08, 0.12, 1.0);
 
     engine.run().await;
 }

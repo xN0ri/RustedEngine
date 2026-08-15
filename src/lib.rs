@@ -257,4 +257,28 @@ mod tests {
         assert_eq!(panel.smooth_scroll, false);
         assert_eq!(panel.content_height, Some(500.0));
     }
+
+    struct DummyPanel;
+    impl Panel for DummyPanel {
+        fn update(&mut self, _dt: f32) {}
+        fn draw(&self, _rect: macroquad::math::Rect) {}
+    }
+
+    #[test]
+    fn test_panel_manager_as_object() {
+        let panel_mgr = PanelManager::new();
+        let mut world = world! {
+            objects: [],
+            ui: [panel_mgr],
+        };
+
+        assert_eq!(world.ui_objects().len(), 1);
+        let found = world.find_ui_typed_mut::<PanelManager>();
+        assert!(found.is_some());
+        let pm = found.unwrap();
+        assert_eq!(pm.len(), 0);
+
+        pm.add(DummyPanel, macroquad::math::Rect::new(0.0, 0.0, 100.0, 100.0));
+        assert_eq!(pm.len(), 1);
+    }
 }

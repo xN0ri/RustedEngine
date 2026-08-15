@@ -12,7 +12,6 @@ use crate::{
     audio::Audio,
     camera::Camera,
     input::Input,
-    panel_manager::PanelManager,
     resources::Resources,
     scene::{Scene, SceneManager},
     state::StateStore,
@@ -76,8 +75,6 @@ pub struct Context {
     pub resources: Resources,
     /// Generic condition→action trigger system operating on `resources`.
     pub triggers: TriggerSystem,
-    /// Generic layered panel manager for interactive UI panels.
-    pub panels: PanelManager,
     /// Internal active custom mouse cursor override.
     pub(crate) cursor: Option<CustomCursor>,
 }
@@ -95,7 +92,6 @@ impl Context {
             actions: ActionMap::new(),
             resources: Resources::new(),
             triggers: TriggerSystem::new(),
-            panels: PanelManager::new(),
             cursor: None,
         }
     }
@@ -187,7 +183,6 @@ impl Engine {
             // 3. Update active world logic
             let scene = self.scene_manager.get_current_scene();
             scene.get_world().update(&mut self.ctx);
-            self.ctx.panels.update(dt);
 
             // 4. Clear screen background
             clear_background(self.background_color);
@@ -214,9 +209,8 @@ impl Engine {
                 self.ctx.camera.end();
             }
 
-            // 6. Render UI layer and panel manager in screen space
+            // 6. Render UI layer in screen space
             self.scene_manager.get_current_scene().get_world().draw_ui();
-            self.ctx.panels.draw();
 
             // 7. Render custom cursor overlay
             if let Some(cursor) = &self.ctx.cursor {

@@ -14,20 +14,22 @@
 //!
 //! Do **not** confuse this with [`ui::Panel`](crate::ui::Panel), which is a *static*
 //! grouping container for children *inside* a window. Use `ui::Panel` for the interior
-//! layout of a window pane; use this module's [`PanelManager`] (via `ctx.panels`) to manage
+//! layout of a window pane; use this module's [`PanelManager`] (added to `World` via `world.add_ui`) to manage
 //! the windows themselves as first-class desktop objects.
 //!
 //! # Example
 //! ```rust,ignore
-//! // Register a desktop window
-//! engine.ctx.panels.add(MyWindow::new(), Rect::new(100.0, 80.0, 400.0, 300.0));
-//! // Engine automatically calls ctx.panels.update(dt) and ctx.panels.draw() each frame.
+//! let mut panel_manager = PanelManager::new();
+//! panel_manager.add(MyWindow::new(), Rect::new(100.0, 80.0, 400.0, 300.0));
+//! world.add_ui(Box::new(panel_manager));
 //! ```
 
 use macroquad::{
     input::{is_mouse_button_down, is_mouse_button_pressed, mouse_position, MouseButton},
     math::{Rect, Vec2},
 };
+
+use crate::{engine::Context, world::Object};
 
 // ---------------------------------------------------------------------------
 // Panel trait
@@ -133,21 +135,34 @@ impl PanelEntry {
 // ---------------------------------------------------------------------------
 
 /// Manages a collection of generic [`Panel`]s with z-ordering, focus, drag, and resize.
-///
-/// Added to [`Context`](crate::engine::Context) as `ctx.panels`.
+/// Implements [`Object`] so it can be added to [`World::add_ui`](crate::world::World::add_ui).
 ///
 /// # Usage pattern
 /// ```rust,ignore
-/// // In a Behavior update closure:
-/// let dt = ctx.time.deltatime();
-/// ctx.panels.update(dt);
-/// ctx.panels.draw();
+/// let mut panel_manager = PanelManager::new();
+/// panel_manager.add(MyWindow::new(), rect);
+/// world.add_ui(Box::new(panel_manager));
 /// ```
-#[derive(Default)]
 pub struct PanelManager {
     panels: Vec<PanelEntry>,
     next_id: u64,
     next_z: u32,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+}
+
+impl Default for PanelManager {
+    fn default() -> Self {
+        Self {
+            panels: Vec::new(),
+            next_id: 0,
+            next_z: 0,
+            tag: "PanelManager".to_string(),
+            visible: true,
+            active: true,
+        }
+    }
 }
 
 impl PanelManager {
@@ -204,11 +219,7 @@ impl PanelManager {
     // -----------------------------------------------------------------------
 
     /// Processes input (drag/resize/focus) and calls `Panel::update` on all visible panels.
-    ///
-    /// Call this once per frame, e.g. inside a `Behavior` update closure:
-    /// ```rust,ignore
-    /// ctx.panels.update(ctx.time.deltatime());
-    /// ```
+    /// Called automatically when `PanelManager` is added as an [`Object`](crate::world::Object) to `World`.
     pub fn update(&mut self, dt: f32) {
         let mouse = Vec2::from(mouse_position());
         let lmb_pressed = is_mouse_button_pressed(MouseButton::Left);
@@ -307,5 +318,56 @@ impl PanelManager {
     /// Returns `true` if no panels are registered.
     pub fn is_empty(&self) -> bool {
         self.panels.is_empty()
+    }
+
+    /// Builder pattern: Sets the tag for this PanelManager.
+    pub fn with_tag(mut self, tag: &str) -> Self {
+        self.tag = tag.to_string();
+        self
+    }
+}
+
+impl Object for PanelManager {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
+        let dt = ctx.time.deltatime();
+        self.update(dt);
+    }
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+        self.draw();
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
