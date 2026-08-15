@@ -17,6 +17,7 @@
 //! - **Panel System**: Generic layered, interactive UI panel manager ([`PanelManager`](panel_manager::PanelManager)).
 
 pub mod actions;
+pub mod animated_texture;
 pub mod asset_manager;
 pub mod audio;
 pub mod camera;
@@ -39,10 +40,11 @@ pub mod ui;
 pub mod window;
 pub mod world;
 
+pub use animated_texture::AnimatedSprite;
 pub use content::{load_content, load_content_dir, ContentError};
+pub use panel_manager::{PanelId, PanelManager};
 pub use resources::Resources;
 pub use trigger::{Trigger, TriggerSystem};
-pub use panel_manager::{PanelId, PanelManager};
 
 #[cfg(test)]
 mod tests {
@@ -199,5 +201,48 @@ mod tests {
 
         tf.set_focused(true);
         assert_eq!(tf.is_focused(), true);
+    }
+
+    #[test]
+    fn test_text_word_wrap() {
+        let text = Text::new("Hello world this is a long line", vec2(0.0, 0.0), 16.0, WHITE)
+            .with_max_width(100.0);
+
+        // Dummy measure: 10 pixels per char
+        let measure = |s: &str| s.len() as f32 * 10.0;
+
+        // "Hello world" (110 > 100) -> "Hello" (50)
+        // "world this" (100 <= 100) -> "world this" (100)
+        // "is a long" (90 <= 100) -> "is a long" (90)
+        // "line" (40 <= 100) -> "line" (40)
+        let wrapped = text.wrap_lines_with(&text.content, 100.0, measure);
+        assert_eq!(wrapped.len(), 4);
+        assert_eq!(wrapped[0], "Hello");
+        assert_eq!(wrapped[1], "world this");
+        assert_eq!(wrapped[2], "is a long");
+        assert_eq!(wrapped[3], "line");
+
+        // Test with explicit newlines
+        let multiline_text = Text::new("Line 1\nLine 2 is long", vec2(0.0, 0.0), 16.0, WHITE);
+        let wrapped2 = multiline_text.wrap_lines_with(&multiline_text.content, 100.0, measure);
+        assert_eq!(wrapped2[0], "Line 1");
+        assert_eq!(wrapped2[1], "Line 2 is");
+        assert_eq!(wrapped2[2], "long");
+    }
+
+    #[test]
+    fn test_animated_sprite() {
+        let anim = AnimatedSprite::new(vec2(10.0, 10.0), vec2(32.0, 32.0), vec![], 10.0)
+            .with_tag("anim_rec")
+            .with_looping(false)
+            .hidden()
+            .deactivated();
+
+        assert_eq!(anim.tag, "anim_rec");
+        assert_eq!(anim.looping, false);
+        assert_eq!(anim.is_visible(), false);
+        assert_eq!(anim.is_active(), false);
+        assert_eq!(anim.current_frame(), 0);
+        assert_eq!(anim.bounds(), Some(macroquad::math::Rect::new(10.0, 10.0, 32.0, 32.0)));
     }
 }

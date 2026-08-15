@@ -2,6 +2,7 @@
 
 pub use crate::{
     actions::ActionMap,
+    animated_texture::AnimatedSprite,
     asset_manager::Assets,
     audio::{AmbientPool, Audio},
     camera::Camera,

@@ -1,3 +1,19 @@
+//! Screen-space UI components: [`Text`], [`Button`], [`ProgressBar`], [`Panel`], [`TextField`], [`UI`].
+//!
+//! # Architecture: `ui::Panel` vs `panel_manager::PanelManager`
+//!
+//! These two types serve **different purposes** and must not be mixed up:
+//!
+//! | | `ui::Panel` | `panel_manager::PanelManager` |
+//! |---|---|---|
+//! | **Role** | Static grouping container | Desktop window manager |
+//! | **Z-order** | Fixed (render order in parent list) | Managed, click-to-focus |
+//! | **Dragging** | **Deprecated** — do not use | ✅ Full drag support via `is_draggable()` |
+//! | **Nesting** | Children rendered inside panel | Panels are top-level, not nested |
+//! | **Use case** | Group buttons/text inside one window pane | Moveable OS-style desktop windows |
+//!
+//! **Rule of thumb**: Use `ui::Panel` to lay out the interior of a window.
+//! Use `panel_manager::PanelManager` (via `ctx.panels`) to manage the windows themselves.
 use macroquad::{
     color::{Color, GRAY, GREEN, LIGHTGRAY, RED, WHITE},
     input::{is_key_pressed, is_mouse_button_pressed, mouse_position, KeyCode, MouseButton},
@@ -12,6 +28,36 @@ use crate::{
     object::{Behavior, Clickable},
     world::Object,
 };
+
+use std::cell::RefCell;
+
+thread_local! {
+    static SCISSOR_STACK: RefCell<Vec<Rect>> = const { RefCell::new(Vec::new()) };
+}
+
+fn intersect_rects(r1: Rect, r2: Rect) -> Rect {
+    let x1 = r1.x.max(r2.x);
+    let y1 = r1.y.max(r2.y);
+    let x2 = (r1.x + r1.w).min(r2.x + r2.w);
+    let y2 = (r1.y + r1.h).min(r2.y + r2.h);
+    let w = (x2 - x1).max(0.0);
+    let h = (y2 - y1).max(0.0);
+    Rect { x: x1, y: y1, w, h }
+}
+
+fn apply_gl_scissor(clip: Option<Rect>) {
+    let gl = unsafe { macroquad::window::get_internal_gl() };
+    if let Some(rect) = clip {
+        let s_height = macroquad::window::screen_height();
+        let x = rect.x as i32;
+        let y = (s_height - (rect.y + rect.h)) as i32;
+        let w = rect.w.max(0.0) as i32;
+        let h = rect.h.max(0.0) as i32;
+        gl.quad_gl.scissor(Some((x, y, w, h)));
+    } else {
+        gl.quad_gl.scissor(None);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // RevealMode — Text reveal animation mode
@@ -53,6 +99,10 @@ pub struct Text {
     pub active: bool,
     /// Active reveal animation mode. Defaults to [`RevealMode::Instant`].
     pub reveal_mode: RevealMode,
+    /// Maximum width for word-wrapping. `None` = single-line (legacy behaviour).
+    pub max_width: Option<f32>,
+    /// Vertical gap between lines when word-wrapping. Defaults to `1.2 * font_size` when 0.0.
+    pub line_spacing: f32,
     /// Full target string when in Typewriter mode.
     full_content: String,
     /// Counter tracking revealed characters.
@@ -73,6 +123,8 @@ impl Text {
             visible: true,
             active: true,
             reveal_mode: RevealMode::Instant,
+            max_width: None,
+            line_spacing: 0.0,
             revealed_chars: text.len() as f32,
         }
     }
@@ -164,6 +216,58 @@ impl Text {
         self.revealed_chars = self.full_content.len() as f32;
     }
 
+    /// Builder pattern: Sets maximum width for automatic word-wrapping.
+    pub fn with_max_width(mut self, width: f32) -> Self {
+        self.max_width = Some(width);
+        self
+    }
+
+    /// Builder pattern: Sets vertical line spacing when word-wrapping.
+    pub fn with_line_spacing(mut self, spacing: f32) -> Self {
+        self.line_spacing = spacing;
+        self
+    }
+
+    /// Wraps `text` into lines based on `max_width` using a provided string measurement closure `measure`.
+    ///
+    /// Preserves existing `\n` characters as forced line breaks.
+    /// This function accepts a generic measurement closure so that it can be tested without GPU context.
+    pub fn wrap_lines_with<F>(&self, text: &str, max_width: f32, measure: F) -> Vec<String>
+    where
+        F: Fn(&str) -> f32,
+    {
+        let mut lines = Vec::new();
+        for paragraph in text.split('\n') {
+            if paragraph.is_empty() {
+                lines.push(String::new());
+                continue;
+            }
+            let words: Vec<&str> = paragraph.split_whitespace().collect();
+            if words.is_empty() {
+                lines.push(String::new());
+                continue;
+            }
+            let mut current_line = String::new();
+            for word in words {
+                if current_line.is_empty() {
+                    current_line.push_str(word);
+                } else {
+                    let test_line = format!("{} {}", current_line, word);
+                    if measure(&test_line) <= max_width {
+                        current_line = test_line;
+                    } else {
+                        lines.push(current_line);
+                        current_line = word.to_string();
+                    }
+                }
+            }
+            if !current_line.is_empty() {
+                lines.push(current_line);
+            }
+        }
+        lines
+    }
+
     /// Returns `true` if the text reveal animation has finished displaying all characters.
     pub fn is_finished(&self) -> bool {
         self.revealed_chars >= self.full_content.len() as f32
@@ -194,26 +298,65 @@ impl Object for Text {
         if !self.visible {
             return;
         }
-        if let Some(ref font) = self.font {
-            draw_text_ex(
-                &self.content,
-                self.position.x,
-                self.position.y,
-                TextParams {
-                    font: Some(font),
-                    font_size: self.font_size as u16,
-                    color: self.color,
-                    ..Default::default()
-                },
-            );
+        let line_spacing = if self.line_spacing > 0.0 {
+            self.line_spacing
         } else {
-            draw_text(
-                &self.content,
-                self.position.x,
-                self.position.y,
-                self.font_size,
-                self.color,
-            );
+            self.font_size * 1.2
+        };
+
+        if let Some(max_w) = self.max_width {
+            let font_ref = self.font.as_ref();
+            let font_size = self.font_size;
+            let lines = self.wrap_lines_with(&self.content, max_w, |s| {
+                measure_text(s, font_ref, font_size as u16, 1.0).width
+            });
+
+            for (i, line) in lines.iter().enumerate() {
+                let y = self.position.y + (i as f32) * line_spacing;
+                if let Some(ref font) = self.font {
+                    draw_text_ex(
+                        line,
+                        self.position.x,
+                        y,
+                        TextParams {
+                            font: Some(font),
+                            font_size: self.font_size as u16,
+                            color: self.color,
+                            ..Default::default()
+                        },
+                    );
+                } else {
+                    draw_text(
+                        line,
+                        self.position.x,
+                        y,
+                        self.font_size,
+                        self.color,
+                    );
+                }
+            }
+        } else {
+            if let Some(ref font) = self.font {
+                draw_text_ex(
+                    &self.content,
+                    self.position.x,
+                    self.position.y,
+                    TextParams {
+                        font: Some(font),
+                        font_size: self.font_size as u16,
+                        color: self.color,
+                        ..Default::default()
+                    },
+                );
+            } else {
+                draw_text(
+                    &self.content,
+                    self.position.x,
+                    self.position.y,
+                    self.font_size,
+                    self.color,
+                );
+            }
         }
     }
 
@@ -427,6 +570,10 @@ impl Object for Button {
     fn set_active(&mut self, active: bool) {
         self.active = active;
     }
+
+    fn bounds(&self) -> Option<Rect> {
+        Some(self.rect())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -602,9 +749,30 @@ pub struct Panel {
     pub visible: bool,
     pub active: bool,
     pub drag: DragState,
+    /// Vertical scroll offset subtracted from child rendering positions via 2D camera translation.
+    ///
+    /// ⚠️ **Known Limitation**: Scrolling is visual via 2D camera offset. Interactive controls (e.g. [`Button`])
+    /// inside a scrolled panel with non-zero `scroll_offset` will have unshifted hit-testing bounds.
+    /// Recommended primarily for display content (text logs, document viewers, file lists).
+    pub scroll_offset: Vec2,
+    /// Whether to clip children rendering to panel bounds via scissor test. Defaults to `true`.
+    pub clip_content: bool,
+    /// Optional total content height for clamping scroll offset. `None` = unlimited scroll.
+    pub content_height: Option<f32>,
+    /// Whether the panel can be dragged by the user.
+    ///
+    /// # Deprecated
+    /// Use [`panel_manager::PanelManager`](crate::panel_manager::PanelManager) for draggable
+    /// desktop windows instead. `ui::Panel` is intended as a **static grouping container**
+    /// for children inside a window, not as an independently moveable window itself.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use panel_manager::PanelManager for draggable desktop windows. ui::Panel is a static grouping container."
+    )]
     pub draggable: bool,
 }
 
+#[allow(deprecated)]
 impl Panel {
     /// Creates a new [`Panel`] with default styling and dragging enabled.
     pub fn new(position: Vec2, size: Vec2) -> Self {
@@ -619,6 +787,9 @@ impl Panel {
             visible: true,
             active: true,
             drag: DragState::new(),
+            scroll_offset: Vec2::ZERO,
+            clip_content: true,
+            content_height: None,
             draggable: true,
         }
     }
@@ -708,6 +879,24 @@ impl Panel {
         }
     }
 
+    /// Builder pattern: Sets whether children are clipped to panel boundaries.
+    pub fn with_clip_content(mut self, clip: bool) -> Self {
+        self.clip_content = clip;
+        self
+    }
+
+    /// Builder pattern: Sets initial scroll offset.
+    pub fn with_scroll_offset(mut self, offset: Vec2) -> Self {
+        self.scroll_offset = offset;
+        self
+    }
+
+    /// Builder pattern: Sets total content height for scroll clamping.
+    pub fn with_content_height(mut self, height: f32) -> Self {
+        self.content_height = Some(height);
+        self
+    }
+
     /// Returns `true` if the panel is currently being dragged by the mouse.
     pub fn is_dragging(&self) -> bool {
         self.drag.is_dragging
@@ -723,6 +912,7 @@ impl Clickable for Panel {
     }
 }
 
+#[allow(deprecated)]
 impl Draggable for Panel {
     fn drag_anchor_mut(&mut self) -> &mut Vec2 {
         &mut self.position
@@ -751,6 +941,7 @@ impl Draggable for Panel {
     }
 }
 
+#[allow(deprecated)]
 impl Object for Panel {
     fn update(&mut self, ctx: &mut Context) {
         if !self.active {
@@ -766,6 +957,17 @@ impl Object for Panel {
                 self.update_drag();
             } else {
                 self.end_drag();
+            }
+        }
+
+        // Mouse wheel scrolling when cursor is over panel
+        let (mx, my) = mouse_position();
+        if self.rect().contains(vec2(mx, my)) {
+            let (_wheel_x, wheel_y) = macroquad::input::mouse_wheel();
+            if wheel_y != 0.0 {
+                self.scroll_offset.y -= wheel_y * 15.0;
+                let max_scroll = self.content_height.map_or(f32::MAX, |h| (h - self.size.y).max(0.0));
+                self.scroll_offset.y = self.scroll_offset.y.clamp(0.0, max_scroll);
             }
         }
 
@@ -792,8 +994,59 @@ impl Object for Panel {
             draw_rectangle(self.position.x, self.position.y, bw, self.size.y, bc);
             draw_rectangle(self.position.x + self.size.x - bw, self.position.y, bw, self.size.y, bc);
         }
-        for child in self.children.iter() {
-            child.draw();
+
+        let render_children = || {
+            let has_scroll = self.scroll_offset != Vec2::ZERO;
+            if has_scroll {
+                let sw = macroquad::window::screen_width();
+                let sh = macroquad::window::screen_height();
+                let cam = macroquad::camera::Camera2D {
+                    target: vec2(
+                        sw / 2.0 + self.scroll_offset.x,
+                        sh / 2.0 + self.scroll_offset.y,
+                    ),
+                    zoom: vec2(2.0 / sw, -2.0 / sh),
+                    offset: vec2(0.0, 0.0),
+                    ..Default::default()
+                };
+                macroquad::camera::set_camera(&cam);
+            }
+
+            for child in self.children.iter() {
+                child.draw();
+            }
+
+            if has_scroll {
+                macroquad::camera::set_default_camera();
+            }
+        };
+
+        if self.clip_content {
+            let current_clip = SCISSOR_STACK.with(|stack| {
+                let mut stack = stack.borrow_mut();
+                let my_rect = self.rect();
+                let new_clip = if let Some(&parent_clip) = stack.last() {
+                    intersect_rects(parent_clip, my_rect)
+                } else {
+                    my_rect
+                };
+                stack.push(new_clip);
+                new_clip
+            });
+
+            apply_gl_scissor(Some(current_clip));
+
+            render_children();
+
+            let prev_clip = SCISSOR_STACK.with(|stack| {
+                let mut stack = stack.borrow_mut();
+                stack.pop();
+                stack.last().copied()
+            });
+
+            apply_gl_scissor(prev_clip);
+        } else {
+            render_children();
         }
     }
 
@@ -815,6 +1068,10 @@ impl Object for Panel {
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+
+    fn bounds(&self) -> Option<Rect> {
+        Some(self.rect())
     }
 }
 
@@ -903,16 +1160,24 @@ impl UI {
     }
 
     /// Automatically moves the clicked element to the front of the UI stack.
+    ///
+    /// Uses `Object::bounds()` to hit-test each element against the current mouse position,
+    /// iterating from top (end of list) to bottom and raising the topmost element that was
+    /// actually clicked.
     pub fn raise_clicked(&mut self) {
         let (mx, my) = mouse_position();
         if !is_mouse_button_pressed(MouseButton::Left) {
             return;
         }
+        let mouse = vec2(mx, my);
         let mut hit_tag: Option<String> = None;
+        // Iterate from top of stack (last drawn = highest z) to bottom
         for element in self.elements.iter().rev() {
-            let _ = (mx, my);
             let tag = element.tag().to_string();
-            if !tag.is_empty() {
+            if tag.is_empty() {
+                continue;
+            }
+            if element.bounds().is_some_and(|rect| rect.contains(mouse)) {
                 hit_tag = Some(tag);
                 break;
             }
@@ -1293,6 +1558,10 @@ impl Object for TextField {
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+
+    fn bounds(&self) -> Option<Rect> {
+        Some(self.rect())
     }
 }
 

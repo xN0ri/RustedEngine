@@ -1,15 +1,28 @@
-//! Generic layered, interactive UI panel manager.
+//! Generic layered, interactive **desktop window manager** for RustedEngine.
 //!
-//! Provides [`Panel`] (trait), [`PanelManager`], and [`PanelId`].
-//! The engine makes zero assumptions about what a panel represents in the game —
-//! it could be a dialogue window, a HUD slot, a debug overlay, etc.
-//! Concrete panel types are defined entirely by the game.
+//! # Responsibilities
 //!
-//! # Mechanics provided by the engine
-//! - **Z-order / focus**: clicking brings a panel to the front.
-//! - **Hit-testing**: which panel is under the cursor.
-//! - **Optional drag**: `Panel::is_draggable()` (default `false`).
-//! - **Optional resize**: `Panel::is_resizable()` (default `false`).
+//! [`PanelManager`] is the **sole** system for top-level, independently moveable/resizable
+//! UI windows (e.g. OS desktop windows in Last Online). It manages:
+//!
+//! - **Z-order / focus** — click brings a window to the front.
+//! - **Hit-testing** — which panel is under the cursor.
+//! - **Optional drag** — per-panel opt-in via [`Panel::is_draggable()`].
+//! - **Optional resize** — per-panel opt-in via [`Panel::is_resizable()`].
+//!
+//! # vs `ui::Panel`
+//!
+//! Do **not** confuse this with [`ui::Panel`](crate::ui::Panel), which is a *static*
+//! grouping container for children *inside* a window. Use `ui::Panel` for the interior
+//! layout of a window pane; use this module's [`PanelManager`] (via `ctx.panels`) to manage
+//! the windows themselves as first-class desktop objects.
+//!
+//! # Example
+//! ```rust,ignore
+//! // Register a desktop window
+//! engine.ctx.panels.add(MyWindow::new(), Rect::new(100.0, 80.0, 400.0, 300.0));
+//! // Engine automatically calls ctx.panels.update(dt) and ctx.panels.draw() each frame.
+//! ```
 
 use macroquad::{
     input::{is_mouse_button_down, is_mouse_button_pressed, mouse_position, MouseButton},

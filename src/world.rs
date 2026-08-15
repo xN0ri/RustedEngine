@@ -1,3 +1,5 @@
+use macroquad::math::Rect;
+
 use crate::engine::Context;
 
 /// Base trait implemented by all game world entities and UI components.
@@ -37,6 +39,14 @@ pub trait Object {
 
     /// Sets whether this entity is active for logic updates and input interaction.
     fn set_active(&mut self, _active: bool) {}
+
+    /// Returns the screen-space bounding rectangle for hit-testing, or `None` if the entity
+    /// has no interactive bounds (e.g. text-only labels, decorative shapes).
+    ///
+    /// Used by [`UI::raise_clicked`](crate::ui::UI::raise_clicked) to find the topmost clicked element.
+    fn bounds(&self) -> Option<Rect> {
+        None
+    }
 }
 
 /// Game world container holding separate entity rendering layers:

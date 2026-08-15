@@ -269,6 +269,10 @@ impl Object for Sprite {
     fn set_active(&mut self, active: bool) {
         self.active = active;
     }
+
+    fn bounds(&self) -> Option<macroquad::math::Rect> {
+        Some(self.rect())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +384,15 @@ impl Object for Rectangle {
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+
+    fn bounds(&self) -> Option<macroquad::math::Rect> {
+        Some(macroquad::math::Rect {
+            x: self.position.x,
+            y: self.position.y,
+            w: self.size.x,
+            h: self.size.y,
+        })
     }
 }
 
