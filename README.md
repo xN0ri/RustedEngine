@@ -4,71 +4,71 @@
 [![Macroquad](https://img.shields.io/badge/built%20with-Macroquad-blue.svg)](https://macroquad.rs/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**RustedEngine** to lekki, niezwykle wyrazisty i ergonomiczny 2D silnik gier napisany w języku **Rust**, zbudowany na bazie biblioteki [Macroquad](https://macroquad.rs/).
+**RustedEngine** is a lightweight, ergonomic 2D game engine framework for **Rust**, built on top of [Macroquad](https://macroquad.rs/).
 
-Silnik został zaprojektowany z myślą o prostocie, modularności i zerowym nakładzie niepotrzebnej abstrakcji. Łączy moc idiomatycznego Rusta z przejrzystym modelem mentalnym i natychmiastowym tworzeniem gier bez boilerplate'u.
-
----
-
-## ✨ Główne Cechy Silnika
-
-* 🚀 **Zero-Boilerplate API**: Tworzenie obiektów, scen i interfejsów bez ręcznego `Box::new(...)` — po prostu `scene.add(player)`.
-* 👾 **GameObject & Behavior Pattern**: Łatwe łączenie surowych komponentów graficznych (`Sprite`, `Rectangle`, `Text`) z własnymi strukturami danych (`Behavior<Inner, Data>`).
-* 🖥️ **Wbudowany System UI & Windowing**:
-  * Gotowe komponenty: `Text` (zawijanie słów, maszyna do pisania), `Button`, `ProgressBar`, `TextField`, `Panel`.
-  * `PanelManager` — pulpitowy menedżer okien z obsługą skupienia (focus), zmianą Z-Order, przeciąganiem i skalowaniem.
-* 🎥 **Kamera 2D & Efekty**:
-  * Płynne podążanie za celami (`camera.follow`), efekt trzęsienia ziemi (`camera.shake`), automatyczne przeliczenia współrzędnych ekranu na świat (`screen_to_world`).
-* ⚡ **Ultra-Ergonomiczne Sterowanie**:
-  * Kierunki ruchu 2D w 1 linijce: `ctx.input.wasd()` oraz `ctx.input.arrow_keys()`.
-  * Błyskawiczny dostęp do czasu klatki: `ctx.dt()`.
-  * Bezpośrednie kliknięcia w przestrzeni 2D: `player.click(ctx, Side::Left)`.
-* 💾 **Zarządzanie Stanem i Zasobami**:
-  * `StateStore`: Magazyn flag i wartości z szybkim zapisem/odczytem JSON.
-  * `Resources`: Bezpieczny typologicznie kontener danych (Type-Map).
-  * `ActionMap`: Mapowanie nazwanych akcji do klawiatury i myszy.
-  * `TriggerSystem`: System reakcji na zdarzenia i warunki w grze.
-* 🎨 **Grafika, Animacje & Shadery**:
-  * `AnimatedSprite` & `Sequence`: Poklatkowe animacje tekstur.
-  * `ParticleEmitter`: System cząsteczek.
-  * `PostProcess`: Pełnoekranowe shadery i nakładki graficzne.
-  * **Content Pipeline**: Automatyczne wczytywanie danych gier z plików JSON (`load_content`).
+Designed with simplicity, performance, and API elegance in mind, RustedEngine eliminates boilerplate while offering a clean, intuitive mental model for rapid 2D game development.
 
 ---
 
-## ⚡ Szybki Start (Quickstart)
+## Key Features
 
-Dodaj `RustedEngine` do swojego projektu i stwórz pierwszą grę w kilkadziesiąt linijek:
+* 🚀 **Zero-Boilerplate Ergonomics**: Intuitive generic entity insertion without manual boxing (`scene.add(player)`).
+* 👾 **Behavior & Data Binding**: Easily bind visual graphic components (`Sprite`, `Rectangle`, `Text`) with custom state structs via `Behavior<Inner, Data>`. Transparent field access via `Deref` / `DerefMut`.
+* 🖥️ **Integrated UI & Windowing Subsystem**:
+  * Rich component library: `Text` (word-wrapping, typewriter effect), `Button`, `ProgressBar`, `TextField`, and scrollable `Panel`.
+  * `PanelManager`: Full desktop-style window manager supporting focus order, Z-layering, dragging, and resizing out of the box.
+* 🎥 **2D Camera Suite**:
+  * Smooth lerp target tracking (`camera.follow`), screen shake (`camera.shake`), and seamless screen-to-world coordinate transformations.
+* ⚡ **High-Ergonomics Input Helpers**:
+  * 2D movement vectors in a single line: `ctx.input.wasd()` and `ctx.input.arrow_keys()`.
+  * Frame delta-time shorthand: `ctx.dt()`.
+  * World-space entity hit-testing & click handlers: `player.click(ctx, Side::Left)`.
+* 💾 **State & Resource Management**:
+  * `StateStore`: Central flag & numeric state store with Serde JSON save/load support.
+  * `Resources`: Type-safe generic data container (Type-Map pattern).
+  * `ActionMap`: High-level rebindable input action mapping.
+  * `TriggerSystem`: Event-driven condition/action trigger execution.
+* 🎨 **Graphics, FX & Content Pipeline**:
+  * `AnimatedSprite` & `Sequence`: Frame-based texture animation pipelines.
+  * `ParticleEmitter`: Configurable particle system.
+  * `PostProcess`: Fullscreen shader post-processing pipeline.
+  * **Content Pipeline**: Automated data loading from structured JSON files (`load_content`).
+
+---
+
+## Quickstart
+
+Build a functional game scene in just a few lines of code:
 
 ```rust
 use RustedEngine::prelude::*;
 use macroquad::prelude::*;
 
-// 1. Własna struktura danych gracza
+// 1. Define custom entity state
 struct PlayerData {
     speed: f32,
     hp: i32,
 }
 
-#[macroquad::main("My RustedEngine Game")]
+#[macroquad::main("RustedEngine Quickstart")]
 async fn main() {
-    // 2. Tworzenie obiektu gracza
+    // 2. Construct a GameObject combining a graphic Sprite and PlayerData
     let player = GameObject::new(
         Sprite::solid(vec2(0.0, 0.0), vec2(50.0, 50.0), BLUE).with_tag("player"),
         PlayerData { speed: 250.0, hp: 100 },
     )
     .update(|player, ctx| {
-        // Ruch WASD w jednej linijce
+        // One-line WASD movement vector
         let direction = ctx.input.wasd();
         player.position += direction * player.data.speed * ctx.dt();
 
-        // Obsługa kliknięć w przestrzeni świata 2D
+        // World-space 2D mouse interaction
         if player.click(ctx, Side::Left) {
             player.data.hp -= 10;
-            println!("HP Gracza: {}", player.data.hp);
+            println!("Player HP: {}", player.data.hp);
         }
 
-        // Reakcja na najechanie kursorom
+        // Hover & state visuals
         if player.clicked(ctx, Side::Left) {
             player.color = RED;
         } else if player.is_hovered(ctx) {
@@ -78,13 +78,13 @@ async fn main() {
         }
     });
 
-    // 3. Budowanie Sceny i UI
+    // 3. Populate Scene & UI
     let mut scene = Scene::new_empty("MainGame");
     scene.add(player);
     scene.add_ui(Text::new("RustedEngine Demo", vec2(20.0, 35.0), 28.0, WHITE));
-    scene.add_ui(Text::new("WASD - ruch | LPM - interakcja", vec2(20.0, 65.0), 18.0, LIGHTGRAY));
+    scene.add_ui(Text::new("WASD - Move | LMB - Interact", vec2(20.0, 65.0), 18.0, LIGHTGRAY));
 
-    // 4. Inicjalizacja i uruchomienie Silnika
+    // 4. Initialize & Run Engine
     let mut engine = Engine::new(scene).with_background_color(DARKGRAY);
     engine.run().await;
 }
@@ -92,41 +92,50 @@ async fn main() {
 
 ---
 
-## 🧠 Model Mentalny Silnika
+## Engine Architecture
 
-RustedEngine operuje na prostym, liniowym przepływie danych:
+RustedEngine follows a clean, single-directional data flow model:
 
 ```text
-Engine ──► SceneManager ──► Scene ──► World ──┬──► objects (World Space 2D)
+Engine ──► SceneManager ──► Scene ──► World ──┬──► objects (2D World Space)
                                               └──► ui_objects (Screen Space)
 ```
 
-1. **`Engine`**: Zarządza główną pętlą `async`, czasem klatki oraz czyszczeniem ekranu.
-2. **`Context` (`ctx`)**: Udostępnia obiektom wejście, dźwięki, zasoby, stan oraz kamerę.
-3. **`World`**: Przechowuje warstwę obiektów renderowanych w przestrzeni kamery (`objects`) oraz warstwę UI pracującą w pikselach ekranu (`ui_objects`).
-4. **`Behavior<Inner, Data>`**: Daje pełny dostęp przez `Deref` do komponentu graficznego (`player.position`, `player.color`) oraz danych logicznych (`player.data`).
+| Component | Description |
+|-----------|-------------|
+| **`Engine`** | Core loop orchestrator managing asynchronous execution, delta time, background clearing, and rendering passes. |
+| **`Context` (`ctx`)** | Unified game context exposed to update closures, granting access to input, audio, assets, state, camera, and triggers. |
+| **`World`** | Container storing world-space entities (camera-transformed) and UI components (screen-space). |
+| **`Behavior<Inner, Data>`** | Generic entity wrapper implementing `Deref` / `DerefMut` for direct graphic mutation alongside custom `Data` fields. |
 
 ---
 
-## 📁 Przykłady w Repozytorium
+## Bundled Examples
 
-W katalogu `examples/` znajdziesz gotowe przykłady demonstracyjne:
+Explore the `examples/` directory for ready-to-run code demonstrations:
 
-* **`test.rs`** / **`demo.rs`** — Podstawy poruszania się, klikalnych obiektów i tekstu.
-* **`panel_demo.rs`** — System pulpitowych okien UI z przeciąganiem (`PanelManager`).
-* **`scroll_demo.rs`** — Przewijany interfejs i panel tekstu (`Panel`).
-* **`resources_demo.rs`** — Rejestracja i mutowanie unikalnych typów danych w `Resources`.
-* **`content_pipeline_demo.rs`** — Ładowanie plików danych JSON z dysku.
-* **`trigger_demo.rs`** — Użycie jednorazowych i cyklicznych wyzwalaczy zdarzeń.
-
-Uruchomienie dowolnego przykładu:
 ```bash
+# Basic movement, entity interaction, and UI rendering
 cargo run --example test
+
+# Desktop window manager with dragging & z-order focus
 cargo run --example panel_demo
+
+# Scrollable UI containers and text wrapping
+cargo run --example scroll_demo
+
+# Type-safe global resource storage (Type-Map pattern)
+cargo run --example resources_demo
+
+# Data-driven JSON content pipeline
+cargo run --example content_pipeline_demo
+
+# Event-driven triggers and repeating conditions
+cargo run --example trigger_demo
 ```
 
 ---
 
-## 📄 Licencja
+## License
 
-Projekt udostępniany jest na licencji **MIT**. Szczegóły w pliku `LICENSE`.
+This project is licensed under the [MIT License](LICENSE).
