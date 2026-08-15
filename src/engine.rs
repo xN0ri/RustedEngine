@@ -12,10 +12,12 @@ use crate::{
     audio::Audio,
     camera::Camera,
     input::Input,
+    panel_manager::PanelManager,
     resources::Resources,
     scene::{Scene, SceneManager},
     state::StateStore,
     time::Time,
+    trigger::TriggerSystem,
 };
 
 // ---------------------------------------------------------------------------
@@ -72,6 +74,10 @@ pub struct Context {
     pub actions: ActionMap,
     /// Type-keyed generic resource store for arbitrary per-context data.
     pub resources: Resources,
+    /// Generic condition→action trigger system operating on `resources`.
+    pub triggers: TriggerSystem,
+    /// Generic layered panel manager for interactive UI panels.
+    pub panels: PanelManager,
     /// Internal active custom mouse cursor override.
     pub(crate) cursor: Option<CustomCursor>,
 }
@@ -88,6 +94,8 @@ impl Context {
             state: StateStore::new(),
             actions: ActionMap::new(),
             resources: Resources::new(),
+            triggers: TriggerSystem::new(),
+            panels: PanelManager::new(),
             cursor: None,
         }
     }
@@ -179,6 +187,7 @@ impl Engine {
             // 3. Update active world logic
             let scene = self.scene_manager.get_current_scene();
             scene.get_world().update(&mut self.ctx);
+            self.ctx.panels.update(dt);
 
             // 4. Clear screen background
             clear_background(self.background_color);
@@ -186,7 +195,7 @@ impl Engine {
             // 5. Render world space entities (with optional post-processing pass)
             if let Some(pp) = &mut self.post_process {
                 // 5a. Lazy allocation/resize of render target
-                if self.render_target.as_ref().map_or(true, |rt| !rt.matches_screen_size()) {
+                if self.render_target.as_ref().is_none_or(|rt| !rt.matches_screen_size()) {
                     self.render_target = Some(crate::postprocess::SceneRenderTarget::fullscreen());
                 }
                 let rt = self.render_target.as_ref().unwrap();
@@ -205,8 +214,9 @@ impl Engine {
                 self.ctx.camera.end();
             }
 
-            // 6. Render UI layer in screen space
+            // 6. Render UI layer and panel manager in screen space
             self.scene_manager.get_current_scene().get_world().draw_ui();
+            self.ctx.panels.draw();
 
             // 7. Render custom cursor overlay
             if let Some(cursor) = &self.ctx.cursor {

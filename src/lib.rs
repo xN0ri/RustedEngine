@@ -12,15 +12,20 @@
 //! - **Action Mapping**: Bind hardware inputs (keys and mouse buttons) to high-level named actions with [`ActionMap`](actions::ActionMap).
 //! - **Post-Processing Shaders**: Custom material GLSL post-processing pipeline ([`PostProcess`](postprocess::PostProcess)) with nearest-neighbor pixel art filtering.
 //! - **Generic Resources**: Type-keyed global resource store ([`Resources`](resources::Resources)) available on every [`Context`](engine::Context) via `ctx.resources`.
+//! - **Content Pipeline**: Generic JSON data loading ([`load_content`](content::load_content), [`load_content_dir`](content::load_content_dir)) for any `Deserialize` type.
+//! - **Trigger System**: Condition→action rule engine operating on [`Resources`](resources::Resources) ([`TriggerSystem`](trigger::TriggerSystem)).
+//! - **Panel System**: Generic layered, interactive UI panel manager ([`PanelManager`](panel_manager::PanelManager)).
 
 pub mod actions;
 pub mod asset_manager;
 pub mod audio;
 pub mod camera;
+pub mod content;
 pub mod draggable;
 pub mod engine;
 pub mod input;
 pub mod object;
+pub mod panel_manager;
 pub mod particles;
 pub mod postprocess;
 pub mod prelude;
@@ -29,11 +34,15 @@ pub mod scene;
 pub mod sequence;
 pub mod state;
 pub mod time;
+pub mod trigger;
 pub mod ui;
 pub mod window;
 pub mod world;
 
+pub use content::{load_content, load_content_dir, ContentError};
 pub use resources::Resources;
+pub use trigger::{Trigger, TriggerSystem};
+pub use panel_manager::{PanelId, PanelManager};
 
 #[cfg(test)]
 mod tests {
@@ -91,8 +100,8 @@ mod tests {
 
     #[test]
     fn test_ui_bring_to_front_and_count() {
-        let p1 = Panel::new(vec2(0.0, 0.0), vec2(100.0, 100.0)).with_tag("panel1");
-        let p2 = Panel::new(vec2(10.0, 10.0), vec2(100.0, 100.0)).with_tag("panel2");
+        let p1 = UiPanel::new(vec2(0.0, 0.0), vec2(100.0, 100.0)).with_tag("panel1");
+        let p2 = UiPanel::new(vec2(10.0, 10.0), vec2(100.0, 100.0)).with_tag("panel2");
 
         let ui = UI::new(vec![Box::new(p1), Box::new(p2)]);
         let world = World::new_with_ui(vec![], vec![Box::new(ui)]);
@@ -111,7 +120,7 @@ mod tests {
     fn test_world_macros() {
         let t1 = Text::new("T1", vec2(0.0, 0.0), 10.0, WHITE);
         let t2 = Text::new("T2", vec2(0.0, 0.0), 10.0, WHITE);
-        let p1 = Panel::new(vec2(0.0, 0.0), vec2(50.0, 50.0));
+        let p1 = UiPanel::new(vec2(0.0, 0.0), vec2(50.0, 50.0));
 
         let w_full = world! {
             objects: [t1, t2],
@@ -150,7 +159,7 @@ mod tests {
         assert_eq!(text.is_visible(), false);
         assert_eq!(text.is_active(), false);
 
-        let panel = Panel::new(vec2(0.0, 0.0), vec2(100.0, 100.0))
+        let panel = UiPanel::new(vec2(0.0, 0.0), vec2(100.0, 100.0))
             .hidden()
             .desactivated();
         assert_eq!(panel.is_visible(), false);

@@ -55,7 +55,7 @@ async fn main() {
 
     // 3. Budujemy świat używając makra world!
     let world = world! {
-        objects: [player],cargo run --example resources_demo
+        objects: [player],
 
         ui: [ui_info],
     };
