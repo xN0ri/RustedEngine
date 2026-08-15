@@ -14,30 +14,20 @@ async fn main() {
         Sprite::new(vec2(100.0, 100.0), vec2(50.0, 50.0), 0.0, texture).with_color(RED);
 
     let player = GameObject::new(player_sprite, PlayerData { hp: 100 }).update(|obj, ctx| {
-        // Ruch WASD (dzięki Deref możemy używać obj.position bezpośrednio!)
-        if ctx.input.is_key_down(KeyCode::D) {
-            obj.position.x += 200.0 * ctx.time.deltatime();
-        }
-        if ctx.input.is_key_down(KeyCode::A) {
-            obj.position.x -= 200.0 * ctx.time.deltatime();
-        }
-        if ctx.input.is_key_down(KeyCode::W) {
-            obj.position.y -= 200.0 * ctx.time.deltatime();
-        }
-        if ctx.input.is_key_down(KeyCode::S) {
-            obj.position.y += 200.0 * ctx.time.deltatime();
-        }
+        // Ruch WASD
+        let dir = ctx.input.wasd();
+        obj.position += dir * 200.0 * ctx.dt();
 
         // Jednorazowe kliknięcie (zmniejsza HP o 1):
-        if obj.click(Side::Left) {
+        if obj.click(ctx, Side::Left) {
             obj.data.hp -= 1;
             println!("Kliknięto w obiekt! Nowe HP: {}", obj.data.hp);
         }
 
         // Stan wizualny (kolory):
-        if obj.clicked(Side::Left) {
+        if obj.clicked(ctx, Side::Left) {
             obj.color = BLUE;
-        } else if obj.is_hovered() {
+        } else if obj.is_hovered(ctx) {
             obj.color = YELLOW;
         } else {
             obj.color = RED;
@@ -57,6 +47,6 @@ async fn main() {
     main_scene.add(player);
     main_scene.add_ui(ui_info);
 
-    let mut engine = Engine::new(vec![main_scene]).with_background_color(DARKGRAY);
+    let mut engine = Engine::new(main_scene).with_background_color(DARKGRAY);
     engine.run().await;
 }

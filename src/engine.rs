@@ -7,15 +7,8 @@ use macroquad::{
 };
 
 use crate::{
-    actions::ActionMap,
-    asset_manager::Assets,
-    audio::Audio,
-    camera::Camera,
-    input::Input,
-    resources::Resources,
-    scene::{Scene, SceneManager},
-    state::StateStore,
-    time::Time,
+    actions::ActionMap, asset_manager::Assets, audio::Audio, camera::Camera, input::Input,
+    resources::Resources, scene::SceneManager, state::StateStore, time::Time,
     trigger::TriggerSystem,
 };
 
@@ -96,6 +89,11 @@ impl Context {
         }
     }
 
+    /// Returns the delta time in seconds for the current frame. Shorthand for `ctx.time.deltatime()`.
+    pub fn dt(&self) -> f32 {
+        self.time.deltatime()
+    }
+
     /// Helper: Plays a sound effect by asset key using default settings.
     pub fn play_sound(&self, name: &str) {
         self.audio.play(&self.assets, name);
@@ -149,11 +147,13 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// Creates a new [`Engine`] initialized with the given scene list.
-    pub fn new(scenes: Vec<Scene>) -> Self {
+    /// Creates a new [`Engine`] initialized with scenes.
+    ///
+    /// Accepts a single [`Scene`], a `Vec<Scene>`, or a [`SceneManager`] directly.
+    pub fn new(scenes: impl Into<SceneManager>) -> Self {
         Self {
             ctx: Context::new(),
-            scene_manager: SceneManager::new(scenes),
+            scene_manager: scenes.into(),
             background_color: LIGHTGRAY,
             post_process: None,
             render_target: None,

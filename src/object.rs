@@ -146,8 +146,8 @@ impl Sprite {
     }
 
     /// Builder pattern: Sets the entity tag.
-    pub fn with_tag(mut self, tag: &str) -> Self {
-        self.tag = tag.to_string();
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
         self
     }
 
@@ -306,8 +306,8 @@ impl Rectangle {
     }
 
     /// Builder pattern: Sets the entity tag.
-    pub fn with_tag(mut self, tag: &str) -> Self {
-        self.tag = tag.to_string();
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
         self
     }
 
@@ -432,8 +432,8 @@ impl<Inner, Data> Behavior<Inner, Data> {
     }
 
     /// Builder pattern: Sets the entity tag.
-    pub fn with_tag(mut self, tag: &str) -> Self {
-        self.tag = tag.to_string();
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
         self
     }
 
@@ -522,6 +522,36 @@ impl<Inner, Data> Behavior<Inner, Data> {
         Inner: Object,
     {
         self.inner.is_active()
+    }
+
+    /// Returns `true` if the mouse cursor is over the inner entity in world space.
+    ///
+    /// Shorthand for `self.inner.is_hovered_ctx(ctx)`.
+    pub fn is_hovered(&self, ctx: &Context) -> bool
+    where
+        Inner: Clickable,
+    {
+        self.inner.is_hovered_ctx(ctx)
+    }
+
+    /// Returns `true` during the frame the mouse button was pressed over the inner entity in world space.
+    ///
+    /// Shorthand for `self.inner.click_ctx(ctx, btn)`.
+    pub fn click(&self, ctx: &Context, btn: Side) -> bool
+    where
+        Inner: Clickable,
+    {
+        self.inner.click_ctx(ctx, btn)
+    }
+
+    /// Returns `true` while the mouse button is held down over the inner entity in world space.
+    ///
+    /// Shorthand for `self.inner.clicked_ctx(ctx, btn)`.
+    pub fn clicked(&self, ctx: &Context, btn: Side) -> bool
+    where
+        Inner: Clickable,
+    {
+        self.inner.clicked_ctx(ctx, btn)
     }
 }
 

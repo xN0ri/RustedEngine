@@ -61,7 +61,7 @@ mod tests {
         store.increment("gold", 50);
         store.set_text("player_name", "Hero");
 
-        assert_eq!(store.get_bool("door_open"), true);
+        assert!(store.get_bool("door_open"));
         assert_eq!(store.get_int("gold"), 150);
         assert_eq!(store.get_text("player_name"), "Hero");
 
@@ -72,7 +72,7 @@ mod tests {
         store.save_to_file(path_str).unwrap();
         let loaded = StateStore::load_from_file(path_str).unwrap();
 
-        assert_eq!(loaded.get_bool("door_open"), true);
+        assert!(loaded.get_bool("door_open"));
         assert_eq!(loaded.get_int("gold"), 150);
         assert_eq!(loaded.get_text("player_name"), "Hero");
 
@@ -86,17 +86,17 @@ mod tests {
         actions.bind_mouse("attack", Side::Left);
 
         actions.unbind("jump");
-        assert_eq!(actions.is_down("jump"), false);
+        assert!(!actions.is_down("jump"));
     }
 
     #[test]
     fn test_text_typewriter() {
         let mut text = Text::new("Hello", vec2(0.0, 0.0), 20.0, WHITE).with_typewriter(10.0);
 
-        assert_eq!(text.is_finished(), false);
+        assert!(!text.is_finished());
         text.skip();
         assert_eq!(text.content, "Hello");
-        assert_eq!(text.is_finished(), true);
+        assert!(text.is_finished());
     }
 
     #[test]
@@ -145,32 +145,32 @@ mod tests {
         let rect = Rectangle::new(vec2(0.0, 0.0), vec2(10.0, 10.0), 0.0, WHITE)
             .hidden()
             .deactivated();
-        assert_eq!(rect.is_visible(), false);
-        assert_eq!(rect.is_active(), false);
+        assert!(!rect.is_visible());
+        assert!(!rect.is_active());
 
         let button = Button::new(vec2(0.0, 0.0), vec2(10.0, 10.0), "Click")
             .hidden()
             .desactivated();
-        assert_eq!(button.is_visible(), false);
-        assert_eq!(button.is_active(), false);
+        assert!(!button.is_visible());
+        assert!(!button.is_active());
 
         let text = Text::new("Hi", vec2(0.0, 0.0), 12.0, WHITE)
             .hidden()
             .deactivated();
-        assert_eq!(text.is_visible(), false);
-        assert_eq!(text.is_active(), false);
+        assert!(!text.is_visible());
+        assert!(!text.is_active());
 
         let panel = UiPanel::new(vec2(0.0, 0.0), vec2(100.0, 100.0))
             .hidden()
             .desactivated();
-        assert_eq!(panel.is_visible(), false);
-        assert_eq!(panel.is_active(), false);
+        assert!(!panel.is_visible());
+        assert!(!panel.is_active());
 
         let progress = ProgressBar::new(vec2(0.0, 0.0), vec2(100.0, 10.0), 0.5)
             .hidden()
             .deactivated();
-        assert_eq!(progress.is_visible(), false);
-        assert_eq!(progress.is_active(), false);
+        assert!(!progress.is_visible());
+        assert!(!progress.is_active());
 
         let behavior_obj = Behavior::new(
             Rectangle::new(vec2(0.0, 0.0), vec2(10.0, 10.0), 0.0, WHITE),
@@ -178,12 +178,12 @@ mod tests {
         )
         .hidden()
         .desactivated();
-        assert_eq!(behavior_obj.is_visible(), false);
-        assert_eq!(behavior_obj.is_active(), false);
+        assert!(!behavior_obj.is_visible());
+        assert!(!behavior_obj.is_active());
 
         let ui = UI::new(vec![]).hidden().deactivated();
-        assert_eq!(ui.is_visible(), false);
-        assert_eq!(ui.is_active(), false);
+        assert!(!ui.is_visible());
+        assert!(!ui.is_active());
     }
 
     #[test]
@@ -197,12 +197,12 @@ mod tests {
 
         assert_eq!(tf.text, "Player1");
         assert_eq!(tf.placeholder, "Enter name...");
-        assert_eq!(tf.decorated, false);
-        assert_eq!(tf.is_visible(), false);
-        assert_eq!(tf.is_active(), false);
+        assert!(!tf.decorated);
+        assert!(!tf.is_visible());
+        assert!(!tf.is_active());
 
         tf.set_focused(true);
-        assert_eq!(tf.is_focused(), true);
+        assert!(tf.is_focused());
     }
 
     #[test]
@@ -246,9 +246,9 @@ mod tests {
             .deactivated();
 
         assert_eq!(anim.tag, "anim_rec");
-        assert_eq!(anim.looping, false);
-        assert_eq!(anim.is_visible(), false);
-        assert_eq!(anim.is_active(), false);
+        assert!(!anim.looping);
+        assert!(!anim.is_visible());
+        assert!(!anim.is_active());
         assert_eq!(anim.current_frame(), 0);
         assert_eq!(
             anim.bounds(),
@@ -263,8 +263,8 @@ mod tests {
             .with_smooth_scroll(false)
             .with_content_height(500.0);
 
-        assert_eq!(panel.clip_content, true);
-        assert_eq!(panel.smooth_scroll, false);
+        assert!(panel.clip_content);
+        assert!(!panel.smooth_scroll);
         assert_eq!(panel.content_height, Some(500.0));
     }
 

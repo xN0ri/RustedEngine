@@ -119,8 +119,8 @@ mod tests {
     fn distinct_types_are_independent() {
         let mut r = Resources::new();
         r.insert(42_i32);
-        r.insert(3.14_f64);
+        r.insert(123.456_f64);
         assert_eq!(r.get::<i32>(), Some(&42));
-        assert_eq!(r.get::<f64>(), Some(&3.14));
+        assert_eq!(r.get::<f64>(), Some(&123.456));
     }
 }

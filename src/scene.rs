@@ -122,3 +122,15 @@ impl SceneManager {
         &self.scenes
     }
 }
+
+impl From<Scene> for SceneManager {
+    fn from(scene: Scene) -> Self {
+        Self::new(vec![scene])
+    }
+}
+
+impl From<Vec<Scene>> for SceneManager {
+    fn from(scenes: Vec<Scene>) -> Self {
+        Self::new(scenes)
+    }
+}

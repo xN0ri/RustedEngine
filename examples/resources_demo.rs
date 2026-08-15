@@ -79,15 +79,15 @@ async fn main() {
     )
     .with_tag("input_handler")
     .update(|_obj, ctx| {
-        if ctx.input.is_key_pressed(KeyCode::Space) {
-            if let Some(stats) = ctx.resources.get_mut::<PlayerStats>() {
-                stats.score += 100;
-            }
+        if ctx.input.is_key_pressed(KeyCode::Space)
+            && let Some(stats) = ctx.resources.get_mut::<PlayerStats>()
+        {
+            stats.score += 100;
         }
-        if ctx.input.is_key_pressed(KeyCode::R) {
-            if let Some(c) = ctx.resources.get_mut::<Counter>() {
-                c.value = 0;
-            }
+        if ctx.input.is_key_pressed(KeyCode::R)
+            && let Some(c) = ctx.resources.get_mut::<Counter>()
+        {
+            c.value = 0;
         }
     });
 

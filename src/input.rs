@@ -50,6 +50,50 @@ impl Input {
     pub fn is_mouse_button_released(&self, button: MouseButton) -> bool {
         is_mouse_button_released(button)
     }
+
+    /// Returns a normalized 2D movement direction vector derived from WASD keyboard keys.
+    pub fn wasd(&self) -> Vec2 {
+        let mut dir = Vec2::ZERO;
+        if is_key_down(KeyCode::W) {
+            dir.y -= 1.0;
+        }
+        if is_key_down(KeyCode::S) {
+            dir.y += 1.0;
+        }
+        if is_key_down(KeyCode::A) {
+            dir.x -= 1.0;
+        }
+        if is_key_down(KeyCode::D) {
+            dir.x += 1.0;
+        }
+        if dir.length_squared() > 0.0 {
+            dir.normalize()
+        } else {
+            Vec2::ZERO
+        }
+    }
+
+    /// Returns a normalized 2D movement direction vector derived from arrow keyboard keys.
+    pub fn arrow_keys(&self) -> Vec2 {
+        let mut dir = Vec2::ZERO;
+        if is_key_down(KeyCode::Up) {
+            dir.y -= 1.0;
+        }
+        if is_key_down(KeyCode::Down) {
+            dir.y += 1.0;
+        }
+        if is_key_down(KeyCode::Left) {
+            dir.x -= 1.0;
+        }
+        if is_key_down(KeyCode::Right) {
+            dir.x += 1.0;
+        }
+        if dir.length_squared() > 0.0 {
+            dir.normalize()
+        } else {
+            Vec2::ZERO
+        }
+    }
 }
 
 impl Default for Input {
