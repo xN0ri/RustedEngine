@@ -70,10 +70,12 @@ pub struct Context {
     pub triggers: TriggerSystem,
     /// Internal active custom mouse cursor override.
     pub(crate) cursor: Option<CustomCursor>,
+    /// Pending scene switch request name.
+    pub(crate) pending_scene: Option<String>,
 }
 
 impl Context {
-    /// Creates a default initialized [`Context`].
+    /// Creates a new empty [`Context`].
     pub fn new() -> Self {
         Self {
             time: Time::new(),
@@ -86,7 +88,13 @@ impl Context {
             resources: Resources::new(),
             triggers: TriggerSystem::new(),
             cursor: None,
+            pending_scene: None,
         }
+    }
+
+    /// Requests a scene switch by name to be executed at the start of the next frame.
+    pub fn switch_scene(&mut self, scene_name: impl Into<String>) {
+        self.pending_scene = Some(scene_name.into());
     }
 
     /// Returns the delta time in seconds for the current frame. Shorthand for `ctx.time.deltatime()`.
@@ -240,6 +248,9 @@ impl Engine {
     pub async fn run(&mut self) {
         loop {
             // 1. Process pending scene switch requests
+            if let Some(scene_name) = self.ctx.pending_scene.take() {
+                self.scene_manager.switch_to(&scene_name);
+            }
             self.scene_manager.update_pending();
 
             // 2. Update camera matrices (cache shake offsets)

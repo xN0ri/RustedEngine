@@ -66,14 +66,16 @@ pub trait Object: 'static {
     }
 }
 
-/// Game world container holding separate entity rendering layers:
+/// Game world container holding separate entity rendering and logic layers:
 ///
 /// - `objects` — Rendered in world space inside camera view bounds.
 /// - `ui_objects` — Rendered in screen space outside camera view bounds.
+/// - `logic` — Updated every frame but never rendered (invisible system controllers).
 #[derive(Default)]
 pub struct World {
     objects: Vec<Box<dyn Object>>,
     ui_objects: Vec<Box<dyn Object>>,
+    logic: Vec<Box<dyn Object>>,
     sequences: Vec<crate::sequence::Sequence>,
 }
 
@@ -83,6 +85,7 @@ impl World {
         Self {
             objects: Vec::new(),
             ui_objects: Vec::new(),
+            logic: Vec::new(),
             sequences: Vec::new(),
         }
     }
@@ -92,6 +95,7 @@ impl World {
         Self {
             objects,
             ui_objects: Vec::new(),
+            logic: Vec::new(),
             sequences: Vec::new(),
         }
     }
@@ -101,6 +105,7 @@ impl World {
         Self {
             objects,
             ui_objects,
+            logic: Vec::new(),
             sequences: Vec::new(),
         }
     }
@@ -125,6 +130,19 @@ impl World {
         self.ui_objects.push(object);
     }
 
+    /// Adds a new object to the logic-only layer at runtime. Logic objects are
+    /// updated every frame but never rendered — use for invisible system
+    /// controllers (scene switching, global timers, cross-cutting checks) via
+    /// [`LogicObject`](crate::object::LogicObject).
+    pub fn add_logic<O: Object + 'static>(&mut self, object: O) {
+        self.logic.push(Box::new(object));
+    }
+
+    /// Adds a pre-boxed object to the logic-only layer (low-level escape hatch).
+    pub fn add_logic_boxed(&mut self, object: Box<dyn Object>) {
+        self.logic.push(object);
+    }
+
     /// Returns a slice of world-space objects.
     pub fn objects(&self) -> &[Box<dyn Object>] {
         &self.objects
@@ -143,6 +161,16 @@ impl World {
     /// Returns a mutable slice of screen-space UI objects.
     pub fn ui_objects_mut(&mut self) -> &mut [Box<dyn Object>] {
         &mut self.ui_objects
+    }
+
+    /// Returns a slice of logic-layer objects.
+    pub fn logic_objects(&self) -> &[Box<dyn Object>] {
+        &self.logic
+    }
+
+    /// Returns a mutable slice of logic-layer objects.
+    pub fn logic_objects_mut(&mut self) -> &mut [Box<dyn Object>] {
+        &mut self.logic
     }
 
     /// Queries world-space objects by tag (read-only).
@@ -181,6 +209,27 @@ impl World {
             .collect()
     }
 
+    /// Queries logic-layer objects by tag (read-only).
+    pub fn find_logic_by_tag(&self, tag: &str) -> Vec<&dyn Object> {
+        self.logic
+            .iter()
+            .filter(|o| o.has_tag(tag))
+            .map(|o| o.as_ref())
+            .collect()
+    }
+
+    /// Queries logic-layer objects by tag (mutable).
+    pub fn find_logic_by_tag_mut<'a>(
+        &'a mut self,
+        tag: &str,
+    ) -> Vec<&'a mut (dyn Object + 'static)> {
+        self.logic
+            .iter_mut()
+            .filter(|o| o.has_tag(tag))
+            .map(|o| o.as_mut())
+            .collect()
+    }
+
     /// Returns a mutable reference to the first UI-space object matching concrete type `T`, or `None`.
     pub fn find_ui_typed_mut<T: 'static>(&mut self) -> Option<&mut T> {
         for obj in self.ui_objects.iter_mut() {
@@ -201,6 +250,16 @@ impl World {
         None
     }
 
+    /// Returns a mutable reference to the first logic-layer object matching concrete type `T`, or `None`.
+    pub fn find_logic_typed_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        for obj in self.logic.iter_mut() {
+            if let Some(concrete) = obj.as_any_mut().and_then(|any| any.downcast_mut::<T>()) {
+                return Some(concrete);
+            }
+        }
+        None
+    }
+
     /// Counts world-space objects matching `tag`.
     pub fn count_by_tag(&self, tag: &str) -> usize {
         self.objects.iter().filter(|o| o.has_tag(tag)).count()
@@ -211,17 +270,25 @@ impl World {
         self.ui_objects.iter().filter(|o| o.has_tag(tag)).count()
     }
 
+    /// Counts logic-layer objects matching `tag`.
+    pub fn count_logic_by_tag(&self, tag: &str) -> usize {
+        self.logic.iter().filter(|o| o.has_tag(tag)).count()
+    }
+
     /// Adds a scripted [`Sequence`](crate::sequence::Sequence) to be updated automatically on frame logic passes.
     pub fn add_sequence(&mut self, sequence: crate::sequence::Sequence) {
         self.sequences.push(sequence);
     }
 
-    /// Updates all world, UI objects, and scripted sequences.
+    /// Updates all world, UI objects, logic objects, and scripted sequences.
     pub fn update(&mut self, ctx: &mut Context) {
         for obj in self.objects.iter_mut() {
             obj.update(ctx);
         }
         for obj in self.ui_objects.iter_mut() {
+            obj.update(ctx);
+        }
+        for obj in self.logic.iter_mut() {
             obj.update(ctx);
         }
         if !self.sequences.is_empty() {
@@ -266,21 +333,26 @@ macro_rules! world_objects {
     };
 }
 
-/// Declarative `World` constructor macro building world-space and optional UI-space entity layers.
+/// Declarative `World` constructor macro building world-space, UI-space, and optional logic-space entity layers.
 ///
 /// # Example
 /// ```ignore
 /// let w = world! {
 ///     objects: [player, enemy],
 ///     ui: [hp_bar, score_text],
-/// };
-///
-/// let w_no_ui = world! {
-///     objects: [player, enemy],
+///     logic: [scene_switcher],
 /// };
 /// ```
 #[macro_export]
 macro_rules! world {
+    (objects: [$($obj:expr),* $(,)?] $(,)? ui: [$($ui:expr),* $(,)?] $(,)? logic: [$($lg:expr),* $(,)?] $(,)?) => {{
+        let mut w = $crate::world::World::new_with_ui(
+            $crate::world_objects![$($obj),*],
+            $crate::world_objects![$($ui),*],
+        );
+        $(w.add_logic($lg);)*
+        w
+    }};
     (objects: [$($obj:expr),* $(,)?] $(,)? ui: [$($ui:expr),* $(,)?] $(,)?) => {
         $crate::world::World::new_with_ui(
             $crate::world_objects![$($obj),*],

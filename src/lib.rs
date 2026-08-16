@@ -346,4 +346,24 @@ mod tests {
 
         assert!(ctx.state.get_bool("seq_done"));
     }
+
+    #[test]
+    fn test_logic_layer_isolation() {
+        let mut world = World::new();
+
+        let logic_obj = LogicObject::logic(()).update(|_obj, ctx| {
+            ctx.state.set_bool("logic_updated", true);
+        });
+
+        world.add_logic(logic_obj);
+
+        assert_eq!(world.objects().len(), 0);
+        assert_eq!(world.ui_objects().len(), 0);
+        assert_eq!(world.logic_objects().len(), 1);
+
+        let mut ctx = Context::new();
+        world.update(&mut ctx);
+
+        assert!(ctx.state.get_bool("logic_updated"));
+    }
 }
