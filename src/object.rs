@@ -95,10 +95,14 @@ pub trait Clickable {
     }
 
     /// Returns `true` while the specified mouse button is held down over the entity (**world space** using camera matrix transformation).
-    fn clicked_ctx(&self, ctx: &Context, btn: Side) -> bool {
-        self.is_hovered_ctx(ctx)
-            && (ctx.input.is_mouse_button_down(btn.to_macroquad())
-                || ctx.input.is_mouse_button_pressed(btn.to_macroquad()))
+    /// Returns `true` during the single frame the left mouse button was pressed over the entity.
+    fn is_clicked(&self) -> bool {
+        self.click(Side::Left)
+    }
+
+    /// Returns `true` during the single frame the left mouse button was pressed over the entity (using context input).
+    fn is_clicked_ctx(&self, ctx: &Context) -> bool {
+        self.click_ctx(ctx, Side::Left)
     }
 }
 
@@ -558,12 +562,12 @@ impl<Inner, Data> Behavior<Inner, Data> {
 
     /// Returns `true` while the mouse button is held down over the inner entity in world space.
     ///
-    /// Shorthand for `self.inner.clicked_ctx(ctx, btn)`.
+    /// Shorthand for `self.inner.click_ctx(ctx, btn)`.
     pub fn clicked(&self, ctx: &Context, btn: Side) -> bool
     where
         Inner: Clickable,
     {
-        self.inner.clicked_ctx(ctx, btn)
+        self.inner.click_ctx(ctx, btn)
     }
 }
 

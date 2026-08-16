@@ -290,6 +290,131 @@ impl From<(f32, f32, f32, f32)> for Padding {
     }
 }
 
+/// External margin spacing box model helper for UI components and layouts.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct Margin {
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+}
+
+impl Margin {
+    /// Creates uniform margin for all 4 sides (`top`, `bottom`, `left`, `right`).
+    pub fn all(val: f32) -> Self {
+        Self { left: val, top: val, right: val, bottom: val }
+    }
+
+    /// Creates symmetric horizontal and vertical margin.
+    pub fn symmetric(horizontal: f32, vertical: f32) -> Self {
+        Self { left: horizontal, top: vertical, right: horizontal, bottom: vertical }
+    }
+
+    /// Creates explicit margin for each side (`left`, `top`, `right`, `bottom`).
+    pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
+        Self { left, top, right, bottom }
+    }
+
+    pub fn only_top(val: f32) -> Self { Self { top: val, ..Default::default() } }
+    pub fn only_bottom(val: f32) -> Self { Self { bottom: val, ..Default::default() } }
+    pub fn only_left(val: f32) -> Self { Self { left: val, ..Default::default() } }
+    pub fn only_right(val: f32) -> Self { Self { right: val, ..Default::default() } }
+}
+
+impl From<f32> for Margin {
+    fn from(val: f32) -> Self { Margin::all(val) }
+}
+impl From<(f32, f32)> for Margin {
+    fn from((h, v): (f32, f32)) -> Self { Margin::symmetric(h, v) }
+}
+impl From<(f32, f32, f32, f32)> for Margin {
+    fn from((l, t, r, b): (f32, f32, f32, f32)) -> Self { Margin::new(l, r, t, b) }
+}
+
+/// Text horizontal alignment modes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// Alignment along the cross axis of a layout container.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LayoutAlign {
+    #[default]
+    Start,
+    Center,
+    End,
+    Stretch,
+}
+
+/// Distribution along the main axis of a layout container.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LayoutJustify {
+    #[default]
+    Start,
+    Center,
+    End,
+    SpaceBetween,
+}
+
+/// Renders a 9-patch texture unscaled at corners (1:1 scale) while stretching edges and center to fit `size`.
+pub fn draw_nine_slice(
+    texture: &Texture2D,
+    pos: Vec2,
+    size: Vec2,
+    margins: (f32, f32, f32, f32), // (left, right, top, bottom)
+    tint: Color,
+) {
+    let (l, r, t, b) = margins;
+    let tw = texture.width();
+    let th = texture.height();
+
+    let src_l = l.min(tw * 0.5);
+    let src_r = r.min(tw * 0.5);
+    let src_t = t.min(th * 0.5);
+    let src_b = b.min(th * 0.5);
+
+    let src_mid_w = (tw - src_l - src_r).max(0.0);
+    let src_mid_h = (th - src_t - src_b).max(0.0);
+
+    let dest_mid_w = (size.x - src_l - src_r).max(0.0);
+    let dest_mid_h = (size.y - src_t - src_b).max(0.0);
+
+    let src_xs = [0.0, src_l, tw - src_r];
+    let src_ys = [0.0, src_t, th - src_b];
+    let src_ws = [src_l, src_mid_w, src_r];
+    let src_hs = [src_t, src_mid_h, src_b];
+
+    let dest_xs = [pos.x, pos.x + src_l, pos.x + size.x - src_r];
+    let dest_ys = [pos.y, pos.y + src_t, pos.y + size.y - src_b];
+    let dest_ws = [src_l, dest_mid_w, src_r];
+    let dest_hs = [src_t, dest_mid_h, src_b];
+
+    for row in 0..3 {
+        for col in 0..3 {
+            if src_ws[col] <= 0.0 || src_hs[row] <= 0.0 || dest_ws[col] <= 0.0 || dest_hs[row] <= 0.0 {
+                continue;
+            }
+            let src = Rect::new(src_xs[col], src_ys[row], src_ws[col], src_hs[row]);
+            let dest = vec2(dest_ws[col], dest_hs[row]);
+            draw_texture_ex(
+                texture,
+                dest_xs[col],
+                dest_ys[row],
+                tint,
+                DrawTextureParams {
+                    source: Some(src),
+                    dest_size: Some(dest),
+                    ..Default::default()
+                },
+            );
+        }
+    }
+}
+
 impl UIAnchor {
     /// Computes top-left `Vec2` position for an element of `size` relative to current screen dimensions (`screen_width()` × `screen_height()`).
     pub fn compute_position(&self, size: Vec2, padding: impl Into<Padding>) -> Vec2 {
@@ -339,6 +464,14 @@ pub struct Text {
     full_content: String,
     /// Counter tracking revealed characters.
     revealed_chars: f32,
+    /// Text horizontal alignment. Defaults to [`TextAlign::Left`].
+    pub alignment: TextAlign,
+    /// Drop shadow `(color, offset_vec2)`.
+    pub shadow: Option<(Color, Vec2)>,
+    /// Text outline `(color, thickness)`.
+    pub outline: Option<(Color, f32)>,
+    pub padding: Padding,
+    pub margin: Margin,
 }
 
 impl Text {
@@ -360,7 +493,42 @@ impl Text {
             max_width: None,
             line_spacing: 0.0,
             revealed_chars: len,
+            alignment: TextAlign::Left,
+            shadow: None,
+            outline: None,
+            padding: Padding::default(),
+            margin: Margin::default(),
         }
+    }
+
+    /// Builder pattern: Sets horizontal text alignment.
+    pub fn align(mut self, alignment: TextAlign) -> Self {
+        self.alignment = alignment;
+        self
+    }
+
+    /// Builder pattern: Enables text drop shadow with color and pixel offset.
+    pub fn with_shadow(mut self, color: Color, offset: Vec2) -> Self {
+        self.shadow = Some((color, offset));
+        self
+    }
+
+    /// Builder pattern: Enables text outline stroke.
+    pub fn with_outline(mut self, color: Color, width: f32) -> Self {
+        self.outline = Some((color, width));
+        self
+    }
+
+    /// Builder pattern: Sets internal padding.
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self
+    }
+
+    /// Builder pattern: Sets external margin.
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self
     }
 
     /// Builder pattern: Sets the text color.
@@ -609,6 +777,57 @@ impl Object for Text {
         }
         let (pos, font_size, line_spacing, max_width) = self.resolved_geometry();
 
+        let render_line = |str_val: &str, x: f32, y: f32, color: Color| {
+            if let Some(ref font) = self.font {
+                draw_text_ex(
+                    str_val,
+                    x,
+                    y,
+                    TextParams {
+                        font: Some(font),
+                        font_size: font_size as u16,
+                        color,
+                        ..Default::default()
+                    },
+                );
+            } else {
+                draw_text(str_val, x, y, font_size, color);
+            }
+        };
+
+        let draw_single_line = |line: &str, base_x: f32, base_y: f32| {
+            let width = measure_text(line, self.font.as_ref(), font_size as u16, 1.0).width;
+            let align_offset_x = match self.alignment {
+                TextAlign::Left => 0.0,
+                TextAlign::Center => -width * 0.5,
+                TextAlign::Right => -width,
+            };
+            let final_x = base_x + align_offset_x;
+
+            if let Some((outline_color, stroke)) = self.outline {
+                let s = stroke * (font_size / self.font_size);
+                for dx in [-s, 0.0, s] {
+                    for dy in [-s, 0.0, s] {
+                        if dx != 0.0 || dy != 0.0 {
+                            render_line(line, final_x + dx, base_y + dy, outline_color);
+                        }
+                    }
+                }
+            }
+
+            if let Some((shadow_color, shadow_offset)) = self.shadow {
+                let (scale, _) = get_ui_scale();
+                render_line(
+                    line,
+                    final_x + shadow_offset.x * scale,
+                    base_y + shadow_offset.y * scale,
+                    shadow_color,
+                );
+            }
+
+            render_line(line, final_x, base_y, self.color);
+        };
+
         if let Some(max_w) = max_width {
             let font_ref = self.font.as_ref();
             let lines = self.wrap_lines_with(&self.content, max_w, |s| {
@@ -617,38 +836,10 @@ impl Object for Text {
 
             for (i, line) in lines.iter().enumerate() {
                 let y = pos.y + (i as f32) * line_spacing;
-                if let Some(ref font) = self.font {
-                    draw_text_ex(
-                        line,
-                        pos.x,
-                        y,
-                        TextParams {
-                            font: Some(font),
-                            font_size: font_size as u16,
-                            color: self.color,
-                            ..Default::default()
-                        },
-                    );
-                } else {
-                    draw_text(line, pos.x, y, font_size, self.color);
-                }
+                draw_single_line(line, pos.x, y);
             }
         } else {
-            if let Some(ref font) = self.font {
-                draw_text_ex(
-                    &self.content,
-                    pos.x,
-                    pos.y,
-                    TextParams {
-                        font: Some(font),
-                        font_size: font_size as u16,
-                        color: self.color,
-                        ..Default::default()
-                    },
-                );
-            } else {
-                draw_text(&self.content, pos.x, pos.y, font_size, self.color);
-            }
+            draw_single_line(&self.content, pos.x, pos.y);
         }
     }
 
@@ -714,6 +905,7 @@ impl<Data> std::ops::DerefMut for Behavior<Text, Data> {
 // ---------------------------------------------------------------------------
 
 /// Interactive UI button component.
+#[allow(clippy::type_complexity)]
 pub struct Button {
     pub position: Vec2,
     pub size: Vec2,
@@ -726,6 +918,13 @@ pub struct Button {
     pub tag: String,
     pub visible: bool,
     pub active: bool,
+    pub on_click: Option<Box<dyn FnMut(&mut Context)>>,
+    pub hover_sound: Option<String>,
+    pub click_sound: Option<String>,
+    pub hover_scale: f32,
+    pub padding: Padding,
+    pub margin: Margin,
+    was_hovered: bool,
 }
 
 impl Button {
@@ -743,7 +942,45 @@ impl Button {
             tag: String::new(),
             visible: true,
             active: true,
+            on_click: None,
+            hover_sound: None,
+            click_sound: None,
+            hover_scale: 1.0,
+            padding: Padding::default(),
+            margin: Margin::default(),
+            was_hovered: false,
         }
+    }
+
+    /// Builder pattern: Attaches an `on_click` callback closure executed when button is pressed.
+    pub fn on_click<F: FnMut(&mut Context) + 'static>(mut self, callback: F) -> Self {
+        self.on_click = Some(Box::new(callback));
+        self
+    }
+
+    /// Builder pattern: Attaches sound effect names played from `ctx.audio` on hover and click.
+    pub fn with_sounds(mut self, hover_sfx: impl Into<String>, click_sfx: impl Into<String>) -> Self {
+        self.hover_sound = Some(hover_sfx.into());
+        self.click_sound = Some(click_sfx.into());
+        self
+    }
+
+    /// Builder pattern: Sets hover scale multiplier (e.g. `1.05` for 5% zoom on hover).
+    pub fn with_hover_scale(mut self, scale: f32) -> Self {
+        self.hover_scale = scale;
+        self
+    }
+
+    /// Builder pattern: Sets internal padding.
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self
+    }
+
+    /// Builder pattern: Sets external margin.
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self
     }
 
     /// Builder pattern: Sets the entity tag.
@@ -818,21 +1055,57 @@ impl Clickable for Button {
 }
 
 impl Object for Button {
-    fn update(&mut self, _ctx: &mut Context) {}
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.active || !self.visible {
+            return;
+        }
+
+        let is_currently_hovered = self.is_hovered_ctx(ctx);
+        if is_currently_hovered && !self.was_hovered && let Some(ref sound) = self.hover_sound {
+            ctx.audio.play(&ctx.assets, sound);
+        }
+        self.was_hovered = is_currently_hovered;
+
+        if self.is_clicked_ctx(ctx) {
+            if let Some(ref sound) = self.click_sound {
+                ctx.audio.play(&ctx.assets, sound);
+            }
+            if let Some(ref mut callback) = self.on_click {
+                (callback)(ctx);
+            }
+        }
+    }
 
     fn draw(&self) {
         if !self.visible {
             return;
         }
         let pos = self.position + get_draw_offset();
-        let bg_color = if self.is_hovered() {
+        let hovered = self.is_hovered();
+        let bg_color = if hovered {
             self.hover_color
         } else {
             self.color
         };
-        draw_rectangle(pos.x, pos.y, self.size.x, self.size.y, bg_color);
-        let tx = pos.x + 10.0;
-        let ty = pos.y + (self.size.y / 2.0) + (self.font_size / 3.0);
+
+        let current_size = if hovered && self.hover_scale != 1.0 {
+            self.size * self.hover_scale
+        } else {
+            self.size
+        };
+
+        let draw_pos = if hovered && self.hover_scale != 1.0 {
+            pos - (current_size - self.size) * 0.5
+        } else {
+            pos
+        };
+
+        draw_rectangle(draw_pos.x, draw_pos.y, current_size.x, current_size.y, bg_color);
+
+        let text_dims = measure_text(&self.label, self.font.as_ref(), self.font_size as u16, 1.0);
+        let tx = draw_pos.x + (current_size.x - text_dims.width) * 0.5;
+        let ty = draw_pos.y + (current_size.y + text_dims.offset_y) * 0.5;
+
         if let Some(ref font) = self.font {
             draw_text_ex(
                 &self.label,
@@ -895,22 +1168,72 @@ pub struct ProgressBar {
     pub active: bool,
     /// Optional key entry in [`Context::state`](crate::engine::Context::state) (`f64` between 0.0 and 1.0) for automatic progress updates.
     pub state_binding: Option<String>,
+    pub target_progress: f32,
+    pub smooth_lerp_speed: f32,
+    pub label: Option<String>,
+    pub show_percentage: bool,
+    pub padding: Padding,
+    pub margin: Margin,
 }
 
 impl ProgressBar {
     /// Creates a new [`ProgressBar`].
     pub fn new(position: Vec2, size: Vec2, progress: f32) -> Self {
+        let p = progress.clamp(0.0, 1.0);
         Self {
             position,
             size,
-            progress: progress.clamp(0.0, 1.0),
+            progress: p,
             bg_color: RED,
             fill_color: GREEN,
             tag: String::new(),
             visible: true,
             active: true,
             state_binding: None,
+            target_progress: p,
+            smooth_lerp_speed: 0.0,
+            label: None,
+            show_percentage: false,
+            padding: Padding::default(),
+            margin: Margin::default(),
         }
+    }
+
+    /// Builder pattern: Enables smooth lerp transition when progress value changes.
+    pub fn with_smooth_lerp(mut self, speed: f32) -> Self {
+        self.smooth_lerp_speed = speed;
+        self
+    }
+
+    /// Builder pattern: Sets text label displayed on top of progress bar.
+    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+
+    /// Builder pattern: Displays percentage value text on top of progress bar.
+    pub fn with_percentage_text(mut self) -> Self {
+        self.show_percentage = true;
+        self
+    }
+
+    /// Builder pattern: Sets internal padding.
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self
+    }
+
+    /// Builder pattern: Sets external margin.
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self
+    }
+
+    /// Builder pattern: Sets background and fill colors.
+    pub fn with_colors(mut self, bg_color: Color, fill_color: Color) -> Self {
+        self.bg_color = bg_color;
+        self.fill_color = fill_color;
+        self
     }
 
     /// Builder pattern: Sets the entity tag.
@@ -966,7 +1289,13 @@ impl ProgressBar {
 
     /// Sets progress ratio (`0.0` .. `1.0`).
     pub fn set_progress(&mut self, progress: f32) {
-        self.progress = progress.clamp(0.0, 1.0);
+        let p = progress.clamp(0.0, 1.0);
+        if self.smooth_lerp_speed > 0.0 {
+            self.target_progress = p;
+        } else {
+            self.progress = p;
+            self.target_progress = p;
+        }
     }
 }
 
@@ -981,6 +1310,11 @@ impl Object for ProgressBar {
             let val = ctx.state.get_float(key) as f32;
             self.set_progress(val);
         }
+
+        if self.smooth_lerp_speed > 0.0 {
+            let dt = ctx.time.deltatime();
+            self.progress += (self.target_progress - self.progress) * (self.smooth_lerp_speed * dt).min(1.0);
+        }
     }
 
     fn draw(&self) {
@@ -992,6 +1326,22 @@ impl Object for ProgressBar {
         let fill_w = self.size.x * self.progress;
         if fill_w > 0.0 {
             draw_rectangle(pos.x, pos.y, fill_w, self.size.y, self.fill_color);
+        }
+
+        let display_text = if let Some(ref l) = self.label {
+            Some(l.clone())
+        } else if self.show_percentage {
+            Some(format!("{:.0}%", self.progress * 100.0))
+        } else {
+            None
+        };
+
+        if let Some(text_str) = display_text {
+            let font_sz = (self.size.y * 0.7).max(10.0);
+            let dims = measure_text(&text_str, None, font_sz as u16, 1.0);
+            let tx = pos.x + (self.size.x - dims.width) * 0.5;
+            let ty = pos.y + (self.size.y + dims.offset_y) * 0.5;
+            draw_text(&text_str, tx, ty, font_sz, WHITE);
         }
     }
 
@@ -1356,6 +1706,9 @@ pub struct Panel {
         note = "Use panel_manager::PanelManager for draggable desktop windows. ui::Panel is a static grouping container."
     )]
     pub draggable: bool,
+    pub nine_slice_margins: Option<(f32, f32, f32, f32)>,
+    pub padding: Padding,
+    pub margin: Margin,
 }
 
 #[allow(deprecated)]
@@ -1383,7 +1736,47 @@ impl Panel {
             auto_screen_size: false,
             screen_padding: 0.0,
             draggable: true,
+            nine_slice_margins: None,
+            padding: Padding::default(),
+            margin: Margin::default(),
         }
+    }
+
+    /// Builder pattern: Enables 9-patch Nine-Slice texture rendering for frame background.
+    pub fn with_nine_slice(mut self, texture: Texture2D, margins: (f32, f32, f32, f32)) -> Self {
+        self.background_texture = Some(texture);
+        self.nine_slice_margins = Some(margins);
+        self
+    }
+
+    /// Builder pattern: Sets internal padding.
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self
+    }
+
+    /// Builder pattern: Sets external margin.
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self
+    }
+
+    /// Fluent builder: Adds a new [`Text`] component to panel children.
+    pub fn add_text(mut self, text: impl Into<String>, pos: Vec2, font_size: f32, color: Color) -> Self {
+        self.children.push(Box::new(Text::new(text, pos, font_size, color)));
+        self
+    }
+
+    /// Fluent builder: Adds a new [`Button`] component to panel children.
+    pub fn add_button(mut self, pos: Vec2, size: Vec2, label: impl Into<String>) -> Self {
+        self.children.push(Box::new(Button::new(pos, size, label)));
+        self
+    }
+
+    /// Fluent builder: Adds a new [`Image`] component to panel children.
+    pub fn add_image(mut self, pos: Vec2, size: Vec2, texture: Texture2D) -> Self {
+        self.children.push(Box::new(Image::new(texture).with_position(pos).with_size(size)));
+        self
     }
 
     /// Builder pattern: Resizes and positions panel to cover the full screen (`screen_width()` × `screen_height()`).
@@ -1708,7 +2101,9 @@ impl Object for Panel {
             return;
         }
         let pos = self.position + get_draw_offset();
-        if let Some(ref tex) = self.background_texture {
+        if let (Some(tex), Some(margins)) = (&self.background_texture, self.nine_slice_margins) {
+            draw_nine_slice(tex, pos, self.size, margins, self.texture_tint);
+        } else if let Some(ref tex) = self.background_texture {
             draw_texture_ex(
                 tex,
                 pos.x,
@@ -1863,9 +2258,16 @@ pub struct TextLog {
     pub auto_screen_size: bool,
     /// Margin padding applied when `auto_screen_size` is enabled.
     pub screen_padding: f32,
-    lines: Vec<String>,
+    lines: Vec<TextLogLine>,
     scroll_offset: f32,
     target_scroll: f32,
+}
+
+/// Single colored line entry stored inside a [`TextLog`].
+#[derive(Clone, Debug)]
+pub struct TextLogLine {
+    pub text: String,
+    pub color: Color,
 }
 
 impl TextLog {
@@ -2016,9 +2418,18 @@ impl TextLog {
     /// Appends a new line to the log buffer, evicting the oldest line if `max_lines` is exceeded.
     /// Automatically splits input containing `\n` into separate lines.
     pub fn push_line(&mut self, text: impl Into<String>) {
+        let col = self.color;
+        self.append_colored_line(text, col);
+    }
+
+    /// Appends a new line with an explicit `color` to the log buffer.
+    pub fn append_colored_line(&mut self, text: impl Into<String>, color: Color) {
         let content = text.into();
         for line in content.split('\n') {
-            self.lines.push(line.to_string());
+            self.lines.push(TextLogLine {
+                text: line.to_string(),
+                color,
+            });
         }
         self.enforce_max_lines();
         self.recalculate_scroll();
@@ -2041,8 +2452,8 @@ impl TextLog {
     }
 
     /// Returns a read-only slice of the current line buffer.
-    pub fn lines(&self) -> &[String] {
-        &self.lines
+    pub fn lines(&self) -> Vec<String> {
+        self.lines.iter().map(|l| l.text.clone()).collect()
     }
 
     /// Returns total rendered content height of all lines.
@@ -2096,29 +2507,28 @@ impl Object for TextLog {
             let sw = safe_screen_width();
             let sh = safe_screen_height();
             self.position = vec2(self.screen_padding, self.screen_padding);
-            self.size = vec2((sw - self.screen_padding * 2.0).max(10.0), (sh - self.screen_padding * 2.0).max(10.0));
+            self.size = vec2(
+                (sw - self.screen_padding * 2.0).max(10.0),
+                (sh - self.screen_padding * 2.0).max(10.0),
+            );
+            self.recalculate_scroll();
         }
 
-        // Mouse wheel scrolling when cursor is inside log viewport in real screen pixels
-        let (mx, my) = macroquad::input::mouse_position();
-        if self.real_screen_rect().contains(vec2(mx, my)) {
+        // Handle mouse wheel scrolling inside TextLog rect
+        let mouse_pos = macroquad::input::mouse_position();
+        if self.real_screen_rect().contains(vec2(mouse_pos.0, mouse_pos.1)) {
             let (_wheel_x, wheel_y) = macroquad::input::mouse_wheel();
             if wheel_y != 0.0 {
-                self.target_scroll -= wheel_y * 35.0;
+                self.target_scroll = (self.target_scroll - wheel_y * 35.0)
+                    .clamp(0.0, self.target_scroll_bottom());
             }
         }
-        let max_scroll = self.target_scroll_bottom();
-        self.target_scroll = self.target_scroll.clamp(0.0, max_scroll);
 
-        match self.scroll_mode {
-            ScrollMode::Smooth(speed) => {
-                let dt = ctx.time.deltatime();
-                let lerp_factor = (speed * dt).min(1.0);
-                self.scroll_offset += (self.target_scroll - self.scroll_offset) * lerp_factor;
-            }
-            ScrollMode::Instant => {
-                self.scroll_offset = self.target_scroll;
-            }
+        if let ScrollMode::Smooth(speed) = self.scroll_mode {
+            let dt = ctx.time.deltatime();
+            self.scroll_offset += (self.target_scroll - self.scroll_offset) * (speed * dt).min(1.0);
+        } else {
+            self.scroll_offset = self.target_scroll;
         }
     }
 
@@ -2136,23 +2546,23 @@ impl Object for TextLog {
         };
 
         let render_lines = || {
-            for (i, line) in self.lines.iter().enumerate() {
+            for (i, entry) in self.lines.iter().enumerate() {
                 let draw_x = pos.x;
                 let draw_y = pos.y + (i as f32) * line_spacing + font_size * 0.75 - scroll_offset;
                 if let Some(ref font) = self.font {
                     draw_text_ex(
-                        line,
+                        &entry.text,
                         draw_x,
                         draw_y,
                         TextParams {
                             font: Some(font),
                             font_size: font_size as u16,
-                            color: self.color,
+                            color: entry.color,
                             ..Default::default()
                         },
                     );
                 } else {
-                    draw_text(line, draw_x, draw_y, font_size, self.color);
+                    draw_text(&entry.text, draw_x, draw_y, font_size, entry.color);
                 }
             }
         };
@@ -2181,8 +2591,12 @@ impl Object for TextLog {
         if !self.lines.is_empty() {
             self.lines.pop();
         }
+        let col = self.color;
         for line in new_lines {
-            self.lines.push(line.to_string());
+            self.lines.push(TextLogLine {
+                text: line.to_string(),
+                color: col,
+            });
         }
         self.enforce_max_lines();
         self.recalculate_scroll();
@@ -2411,6 +2825,7 @@ impl Default for UI {
 
 /// Interactive UI text input field supporting focus management, character typing,
 /// placeholder text, blinking cursor, custom fonts, and optional decorations.
+#[allow(clippy::type_complexity)]
 pub struct TextField {
     pub position: Vec2,
     pub size: Vec2,
@@ -2430,7 +2845,10 @@ pub struct TextField {
     pub focused: bool,
     pub decorated: bool,
     pub max_length: Option<usize>,
-    cursor_timer: f32,
+    pub cursor_timer: f32,
+    pub on_submit: Option<Box<dyn FnMut(&str, &mut Context)>>,
+    pub padding: Padding,
+    pub margin: Margin,
 }
 
 impl TextField {
@@ -2456,7 +2874,28 @@ impl TextField {
             decorated: true,
             max_length: None,
             cursor_timer: 0.0,
+            on_submit: None,
+            padding: Padding::default(),
+            margin: Margin::default(),
         }
+    }
+
+    /// Builder pattern: Attaches an `on_submit` callback executed when Enter key is pressed while focused.
+    pub fn on_submit<F: FnMut(&str, &mut Context) + 'static>(mut self, callback: F) -> Self {
+        self.on_submit = Some(Box::new(callback));
+        self
+    }
+
+    /// Builder pattern: Sets internal padding.
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self
+    }
+
+    /// Builder pattern: Sets external margin.
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self
     }
 
     /// Builder pattern: Sets initial text.
@@ -2635,6 +3074,13 @@ impl Object for TextField {
             if is_key_pressed(KeyCode::Backspace) {
                 self.text.pop();
             }
+
+            if is_key_pressed(KeyCode::Enter)
+                && let Some(ref mut callback) = self.on_submit
+            {
+                let txt = self.text.clone();
+                (callback)(&txt, ctx);
+            }
         }
     }
 
@@ -2764,6 +3210,625 @@ impl<Data> std::ops::DerefMut for Behavior<TextField, Data> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// VBox — Vertical Column Layout Container
+// ---------------------------------------------------------------------------
+
+/// Container that automatically positions child entities in a vertical column.
+pub struct VBox {
+    pub position: Vec2,
+    pub size: Vec2,
+    pub spacing: f32,
+    pub align: LayoutAlign,
+    pub justify: LayoutJustify,
+    pub padding: Padding,
+    pub margin: Margin,
+    pub children: Vec<Box<dyn Object>>,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+}
+
+impl VBox {
+    /// Creates a new [`VBox`] at `position` with vertical `spacing` between children.
+    pub fn new(position: Vec2, spacing: f32) -> Self {
+        Self {
+            position,
+            size: Vec2::ZERO,
+            spacing,
+            align: LayoutAlign::Start,
+            justify: LayoutJustify::Start,
+            padding: Padding::default(),
+            margin: Margin::default(),
+            children: Vec::new(),
+            tag: String::new(),
+            visible: true,
+            active: true,
+        }
+    }
+
+    /// Builder pattern: Adds a child component to the layout column.
+    pub fn with_child<O: Object + 'static>(mut self, child: O) -> Self {
+        self.children.push(Box::new(child));
+        self.relayout();
+        self
+    }
+
+    /// Builder pattern: Sets cross-axis alignment.
+    pub fn with_align(mut self, align: LayoutAlign) -> Self {
+        self.align = align;
+        self.relayout();
+        self
+    }
+
+    /// Builder pattern: Sets internal padding.
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self.relayout();
+        self
+    }
+
+    /// Builder pattern: Sets external margin.
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self.relayout();
+        self
+    }
+
+    /// Recalculates child positions and container size.
+    pub fn relayout(&mut self) {
+        let mut cur_y = self.position.y + self.padding.top;
+        let mut max_w: f32 = 0.0;
+
+        for child in self.children.iter_mut() {
+            let bounds = child.bounds().unwrap_or(Rect::new(0.0, 0.0, 100.0, 20.0));
+            let cur_x = match self.align {
+                LayoutAlign::Start | LayoutAlign::Stretch => self.position.x + self.padding.left,
+                LayoutAlign::Center => self.position.x + self.padding.left + (self.size.x - bounds.w) * 0.5,
+                LayoutAlign::End => self.position.x + self.padding.left + (self.size.x - bounds.w),
+            };
+            child.set_position(vec2(cur_x, cur_y));
+            cur_y += bounds.h + self.spacing;
+            max_w = max_w.max(bounds.w);
+        }
+
+        let total_h = (cur_y - self.position.y - self.spacing + self.padding.bottom).max(0.0);
+        self.size = vec2(max_w + self.padding.left + self.padding.right, total_h);
+    }
+}
+
+impl Object for VBox {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
+        for child in self.children.iter_mut() {
+            child.update(ctx);
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+        for child in self.children.iter() {
+            child.draw();
+        }
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HBox — Horizontal Row Layout Container
+// ---------------------------------------------------------------------------
+
+/// Container that automatically positions child entities in a horizontal row.
+pub struct HBox {
+    pub position: Vec2,
+    pub size: Vec2,
+    pub spacing: f32,
+    pub align: LayoutAlign,
+    pub padding: Padding,
+    pub margin: Margin,
+    pub children: Vec<Box<dyn Object>>,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+}
+
+impl HBox {
+    /// Creates a new [`HBox`] at `position` with horizontal `spacing` between children.
+    pub fn new(position: Vec2, spacing: f32) -> Self {
+        Self {
+            position,
+            size: Vec2::ZERO,
+            spacing,
+            align: LayoutAlign::Start,
+            padding: Padding::default(),
+            margin: Margin::default(),
+            children: Vec::new(),
+            tag: String::new(),
+            visible: true,
+            active: true,
+        }
+    }
+
+    /// Builder pattern: Adds a child component to the layout row.
+    pub fn with_child<O: Object + 'static>(mut self, child: O) -> Self {
+        self.children.push(Box::new(child));
+        self.relayout();
+        self
+    }
+
+    /// Builder pattern: Sets internal padding.
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self.relayout();
+        self
+    }
+
+    /// Builder pattern: Sets external margin.
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self.relayout();
+        self
+    }
+
+    /// Recalculates child positions and container size.
+    pub fn relayout(&mut self) {
+        let mut cur_x = self.position.x + self.padding.left;
+        let mut max_h: f32 = 0.0;
+
+        for child in self.children.iter_mut() {
+            let bounds = child.bounds().unwrap_or(Rect::new(0.0, 0.0, 100.0, 20.0));
+            let cur_y = match self.align {
+                LayoutAlign::Start | LayoutAlign::Stretch => self.position.y + self.padding.top,
+                LayoutAlign::Center => self.position.y + self.padding.top + (self.size.y - bounds.h) * 0.5,
+                LayoutAlign::End => self.position.y + self.padding.top + (self.size.y - bounds.h),
+            };
+            child.set_position(vec2(cur_x, cur_y));
+            cur_x += bounds.w + self.spacing;
+            max_h = max_h.max(bounds.h);
+        }
+
+        let total_w = (cur_x - self.position.x - self.spacing + self.padding.right).max(0.0);
+        self.size = vec2(total_w, max_h + self.padding.top + self.padding.bottom);
+    }
+}
+
+impl Object for HBox {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
+        for child in self.children.iter_mut() {
+            child.update(ctx);
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+        for child in self.children.iter() {
+            child.draw();
+        }
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Grid — 2D Auto-Wrapping Grid Layout Container
+// ---------------------------------------------------------------------------
+
+/// Container that automatically lays out children in an M × N grid, wrapping rows.
+pub struct Grid {
+    pub position: Vec2,
+    pub columns: usize,
+    pub cell_size: Vec2,
+    pub spacing: Vec2,
+    pub padding: Padding,
+    pub margin: Margin,
+    pub children: Vec<Box<dyn Object>>,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+}
+
+impl Grid {
+    /// Creates a new [`Grid`] at `position` with fixed `columns` count and `cell_size`.
+    pub fn new(position: Vec2, columns: usize, cell_size: Vec2, spacing: Vec2) -> Self {
+        Self {
+            position,
+            columns: columns.max(1),
+            cell_size,
+            spacing,
+            padding: Padding::default(),
+            margin: Margin::default(),
+            children: Vec::new(),
+            tag: String::new(),
+            visible: true,
+            active: true,
+        }
+    }
+
+    /// Builder pattern: Adds a child component to the grid.
+    pub fn with_child<O: Object + 'static>(mut self, child: O) -> Self {
+        self.children.push(Box::new(child));
+        self.relayout();
+        self
+    }
+
+    /// Builder pattern: Sets internal padding.
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self.relayout();
+        self
+    }
+
+    /// Builder pattern: Sets external margin.
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self.relayout();
+        self
+    }
+
+    /// Recalculates child positions based on grid column wrapping.
+    pub fn relayout(&mut self) {
+        for (i, child) in self.children.iter_mut().enumerate() {
+            let col = i % self.columns;
+            let row = i / self.columns;
+            let x = self.position.x + self.padding.left + (col as f32) * (self.cell_size.x + self.spacing.x);
+            let y = self.position.y + self.padding.top + (row as f32) * (self.cell_size.y + self.spacing.y);
+            child.set_position(vec2(x, y));
+        }
+    }
+}
+
+impl Object for Grid {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
+        for child in self.children.iter_mut() {
+            child.update(ctx);
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+        for child in self.children.iter() {
+            child.draw();
+        }
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Slider — Interactive range slider widget
+// ---------------------------------------------------------------------------
+
+/// Interactive numeric range slider for settings menus (audio volume, sensitivity).
+#[allow(clippy::type_complexity)]
+pub struct Slider {
+    pub position: Vec2,
+    pub size: Vec2,
+    pub min_val: f32,
+    pub max_val: f32,
+    pub value: f32,
+    pub track_color: Color,
+    pub fill_color: Color,
+    pub knob_color: Color,
+    pub is_dragging: bool,
+    pub on_change: Option<Box<dyn FnMut(f32, &mut Context)>>,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+}
+
+impl Slider {
+    /// Creates a new [`Slider`] bounded in range `[min, max]` initialized at `value`.
+    pub fn new(position: Vec2, size: Vec2, min_val: f32, max_val: f32, value: f32) -> Self {
+        Self {
+            position,
+            size,
+            min_val,
+            max_val,
+            value: value.clamp(min_val, max_val),
+            track_color: GRAY,
+            fill_color: GREEN,
+            knob_color: WHITE,
+            is_dragging: false,
+            on_change: None,
+            tag: String::new(),
+            visible: true,
+            active: true,
+        }
+    }
+
+    /// Builder pattern: Attaches an `on_change` callback closure.
+    pub fn on_change<F: FnMut(f32, &mut Context) + 'static>(mut self, callback: F) -> Self {
+        self.on_change = Some(Box::new(callback));
+        self
+    }
+
+    /// Returns current ratio between 0.0 and 1.0.
+    pub fn ratio(&self) -> f32 {
+        if self.max_val > self.min_val {
+            (self.value - self.min_val) / (self.max_val - self.min_val)
+        } else {
+            0.0
+        }
+    }
+
+    /// Sets slider value clamped to `[min, max]`.
+    pub fn set_value(&mut self, val: f32) {
+        self.value = val.clamp(self.min_val, self.max_val);
+    }
+}
+
+impl Clickable for Slider {
+    fn click_rect(&self) -> Rect {
+        Rect {
+            x: self.position.x,
+            y: self.position.y,
+            w: self.size.x,
+            h: self.size.y,
+        }
+    }
+    fn is_active(&self) -> bool {
+        self.active
+    }
+}
+
+impl Object for Slider {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.active || !self.visible {
+            return;
+        }
+
+        if is_mouse_button_pressed(MouseButton::Left) && self.is_hovered_ctx(ctx) {
+            self.is_dragging = true;
+        }
+
+        if !macroquad::input::is_mouse_button_down(MouseButton::Left) {
+            self.is_dragging = false;
+        }
+
+        if self.is_dragging {
+            let mpos = ctx.input.mouse_position();
+            let ratio = ((mpos.x - self.position.x) / self.size.x).clamp(0.0, 1.0);
+            let new_val = self.min_val + ratio * (self.max_val - self.min_val);
+            if (new_val - self.value).abs() > 0.0001 {
+                self.value = new_val;
+                if let Some(ref mut cb) = self.on_change {
+                    (cb)(self.value, ctx);
+                }
+            }
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+        let pos = self.position + get_draw_offset();
+        let track_h = self.size.y * 0.4;
+        let track_y = pos.y + (self.size.y - track_h) * 0.5;
+
+        // Draw track
+        draw_rectangle(pos.x, track_y, self.size.x, track_h, self.track_color);
+
+        // Draw fill
+        let fill_w = self.size.x * self.ratio();
+        if fill_w > 0.0 {
+            draw_rectangle(pos.x, track_y, fill_w, track_h, self.fill_color);
+        }
+
+        // Draw knob
+        let knob_x = pos.x + fill_w - self.size.y * 0.25;
+        draw_rectangle(knob_x, pos.y, self.size.y * 0.5, self.size.y, self.knob_color);
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Checkbox — Interactive toggle box widget
+// ---------------------------------------------------------------------------
+
+/// Interactive checkbox widget with label for boolean settings.
+#[allow(clippy::type_complexity)]
+pub struct Checkbox {
+    pub position: Vec2,
+    pub size: Vec2,
+    pub label: String,
+    pub checked: bool,
+    pub box_color: Color,
+    pub check_color: Color,
+    pub text_color: Color,
+    pub on_toggle: Option<Box<dyn FnMut(bool, &mut Context)>>,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+}
+
+impl Checkbox {
+    /// Creates a new [`Checkbox`] with `label` and initial `checked` state.
+    pub fn new(position: Vec2, size: Vec2, label: impl Into<String>, checked: bool) -> Self {
+        Self {
+            position,
+            size,
+            label: label.into(),
+            checked,
+            box_color: GRAY,
+            check_color: GREEN,
+            text_color: WHITE,
+            on_toggle: None,
+            tag: String::new(),
+            visible: true,
+            active: true,
+        }
+    }
+
+    /// Builder pattern: Attaches an `on_toggle` callback.
+    pub fn on_toggle<F: FnMut(bool, &mut Context) + 'static>(mut self, callback: F) -> Self {
+        self.on_toggle = Some(Box::new(callback));
+        self
+    }
+}
+
+impl Clickable for Checkbox {
+    fn click_rect(&self) -> Rect {
+        Rect {
+            x: self.position.x,
+            y: self.position.y,
+            w: self.size.x + 10.0 + self.label.len() as f32 * 10.0,
+            h: self.size.y,
+        }
+    }
+    fn is_active(&self) -> bool {
+        self.active
+    }
+}
+
+impl Object for Checkbox {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.active || !self.visible {
+            return;
+        }
+
+        if self.is_clicked_ctx(ctx) {
+            self.checked = !self.checked;
+            if let Some(ref mut cb) = self.on_toggle {
+                (cb)(self.checked, ctx);
+            }
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+        let pos = self.position + get_draw_offset();
+        draw_rectangle(pos.x, pos.y, self.size.x, self.size.y, self.box_color);
+
+        if self.checked {
+            let pad = self.size.x * 0.2;
+            draw_rectangle(
+                pos.x + pad,
+                pos.y + pad,
+                self.size.x - pad * 2.0,
+                self.size.y - pad * 2.0,
+                self.check_color,
+            );
+        }
+
+        if !self.label.is_empty() {
+            let tx = pos.x + self.size.x + 8.0;
+            let ty = pos.y + self.size.y * 0.8;
+            draw_text(&self.label, tx, ty, self.size.y * 0.8, self.text_color);
+        }
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tooltip — Hover popup information card
+// ---------------------------------------------------------------------------
+
+/// Hover information card popup displaying contextual info text over target components.
+pub struct Tooltip {
+    pub position: Vec2,
+    pub text: String,
+    pub font_size: f32,
+    pub bg_color: Color,
+    pub text_color: Color,
+    pub visible: bool,
+}
+
+impl Tooltip {
+    /// Creates a new [`Tooltip`] displaying `text` at cursor offset `position`.
+    pub fn new(text: impl Into<String>, position: Vec2) -> Self {
+        Self {
+            position,
+            text: text.into(),
+            font_size: 14.0,
+            bg_color: Color::from_rgba(10, 10, 15, 230),
+            text_color: WHITE,
+            visible: true,
+        }
+    }
+}
+
+impl Object for Tooltip {
+    fn draw(&self) {
+        if !self.visible || self.text.is_empty() {
+            return;
+        }
+        let dims = measure_text(&self.text, None, self.font_size as u16, 1.0);
+        let pad = 6.0;
+        let pos = self.position + get_draw_offset();
+        let w = dims.width + pad * 2.0;
+        let h = dims.height + pad * 2.0;
+
+        draw_rectangle(pos.x, pos.y, w, h, self.bg_color);
+        draw_text(
+            &self.text,
+            pos.x + pad,
+            pos.y + pad + dims.offset_y,
+            self.font_size,
+            self.text_color,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2844,5 +3909,56 @@ mod tests {
         assert!(!real_rect.contains(vec2(10.0, 10.0)));
 
         set_ui_scale(1.0, Vec2::ZERO);
+    }
+
+    #[test]
+    fn test_box_model_helpers() {
+        let p = Padding::symmetric(16.0, 8.0);
+        assert_eq!(p.left, 16.0);
+        assert_eq!(p.top, 8.0);
+
+        let m = Margin::only_top(20.0);
+        assert_eq!(m.top, 20.0);
+        assert_eq!(m.left, 0.0);
+    }
+
+    #[test]
+    fn test_vbox_hbox_grid_layouts() {
+        let vbox = VBox::new(vec2(10.0, 10.0), 5.0)
+            .with_child(Button::new(Vec2::ZERO, vec2(100.0, 30.0), "Btn 1"))
+            .with_child(Button::new(Vec2::ZERO, vec2(100.0, 30.0), "Btn 2"));
+
+        assert_eq!(vbox.children[0].bounds().unwrap().y, 10.0);
+        assert_eq!(vbox.children[1].bounds().unwrap().y, 45.0); // 10 + 30 + 5
+
+        let hbox = HBox::new(vec2(10.0, 10.0), 10.0)
+            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 30.0), "B1"))
+            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 30.0), "B2"));
+
+        assert_eq!(hbox.children[0].bounds().unwrap().x, 10.0);
+        assert_eq!(hbox.children[1].bounds().unwrap().x, 70.0); // 10 + 50 + 10
+
+        let grid = Grid::new(vec2(0.0, 0.0), 2, vec2(50.0, 50.0), vec2(10.0, 10.0))
+            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 50.0), "1"))
+            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 50.0), "2"))
+            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 50.0), "3"));
+
+        assert_eq!(grid.children[0].bounds().unwrap().x, 0.0);
+        assert_eq!(grid.children[1].bounds().unwrap().x, 60.0);
+        assert_eq!(grid.children[2].bounds().unwrap().y, 60.0); // row 1
+    }
+
+    #[test]
+    fn test_slider_and_checkbox_widgets() {
+        let mut slider = Slider::new(Vec2::ZERO, vec2(100.0, 20.0), 0.0, 100.0, 50.0);
+        assert_eq!(slider.ratio(), 0.5);
+
+        slider.set_value(75.0);
+        assert_eq!(slider.ratio(), 0.75);
+
+        let mut cb = Checkbox::new(Vec2::ZERO, vec2(20.0, 20.0), "Option", false);
+        assert!(!cb.checked);
+        cb.checked = true;
+        assert!(cb.checked);
     }
 }

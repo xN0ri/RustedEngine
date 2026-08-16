@@ -51,6 +51,11 @@ pub use resources::Resources;
 pub use save_system::{SaveError, SaveSlotMeta, SaveSystem};
 pub use tilemap::Tilemap;
 pub use trigger::{Trigger, TriggerSystem};
+pub use ui::{
+    Button, Checkbox, Grid, HBox, Image, LayoutAlign, LayoutJustify, Margin, Padding,
+    Panel as UiPanel, ProgressBar, RevealMode, ScrollMode, Slider, Text, TextAlign, TextField,
+    TextLog, TextLogLine, Tooltip, UIAnchor, VBox, UI,
+};
 
 #[cfg(test)]
 mod tests {
@@ -384,19 +389,19 @@ mod tests {
         log.push_line("Line 1");
         log.push_line("Line 2");
         log.push_line("Line 3");
-        assert_eq!(log.lines(), &["Line 1", "Line 2", "Line 3"]);
+        assert_eq!(log.lines(), vec!["Line 1", "Line 2", "Line 3"]);
 
         // Push 4th line -> should evict Line 1
         log.push_line("Line 4");
-        assert_eq!(log.lines(), &["Line 2", "Line 3", "Line 4"]);
+        assert_eq!(log.lines(), vec!["Line 2", "Line 3", "Line 4"]);
 
         // Push multi-line string with newlines
         log.push_line("Line 5\nLine 6");
-        assert_eq!(log.lines(), &["Line 4", "Line 5", "Line 6"]);
+        assert_eq!(log.lines(), vec!["Line 4", "Line 5", "Line 6"]);
 
         // set_text replaces last line
         log.set_text("Line 6 (updated)");
-        assert_eq!(log.lines(), &["Line 4", "Line 5", "Line 6 (updated)"]);
+        assert_eq!(log.lines(), vec!["Line 4", "Line 5", "Line 6 (updated)"]);
 
         // with_max_lines trims existing buffer if lowered
         let trimmed_log = log.with_max_lines(2);
