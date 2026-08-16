@@ -24,6 +24,7 @@ pub mod camera;
 pub mod content;
 pub mod draggable;
 pub mod engine;
+pub mod events;
 pub mod input;
 pub mod object;
 pub mod panel_manager;
@@ -31,9 +32,11 @@ pub mod particles;
 pub mod postprocess;
 pub mod prelude;
 pub mod resources;
+pub mod save_system;
 pub mod scene;
 pub mod sequence;
 pub mod state;
+pub mod tilemap;
 pub mod time;
 pub mod trigger;
 pub mod ui;
@@ -42,8 +45,11 @@ pub mod world;
 
 pub use animated_texture::AnimatedSprite;
 pub use content::{ContentError, load_content, load_content_dir};
+pub use events::EventBus;
 pub use panel_manager::{PanelId, PanelManager};
 pub use resources::Resources;
+pub use save_system::{SaveError, SaveSlotMeta, SaveSystem};
+pub use tilemap::Tilemap;
 pub use trigger::{Trigger, TriggerSystem};
 
 #[cfg(test)]

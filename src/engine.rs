@@ -69,6 +69,10 @@ pub struct Context {
     pub resources: Resources,
     /// Generic condition→action trigger system operating on `resources`.
     pub triggers: TriggerSystem,
+    /// Type-safe event bus for decoupled event emission and subscription.
+    pub events: crate::events::EventBus,
+    /// Slot-based save system with anti-tamper checksum validation.
+    pub save_system: crate::save_system::SaveSystem,
     /// Internal active custom mouse cursor override.
     pub(crate) cursor: Option<CustomCursor>,
     /// Pending scene switch request name.
@@ -88,6 +92,8 @@ impl Context {
             actions: ActionMap::new(),
             resources: Resources::new(),
             triggers: TriggerSystem::new(),
+            events: crate::events::EventBus::new(),
+            save_system: crate::save_system::SaveSystem::default(),
             cursor: None,
             pending_scene: None,
         }

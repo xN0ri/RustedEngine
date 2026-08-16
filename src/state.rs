@@ -86,6 +86,11 @@ impl StateStore {
         Self::default()
     }
 
+    /// Returns a read-only reference to the underlying values map.
+    pub fn values(&self) -> &HashMap<String, StateValue> {
+        &self.values
+    }
+
     // ----- Setters -----
 
     /// Sets an explicit [`StateValue`] entry for `key`.
