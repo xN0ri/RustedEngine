@@ -14,6 +14,22 @@
 //!
 //! **Rule of thumb**: Use `ui::Panel` to lay out the interior of a window.
 //! Use `panel_manager::PanelManager` (added to `World` via `world.add_ui`) to manage the windows themselves.
+//!
+//! # Architecture: Dual Coordinate Systems & Hit-Testing Rules
+//!
+//! RustedEngine supports two distinct UI coordinate systems when virtual resolution is active:
+//!
+//! 1. **Virtual Space (`0..vw, 0..vh`) — Non-Text Widgets (`is_text_layer() == false`)**:
+//!    - Used by [`Panel`], [`Image`], [`Button`], [`ProgressBar`], [`TextField`].
+//!    - Rendered into the Virtual Render Target (`SceneRenderTarget`, `vrt.target`) using a virtual Camera2D (`0..vw, 0..vh`).
+//!    - Mouse hit-testing MUST use `ctx.input.mouse_position()`, which converts physical screen coordinates into virtual space `(x - ox) / scale`.
+//!
+//! 2. **Native Screen Space — Text Layer Widgets (`is_text_layer() == true`)**:
+//!    - Used by [`Text`] and [`TextLog`].
+//!    - Rendered directly to the physical window framebuffer after VRT blitting to ensure TTF fonts are rasterized at native screen pixel density.
+//!    - Resolved geometry uses [`get_ui_scale()`]: `pos = position * scale + get_draw_offset() * scale + ui_offset`, `size = size * scale`, `font_size = font_size * scale`.
+//!    - Mouse hit-testing MUST use raw OS screen coordinates (`macroquad::input::mouse_position()`) compared against `real_screen_rect()` (`position * scale + ui_offset`, `size * scale`).
+use std::cell::RefCell;
 use macroquad::{
     color::{Color, GRAY, GREEN, LIGHTGRAY, RED, WHITE},
     input::{KeyCode, MouseButton, is_key_pressed, is_mouse_button_pressed, mouse_position},
@@ -30,7 +46,7 @@ use crate::{
     world::Object,
 };
 
-use std::cell::RefCell;
+
 
 thread_local! {
     static SCISSOR_STACK: RefCell<Vec<Rect>> = const { RefCell::new(Vec::new()) };
@@ -82,6 +98,24 @@ pub fn get_draw_offset() -> Vec2 {
     DRAW_OFFSET_STACK.with(|stack| stack.borrow().last().copied().unwrap_or(Vec2::ZERO))
 }
 
+thread_local! {
+    static UI_SCALE: std::cell::Cell<(f32, Vec2)> = const { std::cell::Cell::new((1.0, Vec2::ZERO)) };
+}
+
+/// Sets the current UI text scale factor and screen-space offset (letterbox origin),
+/// used by [`Text`] and [`TextLog`] to rasterize fonts at native screen pixel density
+/// even when a virtual resolution pipeline is active. Called once per frame by
+/// [`crate::engine::Engine::run`]; defaults to `(1.0, Vec2::ZERO)` (no-op) when no
+/// virtual resolution is configured.
+pub fn set_ui_scale(scale: f32, offset: Vec2) {
+    UI_SCALE.with(|s| s.set((scale, offset)));
+}
+
+/// Returns the current `(scale, offset)` set by [`set_ui_scale`].
+pub fn get_ui_scale() -> (f32, Vec2) {
+    UI_SCALE.with(|s| s.get())
+}
+
 // ---------------------------------------------------------------------------
 // RevealMode — Text reveal animation mode
 // ---------------------------------------------------------------------------
@@ -94,6 +128,153 @@ pub enum RevealMode {
     Instant,
     /// Text appears character-by-character at the specified speed.
     Typewriter { chars_per_sec: f32 },
+}
+
+// ---------------------------------------------------------------------------
+// UIAnchor — Anchor positions for aligning UI elements to screen bounds
+// ---------------------------------------------------------------------------
+
+/// Anchor alignment presets for positioning UI elements relative to screen boundaries (4K, 2K, 1080p, etc.).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum UIAnchor {
+    #[default]
+    TopLeft,
+    TopCenter,
+    TopRight,
+    CenterLeft,
+    Center,
+    CenterRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+thread_local! {
+    /// Virtual resolution override set by `Engine::with_virtual_resolution`.
+    /// When `Some((w, h))`, `safe_screen_*` returns virtual dimensions instead of real screen.
+    static VIRTUAL_RES: RefCell<Option<(f32, f32)>> = const { RefCell::new(None) };
+}
+
+/// Sets the virtual resolution used by `safe_screen_*` helpers this frame.
+/// Called by [`Engine`](crate::engine::Engine) when `with_virtual_resolution` is active.
+pub(crate) fn set_virtual_resolution(w: f32, h: f32) {
+    VIRTUAL_RES.with(|r| *r.borrow_mut() = Some((w, h)));
+}
+
+/// Clears the virtual resolution override, restoring `safe_screen_*` to real screen dimensions.
+#[allow(dead_code)]
+pub(crate) fn clear_virtual_resolution() {
+    VIRTUAL_RES.with(|r| *r.borrow_mut() = None);
+}
+
+pub fn safe_screen_width() -> f32 {
+    if cfg!(test) {
+        800.0
+    } else {
+        VIRTUAL_RES.with(|r| r.borrow().map(|(w, _)| w).unwrap_or_else(macroquad::window::screen_width))
+    }
+}
+
+pub fn safe_screen_height() -> f32 {
+    if cfg!(test) {
+        600.0
+    } else {
+        VIRTUAL_RES.with(|r| r.borrow().map(|(_, h)| h).unwrap_or_else(macroquad::window::screen_height))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Padding — Layout padding helper (Flutter / CSS style)
+// ---------------------------------------------------------------------------
+
+/// Layout padding container for UI element margins and anchor offsets (left, top, right, bottom).
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct Padding {
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+}
+
+impl Padding {
+    /// Zero padding on all sides (`0.0`).
+    pub fn zero() -> Self {
+        Self::default()
+    }
+
+    /// Uniform padding on all 4 sides (`val`).
+    pub fn all(val: f32) -> Self {
+        Self {
+            left: val,
+            top: val,
+            right: val,
+            bottom: val,
+        }
+    }
+
+    /// Symmetric padding: `horizontal` (left/right) and `vertical` (top/bottom).
+    pub fn symmetric(horizontal: f32, vertical: f32) -> Self {
+        Self {
+            left: horizontal,
+            top: vertical,
+            right: horizontal,
+            bottom: vertical,
+        }
+    }
+
+    /// Explicit padding for specific sides (Flutter-style `Padding::only(...)`).
+    pub fn only(left: f32, top: f32, right: f32, bottom: f32) -> Self {
+        Self {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+}
+
+impl From<f32> for Padding {
+    fn from(val: f32) -> Self {
+        Padding::all(val)
+    }
+}
+
+impl From<Vec2> for Padding {
+    fn from(v: Vec2) -> Self {
+        Padding::symmetric(v.x, v.y)
+    }
+}
+
+impl From<(f32, f32)> for Padding {
+    fn from((h, v): (f32, f32)) -> Self {
+        Padding::symmetric(h, v)
+    }
+}
+
+impl From<(f32, f32, f32, f32)> for Padding {
+    fn from((l, t, r, b): (f32, f32, f32, f32)) -> Self {
+        Padding::only(l, t, r, b)
+    }
+}
+
+impl UIAnchor {
+    /// Computes top-left `Vec2` position for an element of `size` relative to current screen dimensions (`screen_width()` × `screen_height()`).
+    pub fn compute_position(&self, size: Vec2, padding: impl Into<Padding>) -> Vec2 {
+        let p = padding.into();
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        match self {
+            UIAnchor::TopLeft => vec2(p.left, p.top),
+            UIAnchor::TopCenter => vec2((sw - size.x) * 0.5 + p.left - p.right, p.top),
+            UIAnchor::TopRight => vec2(sw - size.x - p.right, p.top),
+            UIAnchor::CenterLeft => vec2(p.left, (sh - size.y) * 0.5 + p.top - p.bottom),
+            UIAnchor::Center => vec2((sw - size.x) * 0.5 + p.left - p.right, (sh - size.y) * 0.5 + p.top - p.bottom),
+            UIAnchor::CenterRight => vec2(sw - size.x - p.right, (sh - size.y) * 0.5 + p.top - p.bottom),
+            UIAnchor::BottomLeft => vec2(p.left, sh - size.y - p.bottom),
+            UIAnchor::BottomCenter => vec2((sw - size.x) * 0.5 + p.left - p.right, sh - size.y - p.bottom),
+            UIAnchor::BottomRight => vec2(sw - size.x - p.right, sh - size.y - p.bottom),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +357,27 @@ impl Text {
     /// Builder pattern: Sets the entity tag.
     pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
         self.tag = tag.into();
+        self
+    }
+
+    /// Builder pattern: Centers text on screen.
+    pub fn center_on_screen(mut self) -> Self {
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        let font_ref = self.font.as_ref();
+        let font_size = self.font_size;
+        let dim = measure_text(&self.content, font_ref, font_size as u16, 1.0);
+        self.position = vec2((sw - dim.width) * 0.5, (sh - dim.height) * 0.5);
+        self
+    }
+
+    /// Builder pattern: Aligns text on screen using a [`UIAnchor`] preset and padding.
+    pub fn align_to_screen(mut self, anchor: UIAnchor, padding: impl Into<Padding>) -> Self {
+        let font_ref = self.font.as_ref();
+        let font_size = self.font_size;
+        let dim = measure_text(&self.content, font_ref, font_size as u16, 1.0);
+        let size = vec2(dim.width, dim.height);
+        self.position = anchor.compute_position(size, padding);
         self
     }
 
@@ -330,6 +532,21 @@ impl Text {
     pub fn is_finished(&self) -> bool {
         self.revealed_chars >= self.full_content.len() as f32
     }
+
+    /// Returns resolved screen-space geometry `(pos, font_size, line_spacing, max_width)`
+    /// accounting for current UI scale factor, draw offset, and letterbox viewport origin.
+    pub(crate) fn resolved_geometry(&self) -> (Vec2, f32, f32, Option<f32>) {
+        let (scale, ui_offset) = get_ui_scale();
+        let pos = self.position * scale + get_draw_offset() * scale + ui_offset;
+        let font_size = self.font_size * scale;
+        let line_spacing = if self.line_spacing > 0.0 {
+            self.line_spacing * scale
+        } else {
+            font_size * 1.2
+        };
+        let max_width = self.max_width.map(|w| w * scale);
+        (pos, font_size, line_spacing, max_width)
+    }
 }
 
 impl Object for Text {
@@ -357,16 +574,10 @@ impl Object for Text {
         if !self.visible {
             return;
         }
-        let pos = self.position + get_draw_offset();
-        let line_spacing = if self.line_spacing > 0.0 {
-            self.line_spacing
-        } else {
-            self.font_size * 1.2
-        };
+        let (pos, font_size, line_spacing, max_width) = self.resolved_geometry();
 
-        if let Some(max_w) = self.max_width {
+        if let Some(max_w) = max_width {
             let font_ref = self.font.as_ref();
-            let font_size = self.font_size;
             let lines = self.wrap_lines_with(&self.content, max_w, |s| {
                 measure_text(s, font_ref, font_size as u16, 1.0).width
             });
@@ -380,13 +591,13 @@ impl Object for Text {
                         y,
                         TextParams {
                             font: Some(font),
-                            font_size: self.font_size as u16,
+                            font_size: font_size as u16,
                             color: self.color,
                             ..Default::default()
                         },
                     );
                 } else {
-                    draw_text(line, pos.x, y, self.font_size, self.color);
+                    draw_text(line, pos.x, y, font_size, self.color);
                 }
             }
         } else {
@@ -397,15 +608,19 @@ impl Object for Text {
                     pos.y,
                     TextParams {
                         font: Some(font),
-                        font_size: self.font_size as u16,
+                        font_size: font_size as u16,
                         color: self.color,
                         ..Default::default()
                     },
                 );
             } else {
-                draw_text(&self.content, pos.x, pos.y, self.font_size, self.color);
+                draw_text(&self.content, pos.x, pos.y, font_size, self.color);
             }
         }
+    }
+
+    fn is_text_layer(&self) -> bool {
+        true
     }
 
     fn tag(&self) -> &str {
@@ -422,6 +637,10 @@ impl Object for Text {
 
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
+    }
+
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
     }
 
     fn is_active(&self) -> bool {
@@ -610,6 +829,10 @@ impl Object for Button {
         self.visible = visible;
     }
 
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
@@ -751,12 +974,296 @@ impl Object for ProgressBar {
         self.visible = visible;
     }
 
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Image — UI Image component for rendering textures/pictures in screen-space
+// ---------------------------------------------------------------------------
+
+/// UI Image component for displaying static or loaded textures in screen-space.
+///
+/// Implements [`Object`] + [`Clickable`].
+///
+/// # Example
+/// ```ignore
+/// let logo = Image::from_assets(assets, "logo", vec2(20.0, 20.0), vec2(128.0, 128.0))
+///     .unwrap()
+///     .align_to_screen(UIAnchor::TopRight, vec2(20.0, 20.0));
+/// ```
+pub struct Image {
+    pub position: Vec2,
+    pub size: Vec2,
+    pub texture: Texture2D,
+    pub tint: Color,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+    /// Whether the image automatically resizes to match screen width & height each frame.
+    pub auto_screen_size: bool,
+    /// Margin padding applied when `auto_screen_size` is enabled.
+    pub screen_padding: f32,
+    /// Optional screen anchor alignment preset and padding for dynamic re-alignment.
+    pub anchor: Option<(UIAnchor, Padding)>,
+}
+
+impl Image {
+    /// Creates a new UI [`Image`] at `(0, 0)` with size defaulting to native texture dimensions (`tex.width()` × `tex.height()`).
+    pub fn new(texture: Texture2D) -> Self {
+        let size = vec2(texture.width(), texture.height());
+        Self::new_with_size(Vec2::ZERO, size, texture)
+    }
+
+    /// Creates a new UI [`Image`] with explicit position and size.
+    pub fn new_with_size(position: Vec2, size: Vec2, texture: Texture2D) -> Self {
+        Self {
+            position,
+            size,
+            texture,
+            tint: WHITE,
+            tag: String::new(),
+            visible: true,
+            active: true,
+            auto_screen_size: false,
+            screen_padding: 0.0,
+            anchor: None,
+        }
+    }
+
+    /// Factory: Loads texture from asset manager by name. Defaults to native texture size at `(0, 0)`.
+    pub fn from_assets(
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Option<Self> {
+        assets
+            .get_texture(name)
+            .map(|tex| Self::new(tex.clone()))
+    }
+
+    /// Factory: Loads texture from asset manager by name with explicit position and size.
+    pub fn from_assets_size(
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+        position: Vec2,
+        size: Vec2,
+    ) -> Option<Self> {
+        assets
+            .get_texture(name)
+            .map(|tex| Self::new_with_size(position, size, tex.clone()))
+    }
+
+    /// Builder pattern: Sets explicit image position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit image size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Resizes and positions image to cover the full screen (`screen_width()` × `screen_height()`).
+    pub fn fullscreen(mut self) -> Self {
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        self.position = Vec2::ZERO;
+        self.size = vec2(sw, sh);
+        self.auto_screen_size = true;
+        self.screen_padding = 0.0;
+        self
+    }
+
+    /// Builder pattern: Positions and resizes image to fit screen with uniform padding margin (works for 4K, 2K, 1080p).
+    pub fn fit_to_screen_padding(mut self, padding: f32) -> Self {
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        self.position = vec2(padding, padding);
+        self.size = vec2((sw - padding * 2.0).max(10.0), (sh - padding * 2.0).max(10.0));
+        self.auto_screen_size = true;
+        self.screen_padding = padding;
+        self
+    }
+
+    /// Builder pattern: Enables or disables automatic per-frame screen dimension tracking.
+    pub fn with_auto_screen_size(mut self, enabled: bool) -> Self {
+        self.auto_screen_size = enabled;
+        self
+    }
+
+    /// Builder pattern: Sets the tint color applied when rendering the texture.
+    pub fn with_tint(mut self, tint: Color) -> Self {
+        self.tint = tint;
+        self
+    }
+
+    /// Builder pattern: Sets the entity tag.
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
+        self
+    }
+
+    /// Builder pattern: Centers image on screen.
+    pub fn center_on_screen(mut self) -> Self {
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        self.position = vec2((sw - self.size.x) * 0.5, (sh - self.size.y) * 0.5);
+        self
+    }
+
+    /// Builder pattern: Aligns image position on screen using a [`UIAnchor`] preset and padding.
+    pub fn align_to_screen(mut self, anchor: UIAnchor, padding: impl Into<Padding>) -> Self {
+        let pad = padding.into();
+        self.position = anchor.compute_position(self.size, pad);
+        self.anchor = Some((anchor, pad));
+        self
+    }
+
+    /// Builder pattern: Sets image component to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets image component to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets image component to deactivated (`active = false`) (alias for [`deactivated`](Image::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Returns `true` if image is visible.
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    /// Returns `true` if image is active.
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+}
+
+impl Clickable for Image {
+    fn click_rect(&self) -> Rect {
+        Rect {
+            x: self.position.x,
+            y: self.position.y,
+            w: self.size.x,
+            h: self.size.y,
+        }
+    }
+    fn is_active(&self) -> bool {
+        self.active
+    }
+}
+
+impl Object for Image {
+    fn update(&mut self, _ctx: &mut Context) {
+        if let Some((anchor, pad)) = self.anchor {
+            self.position = anchor.compute_position(self.size, pad);
+        } else if self.auto_screen_size {
+            let sw = safe_screen_width();
+            let sh = safe_screen_height();
+            self.position = vec2(self.screen_padding, self.screen_padding);
+            self.size = vec2((sw - self.screen_padding * 2.0).max(10.0), (sh - self.screen_padding * 2.0).max(10.0));
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+        let pos = self.position + get_draw_offset();
+        draw_texture_ex(
+            &self.texture,
+            pos.x,
+            pos.y,
+            self.tint,
+            DrawTextureParams {
+                dest_size: Some(self.size),
+                ..Default::default()
+            },
+        );
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
+
+    fn bounds(&self) -> Option<Rect> {
+        Some(Rect {
+            x: self.position.x,
+            y: self.position.y,
+            w: self.size.x,
+            h: self.size.y,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ImageObject<Data> = Behavior<Image, Data>
+// ---------------------------------------------------------------------------
+
+/// Type alias for an image component combined with game data and update closure.
+pub type ImageObject<Data> = Behavior<Image, Data>;
+
+impl<Data> std::ops::Deref for Behavior<Image, Data> {
+    type Target = Image;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<Data> std::ops::DerefMut for Behavior<Image, Data> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }
 
@@ -801,6 +1308,10 @@ pub struct Panel {
     pub clip_content: bool,
     /// Optional total content height for clamping scroll offset. `None` = unlimited scroll.
     pub content_height: Option<f32>,
+    /// Whether the panel automatically resizes to match screen dimensions each frame.
+    pub auto_screen_size: bool,
+    /// Margin padding applied when `auto_screen_size` is enabled.
+    pub screen_padding: f32,
     /// Whether the panel can be dragged by the user.
     ///
     /// # Deprecated
@@ -836,8 +1347,52 @@ impl Panel {
             smooth_scroll: true,
             clip_content: true,
             content_height: None,
+            auto_screen_size: false,
+            screen_padding: 0.0,
             draggable: true,
         }
+    }
+
+    /// Builder pattern: Resizes and positions panel to cover the full screen (`screen_width()` × `screen_height()`).
+    pub fn fullscreen(mut self) -> Self {
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        self.position = Vec2::ZERO;
+        self.size = vec2(sw, sh);
+        self.auto_screen_size = true;
+        self.screen_padding = 0.0;
+        self
+    }
+
+    /// Builder pattern: Positions and resizes panel to fit screen with uniform padding margin (works for 4K, 2K, 1080p).
+    pub fn fit_to_screen_padding(mut self, padding: f32) -> Self {
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        self.position = vec2(padding, padding);
+        self.size = vec2((sw - padding * 2.0).max(10.0), (sh - padding * 2.0).max(10.0));
+        self.auto_screen_size = true;
+        self.screen_padding = padding;
+        self
+    }
+
+    /// Builder pattern: Centers panel on screen.
+    pub fn center_on_screen(mut self) -> Self {
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        self.position = vec2((sw - self.size.x) * 0.5, (sh - self.size.y) * 0.5);
+        self
+    }
+
+    /// Builder pattern: Aligns panel position on screen using a [`UIAnchor`] preset and padding.
+    pub fn align_to_screen(mut self, anchor: UIAnchor, padding: impl Into<Padding>) -> Self {
+        self.position = anchor.compute_position(self.size, padding);
+        self
+    }
+
+    /// Builder pattern: Enables or disables automatic per-frame screen dimension tracking.
+    pub fn with_auto_screen_size(mut self, enabled: bool) -> Self {
+        self.auto_screen_size = enabled;
+        self
     }
 
     /// Builder pattern: Sets the entity tag.
@@ -1066,6 +1621,12 @@ impl Object for Panel {
         if !self.active {
             return;
         }
+        if self.auto_screen_size {
+            let sw = safe_screen_width();
+            let sh = safe_screen_height();
+            self.position = vec2(self.screen_padding, self.screen_padding);
+            self.size = vec2((sw - self.screen_padding * 2.0).max(10.0), (sh - self.screen_padding * 2.0).max(10.0));
+        }
         if self.draggable {
             let lmb_pressed = is_mouse_button_pressed(MouseButton::Left);
             let lmb_down = macroquad::input::is_mouse_button_down(MouseButton::Left);
@@ -1197,6 +1758,10 @@ impl Object for Panel {
         self.visible = visible;
     }
 
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
@@ -1281,6 +1846,10 @@ pub struct TextLog {
     pub clip_content: bool,
     /// Scroll animation mode.
     pub scroll_mode: ScrollMode,
+    /// Whether the log automatically resizes to match screen width & height each frame.
+    pub auto_screen_size: bool,
+    /// Margin padding applied when `auto_screen_size` is enabled.
+    pub screen_padding: f32,
     lines: Vec<String>,
     scroll_offset: f32,
     target_scroll: f32,
@@ -1302,10 +1871,48 @@ impl TextLog {
             max_lines: None,
             clip_content: true,
             scroll_mode: ScrollMode::Instant,
+            auto_screen_size: false,
+            screen_padding: 0.0,
             lines: Vec::new(),
             scroll_offset: 0.0,
             target_scroll: 0.0,
         }
+    }
+
+    /// Builder pattern: Resizes and positions log to cover the full screen (`screen_width()` × `screen_height()`).
+    pub fn fullscreen(mut self) -> Self {
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        self.position = Vec2::ZERO;
+        self.size = vec2(sw, sh);
+        self.auto_screen_size = true;
+        self.screen_padding = 0.0;
+        self.recalculate_scroll();
+        self
+    }
+
+    /// Builder pattern: Positions and resizes log to fit the screen with uniform padding margin (works for 4K, 2K, 1080p).
+    pub fn fit_to_screen_padding(mut self, padding: f32) -> Self {
+        let sw = safe_screen_width();
+        let sh = safe_screen_height();
+        self.position = vec2(padding, padding);
+        self.size = vec2((sw - padding * 2.0).max(10.0), (sh - padding * 2.0).max(10.0));
+        self.auto_screen_size = true;
+        self.screen_padding = padding;
+        self.recalculate_scroll();
+        self
+    }
+
+    /// Builder pattern: Aligns log position on screen using a [`UIAnchor`] preset and padding.
+    pub fn align_to_screen(mut self, anchor: UIAnchor, padding: impl Into<Padding>) -> Self {
+        self.position = anchor.compute_position(self.size, padding);
+        self
+    }
+
+    /// Builder pattern: Enables or disables automatic per-frame screen dimension tracking.
+    pub fn with_auto_screen_size(mut self, enabled: bool) -> Self {
+        self.auto_screen_size = enabled;
+        self
     }
 
     /// Builder pattern: Sets the entity tag.
@@ -1341,6 +1948,8 @@ impl TextLog {
     /// Builder pattern: Sets the maximum number of lines retained in the buffer.
     pub fn with_max_lines(mut self, max: usize) -> Self {
         self.max_lines = Some(max);
+        self.enforce_max_lines();
+        self.recalculate_scroll();
         self
     }
 
@@ -1392,14 +2001,23 @@ impl TextLog {
     }
 
     /// Appends a new line to the log buffer, evicting the oldest line if `max_lines` is exceeded.
+    /// Automatically splits input containing `\n` into separate lines.
     pub fn push_line(&mut self, text: impl Into<String>) {
-        self.lines.push(text.into());
+        let content = text.into();
+        for line in content.split('\n') {
+            self.lines.push(line.to_string());
+        }
+        self.enforce_max_lines();
+        self.recalculate_scroll();
+    }
+
+    /// Truncates the line buffer to `max_lines` by removing oldest lines from the front.
+    fn enforce_max_lines(&mut self) {
         if let Some(max) = self.max_lines {
             while self.lines.len() > max {
                 self.lines.remove(0);
             }
         }
-        self.recalculate_scroll();
     }
 
     /// Clears all lines from the log buffer and resets scroll to zero.
@@ -1431,6 +2049,29 @@ impl TextLog {
             self.scroll_offset = self.target_scroll;
         }
     }
+
+    /// Returns resolved screen-space geometry `(pos, font_size, line_spacing, scroll_offset, size)`
+    /// accounting for current UI scale factor, draw offset, and letterbox viewport origin.
+    pub(crate) fn resolved_geometry(&self) -> (Vec2, f32, f32, f32, Vec2) {
+        let (scale, ui_offset) = get_ui_scale();
+        let pos = self.position * scale + get_draw_offset() * scale + ui_offset;
+        let font_size = self.font_size * scale;
+        let line_spacing = self.line_spacing * scale;
+        let scroll_offset = self.scroll_offset * scale;
+        let size = self.size * scale;
+        (pos, font_size, line_spacing, scroll_offset, size)
+    }
+
+    /// Returns the bounding rectangle of the log viewport in real screen pixels.
+    pub(crate) fn real_screen_rect(&self) -> Rect {
+        let (scale, ui_offset) = get_ui_scale();
+        Rect {
+            x: self.position.x * scale + ui_offset.x,
+            y: self.position.y * scale + ui_offset.y,
+            w: self.size.x * scale,
+            h: self.size.y * scale,
+        }
+    }
 }
 
 impl Object for TextLog {
@@ -1438,6 +2079,24 @@ impl Object for TextLog {
         if !self.active {
             return;
         }
+        if self.auto_screen_size {
+            let sw = safe_screen_width();
+            let sh = safe_screen_height();
+            self.position = vec2(self.screen_padding, self.screen_padding);
+            self.size = vec2((sw - self.screen_padding * 2.0).max(10.0), (sh - self.screen_padding * 2.0).max(10.0));
+        }
+
+        // Mouse wheel scrolling when cursor is inside log viewport in real screen pixels
+        let (mx, my) = macroquad::input::mouse_position();
+        if self.real_screen_rect().contains(vec2(mx, my)) {
+            let (_wheel_x, wheel_y) = macroquad::input::mouse_wheel();
+            if wheel_y != 0.0 {
+                self.target_scroll -= wheel_y * 35.0;
+            }
+        }
+        let max_scroll = self.target_scroll_bottom();
+        self.target_scroll = self.target_scroll.clamp(0.0, max_scroll);
+
         match self.scroll_mode {
             ScrollMode::Smooth(speed) => {
                 let dt = ctx.time.deltatime();
@@ -1454,18 +2113,19 @@ impl Object for TextLog {
         if !self.visible {
             return;
         }
-        let pos = self.position + get_draw_offset();
+        let (pos, font_size, line_spacing, scroll_offset, size) = self.resolved_geometry();
+
         let my_rect = Rect {
             x: pos.x,
             y: pos.y,
-            w: self.size.x,
-            h: self.size.y,
+            w: size.x,
+            h: size.y,
         };
 
         let render_lines = || {
             for (i, line) in self.lines.iter().enumerate() {
                 let draw_x = pos.x;
-                let draw_y = pos.y + (i as f32 + 1.0) * self.line_spacing - self.scroll_offset;
+                let draw_y = pos.y + (i as f32) * line_spacing + font_size * 0.75 - scroll_offset;
                 if let Some(ref font) = self.font {
                     draw_text_ex(
                         line,
@@ -1473,13 +2133,13 @@ impl Object for TextLog {
                         draw_y,
                         TextParams {
                             font: Some(font),
-                            font_size: self.font_size as u16,
+                            font_size: font_size as u16,
                             color: self.color,
                             ..Default::default()
                         },
                     );
                 } else {
-                    draw_text(line, draw_x, draw_y, self.font_size, self.color);
+                    draw_text(line, draw_x, draw_y, font_size, self.color);
                 }
             }
         };
@@ -1510,16 +2170,26 @@ impl Object for TextLog {
         }
     }
 
+    fn is_text_layer(&self) -> bool {
+        true
+    }
+
     fn tag(&self) -> &str {
         &self.tag
     }
 
     fn set_text(&mut self, text: &str) {
-        if let Some(last) = self.lines.last_mut() {
-            *last = text.to_string();
-        } else {
-            self.lines.push(text.to_string());
+        let new_lines: Vec<&str> = text.split('\n').collect();
+        if new_lines.is_empty() {
+            return;
         }
+        if !self.lines.is_empty() {
+            self.lines.pop();
+        }
+        for line in new_lines {
+            self.lines.push(line.to_string());
+        }
+        self.enforce_max_lines();
         self.recalculate_scroll();
     }
 
@@ -1533,6 +2203,10 @@ impl Object for TextLog {
 
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
+    }
+
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
     }
 
     fn is_active(&self) -> bool {
@@ -1554,6 +2228,26 @@ impl Object for TextLog {
 
     fn content_height(&self) -> Option<f32> {
         Some(self.content_h())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TextLogObject<Data> = Behavior<TextLog, Data>
+// ---------------------------------------------------------------------------
+
+/// Type alias for a text log component combined with game data and update closure.
+pub type TextLogObject<Data> = Behavior<TextLog, Data>;
+
+impl<Data> std::ops::Deref for Behavior<TextLog, Data> {
+    type Target = TextLog;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<Data> std::ops::DerefMut for Behavior<TextLog, Data> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }
 
@@ -1922,7 +2616,7 @@ impl Object for TextField {
         }
 
         if is_mouse_button_pressed(MouseButton::Left) {
-            self.focused = self.is_hovered();
+            self.focused = self.is_hovered_ctx(ctx);
             if self.focused {
                 self.cursor_timer = 0.0;
             }
@@ -2042,6 +2736,10 @@ impl Object for TextField {
         self.visible = visible;
     }
 
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
@@ -2068,5 +2766,88 @@ impl<Data> std::ops::Deref for Behavior<TextField, Data> {
 impl<Data> std::ops::DerefMut for Behavior<TextField, Data> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::Object;
+
+    #[test]
+    fn test_ui_scale_get_set_reset() {
+        assert_eq!(get_ui_scale(), (1.0, Vec2::ZERO));
+        set_ui_scale(2.0, vec2(10.0, 20.0));
+        assert_eq!(get_ui_scale(), (2.0, vec2(10.0, 20.0)));
+        set_ui_scale(1.0, Vec2::ZERO);
+        assert_eq!(get_ui_scale(), (1.0, Vec2::ZERO));
+    }
+
+    #[test]
+    fn test_is_text_layer() {
+        let text = Text::new("Hello", Vec2::ZERO, 16.0, WHITE);
+        assert!(text.is_text_layer());
+
+        let text_log = TextLog::new(Vec2::ZERO, vec2(100.0, 100.0), 16.0, WHITE);
+        assert!(text_log.is_text_layer());
+
+        let behavior_text = crate::object::Behavior::new(text, ());
+        assert!(behavior_text.is_text_layer());
+
+        let panel = Panel::new(Vec2::ZERO, vec2(100.0, 100.0));
+        assert!(!panel.is_text_layer());
+    }
+
+    #[test]
+    fn test_resolved_geometry_floor_to_one_scale() {
+        // Reproduce floor-to-1.0 letterbox case: scale == 1.0, ui_offset != Vec2::ZERO (e.g. ox = 37.5)
+        set_ui_scale(1.0, vec2(37.5, 12.0));
+
+        let log = TextLog::new(vec2(10.0, 20.0), vec2(200.0, 100.0), 12.0, WHITE);
+        let (pos, font_size, _line_spacing, _scroll_offset, size) = log.resolved_geometry();
+        assert_eq!(pos, vec2(47.5, 32.0)); // 10 + 37.5, 20 + 12.0
+        assert_eq!(font_size, 12.0);
+        assert_eq!(size, vec2(200.0, 100.0));
+
+        let text = Text::new("Test", vec2(10.0, 20.0), 12.0, WHITE);
+        let (t_pos, t_font_size, _t_spacing, _t_max_w) = text.resolved_geometry();
+        assert_eq!(t_pos, vec2(47.5, 32.0));
+        assert_eq!(t_font_size, 12.0);
+
+        set_ui_scale(1.0, Vec2::ZERO);
+    }
+
+    #[test]
+    fn test_resolved_geometry_legacy_mode() {
+        set_ui_scale(1.0, Vec2::ZERO);
+
+        let log = TextLog::new(vec2(10.0, 20.0), vec2(200.0, 100.0), 12.0, WHITE);
+        let (pos, font_size, _spacing, _scroll, size) = log.resolved_geometry();
+        assert_eq!(pos, vec2(10.0, 20.0));
+        assert_eq!(font_size, 12.0);
+        assert_eq!(size, vec2(200.0, 100.0));
+
+        let text = Text::new("Test", vec2(10.0, 20.0), 12.0, WHITE);
+        let (t_pos, t_font_size, _t_spacing, _t_max_w) = text.resolved_geometry();
+        assert_eq!(t_pos, vec2(10.0, 20.0));
+        assert_eq!(t_font_size, 12.0);
+    }
+
+    #[test]
+    fn test_text_log_real_screen_rect_hit_testing() {
+        set_ui_scale(2.0, vec2(50.0, 100.0));
+
+        let log = TextLog::new(vec2(10.0, 20.0), vec2(100.0, 50.0), 12.0, WHITE);
+        let real_rect = log.real_screen_rect();
+        // Expected: x = 10*2 + 50 = 70, y = 20*2 + 100 = 140, w = 100*2 = 200, h = 50*2 = 100
+        assert_eq!(real_rect.x, 70.0);
+        assert_eq!(real_rect.y, 140.0);
+        assert_eq!(real_rect.w, 200.0);
+        assert_eq!(real_rect.h, 100.0);
+
+        assert!(real_rect.contains(vec2(100.0, 150.0)));
+        assert!(!real_rect.contains(vec2(10.0, 10.0)));
+
+        set_ui_scale(1.0, Vec2::ZERO);
     }
 }

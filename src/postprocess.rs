@@ -90,8 +90,8 @@ void main() {
 pub struct SceneRenderTarget {
     /// Underlying Macroquad render target handle.
     pub target: RenderTarget,
-    width: u32,
-    height: u32,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
 }
 
 impl SceneRenderTarget {

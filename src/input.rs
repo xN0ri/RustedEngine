@@ -7,12 +7,19 @@ use macroquad::{
 };
 
 /// Hardware input wrapper exposing keyboard and mouse query methods.
-pub struct Input {}
+pub struct Input {
+    /// Letterbox viewport transform: `(scale, offset_x, offset_y)`.
+    /// Set by [`Engine`](crate::engine::Engine) each frame when `with_virtual_resolution` is active.
+    /// Default `(1.0, 0.0, 0.0)` = passthrough (no remapping).
+    pub(crate) viewport: (f32, f32, f32),
+}
 
 impl Input {
     /// Creates a new [`Input`] query instance.
     pub fn new() -> Self {
-        Self {}
+        Self {
+            viewport: (1.0, 0.0, 0.0),
+        }
     }
 
     /// Returns `true` if the specified keyboard key is currently held down.
@@ -30,8 +37,16 @@ impl Input {
         is_key_released(key)
     }
 
-    /// Returns the current raw screen mouse position in pixels.
+    /// Returns the mouse position mapped to virtual coordinates (when virtual resolution is active),
+    /// or raw screen pixels otherwise. Use [`Input::raw_mouse_position`] for unremapped OS position.
     pub fn mouse_position(&self) -> Vec2 {
+        let (x, y) = mouse_position();
+        let (scale, ox, oy) = self.viewport;
+        vec2((x - ox) / scale, (y - oy) / scale)
+    }
+
+    /// Returns the raw OS mouse position in real screen pixels, unaffected by letterbox scaling.
+    pub fn raw_mouse_position(&self) -> Vec2 {
         let (x, y) = mouse_position();
         vec2(x, y)
     }

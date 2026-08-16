@@ -612,6 +612,10 @@ impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
         self.inner.append_line(text);
     }
 
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.inner.set_position(pos);
+    }
+
     fn is_visible(&self) -> bool {
         self.inner.is_visible()
     }
@@ -626,6 +630,10 @@ impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
 
     fn set_active(&mut self, active: bool) {
         self.inner.set_active(active);
+    }
+
+    fn is_text_layer(&self) -> bool {
+        self.inner.is_text_layer()
     }
 }
 

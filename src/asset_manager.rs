@@ -27,13 +27,38 @@ impl Assets {
     }
 
     /// Asynchronously loads a texture from the given file path and stores it under `name`.
+    /// Automatically normalizes leading slashes (e.g. `"/assets/img.png"` -> `"assets/img.png"`).
     pub async fn load_texture(
         &mut self,
         name: &str,
         path: &str,
     ) -> Result<Texture2D, macroquad::Error> {
-        let texture = load_texture(path).await?;
+        let clean_path = path.trim_start_matches('/').trim_start_matches('\\');
+        let texture = match load_texture(clean_path).await {
+            Ok(t) => t,
+            Err(e1) => match load_texture(path).await {
+                Ok(t) => t,
+                Err(e2) => {
+                    eprintln!(
+                        "[RustedEngine Assets] Failed to load texture '{}' from path '{}' (clean: '{}'): {:?} / {:?}",
+                        name, path, clean_path, e1, e2
+                    );
+                    return Err(e2);
+                }
+            },
+        };
         self.textures.insert(name.to_string(), texture.clone());
+        Ok(texture)
+    }
+
+    /// Asynchronously loads a pixel-art texture with [`FilterMode::Nearest`](macroquad::texture::FilterMode::Nearest) filtering enabled.
+    pub async fn load_texture_nearest(
+        &mut self,
+        name: &str,
+        path: &str,
+    ) -> Result<Texture2D, macroquad::Error> {
+        let texture = self.load_texture(name, path).await?;
+        texture.set_filter(macroquad::texture::FilterMode::Nearest);
         Ok(texture)
     }
 
@@ -63,8 +88,12 @@ impl Assets {
     ) -> Result<Vec<Texture2D>, macroquad::Error> {
         let mut frames = Vec::with_capacity(count);
         for i in 0..count {
-            let path = path_fn(i);
-            let texture = load_texture(&path).await?;
+            let p = path_fn(i);
+            let clean_p = p.trim_start_matches('/').trim_start_matches('\\');
+            let texture = match load_texture(clean_p).await {
+                Ok(t) => t,
+                Err(_) => load_texture(&p).await?,
+            };
             frames.push(texture);
         }
         self.sequences.insert(name.to_string(), frames.clone());
@@ -83,7 +112,20 @@ impl Assets {
 
     /// Asynchronously loads a sound effect from the given file path and stores it under `name`.
     pub async fn load_sound(&mut self, name: &str, path: &str) -> Result<Sound, macroquad::Error> {
-        let sound = load_sound(path).await?;
+        let clean_path = path.trim_start_matches('/').trim_start_matches('\\');
+        let sound = match load_sound(clean_path).await {
+            Ok(s) => s,
+            Err(_e1) => match load_sound(path).await {
+                Ok(s) => s,
+                Err(e2) => {
+                    eprintln!(
+                        "[RustedEngine Assets] Failed to load sound '{}' from path '{}': {:?}",
+                        name, path, e2
+                    );
+                    return Err(e2);
+                }
+            },
+        };
         self.sounds.insert(name.to_string(), sound.clone());
         Ok(sound)
     }
@@ -99,8 +141,26 @@ impl Assets {
     }
 
     /// Asynchronously loads a TTF font from the given file path and stores it under `name`.
+    ///
+    /// # Known Limitation
+    /// Macroquad's [`Font`] type does not expose a public API to configure glyph atlas texture filtering
+    /// (e.g. [`FilterMode::Nearest`](macroquad::texture::FilterMode::Nearest)). Text rendered inside a virtual resolution target ([`Engine::with_virtual_resolution`](crate::engine::Engine::with_virtual_resolution))
+    /// inherits the nearest-neighbor filtering of the underlying [`SceneRenderTarget`](crate::postprocess::SceneRenderTarget) texture when composited to screen.
     pub async fn load_font(&mut self, name: &str, path: &str) -> Result<Font, macroquad::Error> {
-        let font = load_ttf_font(path).await?;
+        let clean_path = path.trim_start_matches('/').trim_start_matches('\\');
+        let font = match load_ttf_font(clean_path).await {
+            Ok(f) => f,
+            Err(_e1) => match load_ttf_font(path).await {
+                Ok(f) => f,
+                Err(e2) => {
+                    eprintln!(
+                        "[RustedEngine Assets] Failed to load font '{}' from path '{}': {:?}",
+                        name, path, e2
+                    );
+                    return Err(e2);
+                }
+            },
+        };
         self.fonts.insert(name.to_string(), font.clone());
         Ok(font)
     }

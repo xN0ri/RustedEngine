@@ -27,6 +27,9 @@ pub trait Object: 'static {
     /// Appends a line of text to entities supporting append-based logging (e.g. [`TextLog`](crate::ui::TextLog)). No-op by default.
     fn append_line(&mut self, _text: &str) {}
 
+    /// Sets the screen-space position of this entity. No-op by default.
+    fn set_position(&mut self, _pos: macroquad::math::Vec2) {}
+
     /// Returns whether this entity is visible for rendering. Defaults to `true`.
     fn is_visible(&self) -> bool {
         true
@@ -56,6 +59,13 @@ pub trait Object: 'static {
     /// Used by [`Panel::fit_content_height`](crate::ui::Panel::fit_content_height) to calculate scroll boundaries.
     fn content_height(&self) -> Option<f32> {
         None
+    }
+
+    /// Returns `true` if this object should bypass the virtual-resolution render target
+    /// and be drawn directly at native screen resolution (used by text elements to avoid
+    /// blurry upscaled font rasterization). Default: `false`.
+    fn is_text_layer(&self) -> bool {
+        false
     }
 
     /// Downcasting helper returning an immutable `&dyn Any` reference, or `None` by default.
@@ -315,6 +325,26 @@ impl World {
     pub fn draw_ui(&self) {
         for obj in self.ui_objects.iter() {
             obj.draw();
+        }
+    }
+
+    /// Renders non-text screen-space UI objects (`is_text_layer() == false`).
+    /// Used when virtual resolution pipeline is active to render non-text UI into VRT.
+    pub fn draw_ui_non_text(&self) {
+        for obj in self.ui_objects.iter() {
+            if !obj.is_text_layer() {
+                obj.draw();
+            }
+        }
+    }
+
+    /// Renders text screen-space UI objects (`is_text_layer() == true`).
+    /// Used when virtual resolution pipeline is active to render text directly at native screen resolution.
+    pub fn draw_ui_text_only(&self) {
+        for obj in self.ui_objects.iter() {
+            if obj.is_text_layer() {
+                obj.draw();
+            }
         }
     }
 }

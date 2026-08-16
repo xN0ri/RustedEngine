@@ -21,8 +21,8 @@ pub use crate::{
     time::{Time, Timer},
     trigger::{Trigger, TriggerSystem},
     ui::{
-        Button, Panel as UiPanel, ProgressBar, RevealMode, ScrollMode, Text, TextField,
-        TextFieldObject, TextLog, TextObject, UI,
+        Button, Image, ImageObject, Padding, Panel as UiPanel, ProgressBar, RevealMode, ScrollMode,
+        Text, TextField, TextFieldObject, TextLog, TextLogObject, TextObject, UIAnchor, UI,
     },
     window::Window,
     world,

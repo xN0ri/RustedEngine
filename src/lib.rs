@@ -366,4 +366,99 @@ mod tests {
 
         assert!(ctx.state.get_bool("logic_updated"));
     }
+
+    #[test]
+    fn test_text_log_max_lines() {
+        use macroquad::color::WHITE;
+        use macroquad::math::vec2;
+
+        let mut log = crate::ui::TextLog::new(vec2(0.0, 0.0), vec2(200.0, 100.0), 16.0, WHITE)
+            .with_max_lines(3);
+
+        log.push_line("Line 1");
+        log.push_line("Line 2");
+        log.push_line("Line 3");
+        assert_eq!(log.lines(), &["Line 1", "Line 2", "Line 3"]);
+
+        // Push 4th line -> should evict Line 1
+        log.push_line("Line 4");
+        assert_eq!(log.lines(), &["Line 2", "Line 3", "Line 4"]);
+
+        // Push multi-line string with newlines
+        log.push_line("Line 5\nLine 6");
+        assert_eq!(log.lines(), &["Line 4", "Line 5", "Line 6"]);
+
+        // set_text replaces last line
+        log.set_text("Line 6 (updated)");
+        assert_eq!(log.lines(), &["Line 4", "Line 5", "Line 6 (updated)"]);
+
+        // with_max_lines trims existing buffer if lowered
+        let trimmed_log = log.with_max_lines(2);
+        assert_eq!(trimmed_log.lines(), &["Line 5", "Line 6 (updated)"]);
+    }
+
+    #[test]
+    fn test_ui_screen_alignment() {
+        use crate::ui::{Padding, Panel, TextLog, UIAnchor};
+        use macroquad::color::WHITE;
+        use macroquad::math::vec2;
+
+        let log = TextLog::new(vec2(0.0, 0.0), vec2(100.0, 100.0), 16.0, WHITE)
+            .fit_to_screen_padding(20.0);
+
+        assert!(log.auto_screen_size);
+        assert_eq!(log.screen_padding, 20.0);
+
+        let panel = Panel::new(vec2(0.0, 0.0), vec2(200.0, 200.0))
+            .fullscreen();
+
+        assert!(panel.auto_screen_size);
+
+        // Vec2 still works (From<Vec2> impl)
+        let anchor_pos = UIAnchor::TopRight.compute_position(vec2(100.0, 50.0), vec2(10.0, 10.0));
+        assert!(anchor_pos.x >= 0.0);
+        assert_eq!(anchor_pos.y, 10.0);
+
+        // Padding::only — different sides
+        let p = Padding::only(5.0, 10.0, 15.0, 20.0);
+        assert_eq!(p.left, 5.0);
+        assert_eq!(p.top, 10.0);
+        assert_eq!(p.right, 15.0);
+        assert_eq!(p.bottom, 20.0);
+
+        // Padding::all — uniform
+        let p_all = Padding::all(8.0);
+        assert_eq!(p_all.left, 8.0);
+        assert_eq!(p_all.right, 8.0);
+
+        // Padding::symmetric
+        let p_sym = Padding::symmetric(4.0, 12.0);
+        assert_eq!(p_sym.left, 4.0);
+        assert_eq!(p_sym.right, 4.0);
+        assert_eq!(p_sym.top, 12.0);
+        assert_eq!(p_sym.bottom, 12.0);
+
+        // f32 -> Padding
+        let p_f32: Padding = 6.0_f32.into();
+        assert_eq!(p_f32.left, 6.0);
+
+        // (f32, f32) tuple -> Padding
+        let p_tuple: Padding = (3.0_f32, 7.0_f32).into();
+        assert_eq!(p_tuple.left, 3.0);
+        assert_eq!(p_tuple.top, 7.0);
+
+        // (f32, f32, f32, f32) tuple -> Padding
+        let p_tuple4: Padding = (1.0_f32, 2.0_f32, 3.0_f32, 4.0_f32).into();
+        assert_eq!(p_tuple4.left, 1.0);
+        assert_eq!(p_tuple4.bottom, 4.0);
+
+        // UIAnchor::BottomRight with Padding::only
+        let br = UIAnchor::BottomRight.compute_position(
+            vec2(100.0, 50.0),
+            Padding::only(0.0, 0.0, 20.0, 10.0),
+        );
+        // screen 800x600 (safe_screen), so: x = 800 - 100 - 20 = 680, y = 600 - 50 - 10 = 540
+        assert_eq!(br.x, 680.0);
+        assert_eq!(br.y, 540.0);
+    }
 }

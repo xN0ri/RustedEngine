@@ -22,6 +22,10 @@ pub struct Camera {
     shake_timer: f32,
     /// Cached camera matrix computed during update for frame consistency.
     cached: Camera2D,
+    /// Optional virtual resolution override for zoom calculation.
+    /// When `Some(vw, vh)`, camera zoom is based on virtual dimensions instead of real screen.
+    /// Set automatically by [`Engine`](crate::engine::Engine) when `with_virtual_resolution` is active.
+    pub(crate) virtual_size: Option<Vec2>,
 }
 
 impl Camera {
@@ -36,6 +40,7 @@ impl Camera {
             shake_duration: 0.0,
             shake_timer: 0.0,
             cached,
+            virtual_size: None,
         }
     }
 
@@ -104,6 +109,12 @@ impl Camera {
         };
 
         self.cached = Self::build_camera2d(self.target, self.zoom, self.rotation, shake_offset);
+
+        // When virtual resolution is active, override zoom to be based on virtual dimensions.
+        // This ensures 1 world unit = 1 virtual pixel regardless of real screen resolution.
+        if let Some(vs) = self.virtual_size {
+            self.cached.zoom = vec2((2.0 / vs.x) * self.zoom, (2.0 / vs.y) * self.zoom);
+        }
     }
 
     /// Activates world-space camera rendering mode (for world entities).
