@@ -608,6 +608,10 @@ impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
         self.inner.set_text(text);
     }
 
+    fn append_line(&mut self, text: &str) {
+        self.inner.append_line(text);
+    }
+
     fn is_visible(&self) -> bool {
         self.inner.is_visible()
     }

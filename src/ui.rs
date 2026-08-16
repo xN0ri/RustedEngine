@@ -1226,6 +1226,338 @@ impl Object for Panel {
 }
 
 // ---------------------------------------------------------------------------
+// ScrollMode — TextLog scroll animation mode
+// ---------------------------------------------------------------------------
+
+/// Scroll animation mode for [`TextLog`].
+#[derive(Clone, Debug)]
+pub enum ScrollMode {
+    /// Scroll jumps instantly to the bottom when a new line is added.
+    Instant,
+    /// Scroll lerps toward the target bottom position each frame at the given speed factor.
+    Smooth(f32),
+}
+
+// ---------------------------------------------------------------------------
+// TextLog — Auto-scrolling text log / terminal / console component
+// ---------------------------------------------------------------------------
+
+/// Auto-scrolling text log UI component for terminal-style output, dialogue logs, and consoles.
+///
+/// Lines are stored in an internal buffer and rendered top-to-bottom inside a clipped viewport.
+/// New lines are appended via [`push_line`](TextLog::push_line) or [`Step::AppendLine`](crate::sequence::Step::AppendLine).
+/// [`set_text`](TextLog::set_text) on a [`TextLog`] replaces the **last** line, enabling in-place
+/// animation (e.g. `"Setting up."` → `"Setting up.."` → `"Setting up..."`) without growing the buffer.
+///
+/// # Example
+/// ```ignore
+/// let mut log = TextLog::new(vec2(20.0, 40.0), vec2(400.0, 200.0), 18.0, WHITE)
+///     .with_tag("boot_log")
+///     .with_scroll_mode(ScrollMode::Smooth(12.0))
+///     .with_max_lines(50);
+/// ```
+pub struct TextLog {
+    /// Top-left position of the log viewport.
+    pub position: Vec2,
+    /// Size (width × height) of the log viewport.
+    pub size: Vec2,
+    /// Font size in pixels.
+    pub font_size: f32,
+    /// Optional TTF font; uses macroquad default when `None`.
+    pub font: Option<Font>,
+    /// Text color.
+    pub color: Color,
+    /// Vertical gap between lines. Defaults to `font_size * 1.2`.
+    pub line_spacing: f32,
+    /// Entity tag used for scene queries and [`Step`](crate::sequence::Step) targeting.
+    pub tag: String,
+    /// Whether the component is rendered.
+    pub visible: bool,
+    /// Whether the component receives update ticks.
+    pub active: bool,
+    /// Maximum number of lines retained. Oldest lines are evicted from the front. `None` = unlimited.
+    pub max_lines: Option<usize>,
+    /// Whether to clip rendered lines to the viewport bounds using the scissor test.
+    pub clip_content: bool,
+    /// Scroll animation mode.
+    pub scroll_mode: ScrollMode,
+    lines: Vec<String>,
+    scroll_offset: f32,
+    target_scroll: f32,
+}
+
+impl TextLog {
+    /// Creates a new [`TextLog`] with sensible defaults.
+    pub fn new(position: Vec2, size: Vec2, font_size: f32, color: Color) -> Self {
+        Self {
+            position,
+            size,
+            font_size,
+            font: None,
+            color,
+            line_spacing: font_size * 1.2,
+            tag: String::new(),
+            visible: true,
+            active: true,
+            max_lines: None,
+            clip_content: true,
+            scroll_mode: ScrollMode::Instant,
+            lines: Vec::new(),
+            scroll_offset: 0.0,
+            target_scroll: 0.0,
+        }
+    }
+
+    /// Builder pattern: Sets the entity tag.
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
+        self
+    }
+
+    /// Builder pattern: Sets a custom TTF font.
+    pub fn with_font(mut self, font: Font) -> Self {
+        self.font = Some(font);
+        self
+    }
+
+    /// Builder pattern: Sets a custom TTF font loaded from the asset manager by name.
+    pub fn with_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(font) = assets.get_font(name) {
+            self.font = Some(font.clone());
+        }
+        self
+    }
+
+    /// Builder pattern: Sets the text color.
+    pub fn with_color(mut self, color: Color) -> Self {
+        self.color = color;
+        self
+    }
+
+    /// Builder pattern: Sets the maximum number of lines retained in the buffer.
+    pub fn with_max_lines(mut self, max: usize) -> Self {
+        self.max_lines = Some(max);
+        self
+    }
+
+    /// Builder pattern: Sets the scroll animation mode.
+    pub fn with_scroll_mode(mut self, mode: ScrollMode) -> Self {
+        self.scroll_mode = mode;
+        self
+    }
+
+    /// Builder pattern: Sets whether content is clipped to the viewport via scissor test.
+    pub fn with_clip_content(mut self, clip: bool) -> Self {
+        self.clip_content = clip;
+        self
+    }
+
+    /// Builder pattern: Sets vertical line spacing in pixels.
+    pub fn with_line_spacing(mut self, spacing: f32) -> Self {
+        self.line_spacing = spacing;
+        self
+    }
+
+    /// Builder pattern: Sets the component to hidden (`visible = false`).
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets the component to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets the component to deactivated (`active = false`) (alias for [`deactivated`](TextLog::deactivated)).
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Builder pattern: Sets component visibility.
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    /// Builder pattern: Sets component active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Appends a new line to the log buffer, evicting the oldest line if `max_lines` is exceeded.
+    pub fn push_line(&mut self, text: impl Into<String>) {
+        self.lines.push(text.into());
+        if let Some(max) = self.max_lines {
+            while self.lines.len() > max {
+                self.lines.remove(0);
+            }
+        }
+        self.recalculate_scroll();
+    }
+
+    /// Clears all lines from the log buffer and resets scroll to zero.
+    pub fn clear(&mut self) {
+        self.lines.clear();
+        self.scroll_offset = 0.0;
+        self.target_scroll = 0.0;
+    }
+
+    /// Returns a read-only slice of the current line buffer.
+    pub fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    /// Returns total rendered content height of all lines.
+    fn content_h(&self) -> f32 {
+        self.lines.len() as f32 * self.line_spacing
+    }
+
+    /// Returns the target scroll offset pinned to the bottom of content.
+    fn target_scroll_bottom(&self) -> f32 {
+        (self.content_h() - self.size.y).max(0.0)
+    }
+
+    /// Recalculates and updates the target scroll offset after content changes.
+    fn recalculate_scroll(&mut self) {
+        self.target_scroll = self.target_scroll_bottom();
+        if matches!(self.scroll_mode, ScrollMode::Instant) {
+            self.scroll_offset = self.target_scroll;
+        }
+    }
+}
+
+impl Object for TextLog {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.active {
+            return;
+        }
+        match self.scroll_mode {
+            ScrollMode::Smooth(speed) => {
+                let dt = ctx.time.deltatime();
+                let lerp_factor = (speed * dt).min(1.0);
+                self.scroll_offset += (self.target_scroll - self.scroll_offset) * lerp_factor;
+            }
+            ScrollMode::Instant => {
+                self.scroll_offset = self.target_scroll;
+            }
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+        let pos = self.position + get_draw_offset();
+        let my_rect = Rect {
+            x: pos.x,
+            y: pos.y,
+            w: self.size.x,
+            h: self.size.y,
+        };
+
+        let render_lines = || {
+            for (i, line) in self.lines.iter().enumerate() {
+                let draw_x = pos.x;
+                let draw_y = pos.y + (i as f32 + 1.0) * self.line_spacing - self.scroll_offset;
+                if let Some(ref font) = self.font {
+                    draw_text_ex(
+                        line,
+                        draw_x,
+                        draw_y,
+                        TextParams {
+                            font: Some(font),
+                            font_size: self.font_size as u16,
+                            color: self.color,
+                            ..Default::default()
+                        },
+                    );
+                } else {
+                    draw_text(line, draw_x, draw_y, self.font_size, self.color);
+                }
+            }
+        };
+
+        if self.clip_content {
+            let current_clip = SCISSOR_STACK.with(|stack| {
+                let mut stack = stack.borrow_mut();
+                let new_clip = if let Some(&parent_clip) = stack.last() {
+                    intersect_rects(parent_clip, my_rect)
+                } else {
+                    my_rect
+                };
+                stack.push(new_clip);
+                new_clip
+            });
+
+            apply_gl_scissor(Some(current_clip));
+            render_lines();
+
+            let prev_clip = SCISSOR_STACK.with(|stack| {
+                let mut stack = stack.borrow_mut();
+                stack.pop();
+                stack.last().copied()
+            });
+            apply_gl_scissor(prev_clip);
+        } else {
+            render_lines();
+        }
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    fn set_text(&mut self, text: &str) {
+        if let Some(last) = self.lines.last_mut() {
+            *last = text.to_string();
+        } else {
+            self.lines.push(text.to_string());
+        }
+        self.recalculate_scroll();
+    }
+
+    fn append_line(&mut self, text: &str) {
+        self.push_line(text);
+    }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
+
+    fn bounds(&self) -> Option<Rect> {
+        Some(Rect {
+            x: self.position.x,
+            y: self.position.y,
+            w: self.size.x,
+            h: self.size.y,
+        })
+    }
+
+    fn content_height(&self) -> Option<f32> {
+        Some(self.content_h())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // UI — Container manager for UI layer elements with z-order focus
 // ---------------------------------------------------------------------------
 

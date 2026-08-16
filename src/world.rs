@@ -24,6 +24,9 @@ pub trait Object: 'static {
     /// Default implementation is a no-op.
     fn set_text(&mut self, _text: &str) {}
 
+    /// Appends a line of text to entities supporting append-based logging (e.g. [`TextLog`](crate::ui::TextLog)). No-op by default.
+    fn append_line(&mut self, _text: &str) {}
+
     /// Returns whether this entity is visible for rendering. Defaults to `true`.
     fn is_visible(&self) -> bool {
         true

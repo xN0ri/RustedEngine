@@ -60,6 +60,11 @@ pub enum Step {
     /// Unconditionally jumps execution to the specified step index.
     Jump(usize),
 
+    /// Appends a line to a [`TextLog`](crate::ui::TextLog) entity matching `target_tag`
+    /// via [`Object::append_line`](crate::world::Object::append_line).
+    /// Searches the UI layer first, then falls back to the world layer.
+    AppendLine { target_tag: String, text: String },
+
     /// Concludes the sequence execution.
     End,
 }
@@ -150,6 +155,14 @@ impl Step {
     /// Creates a [`Step::Jump`] instruction targeting a numeric index.
     pub fn jump(target: usize) -> Self {
         Step::Jump(target)
+    }
+
+    /// Creates a [`Step::AppendLine`] instruction.
+    pub fn append_line(target_tag: impl Into<String>, text: impl Into<String>) -> Self {
+        Step::AppendLine {
+            target_tag: target_tag.into(),
+            text: text.into(),
+        }
     }
 
     /// Creates a [`Step::End`] instruction.
@@ -384,6 +397,23 @@ impl Sequence {
                 self.current = target;
             }
 
+            Step::AppendLine {
+                ref target_tag,
+                ref text,
+            } => {
+                let mut found = false;
+                for obj in world.find_ui_by_tag_mut(target_tag) {
+                    obj.append_line(text);
+                    found = true;
+                }
+                if !found {
+                    for obj in world.find_by_tag_mut(target_tag) {
+                        obj.append_line(text);
+                    }
+                }
+                self.current += 1;
+            }
+
             Step::End => {
                 self.finished = true;
             }
@@ -481,6 +511,12 @@ impl SequenceBuilder {
     /// Appends an unconditional jump instruction pointing to a numeric step index.
     pub fn jump(mut self, step_index: usize) -> Self {
         self.steps.push(Step::jump(step_index));
+        self
+    }
+
+    /// Appends a [`Step::AppendLine`] instruction targeting a [`TextLog`](crate::ui::TextLog) entity by tag.
+    pub fn append_line(mut self, target_tag: impl Into<String>, text: impl Into<String>) -> Self {
+        self.steps.push(Step::append_line(target_tag, text));
         self
     }
 
