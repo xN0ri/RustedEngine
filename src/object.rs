@@ -164,6 +164,7 @@ impl Sprite {
     }
 
     /// Builder pattern: Sets the sprite to deactivated (`active = false`) (alias for [`deactivated`](Sprite::deactivated)).
+    #[deprecated(since = "0.1.0", note = "Use deactivated instead")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }

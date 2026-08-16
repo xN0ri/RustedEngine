@@ -76,6 +76,39 @@ fn apply_gl_scissor(clip: Option<Rect>) {
     }
 }
 
+/// RAII guard for pushing and automatically popping an OpenGL scissor clipping rectangle.
+/// Pops the scissor state when dropped, ensuring safety even in the event of early return or panic.
+pub struct ScissorGuard;
+
+impl ScissorGuard {
+    /// Pushes `rect` clipped to current parent scissor rectangle and applies GL scissor.
+    pub fn new(rect: Rect) -> Self {
+        SCISSOR_STACK.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            let parent = stack.last().copied();
+            let clip = if let Some(p) = parent {
+                intersect_rects(p, rect)
+            } else {
+                rect
+            };
+            stack.push(clip);
+            apply_gl_scissor(Some(clip));
+        });
+        Self
+    }
+}
+
+impl Drop for ScissorGuard {
+    fn drop(&mut self) {
+        SCISSOR_STACK.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            stack.pop();
+            let parent = stack.last().copied();
+            apply_gl_scissor(parent);
+        });
+    }
+}
+
 thread_local! {
     static DRAW_OFFSET_STACK: RefCell<Vec<Vec2>> = const { RefCell::new(Vec::new()) };
 }
@@ -1719,28 +1752,8 @@ impl Object for Panel {
         };
 
         if self.clip_content {
-            let current_clip = SCISSOR_STACK.with(|stack| {
-                let mut stack = stack.borrow_mut();
-                let new_clip = if let Some(&parent_clip) = stack.last() {
-                    intersect_rects(parent_clip, my_rect)
-                } else {
-                    my_rect
-                };
-                stack.push(new_clip);
-                new_clip
-            });
-
-            apply_gl_scissor(Some(current_clip));
-
+            let _guard = ScissorGuard::new(my_rect);
             render_children();
-
-            let prev_clip = SCISSOR_STACK.with(|stack| {
-                let mut stack = stack.borrow_mut();
-                stack.pop();
-                stack.last().copied()
-            });
-
-            apply_gl_scissor(prev_clip);
         } else {
             render_children();
         }
@@ -2145,26 +2158,8 @@ impl Object for TextLog {
         };
 
         if self.clip_content {
-            let current_clip = SCISSOR_STACK.with(|stack| {
-                let mut stack = stack.borrow_mut();
-                let new_clip = if let Some(&parent_clip) = stack.last() {
-                    intersect_rects(parent_clip, my_rect)
-                } else {
-                    my_rect
-                };
-                stack.push(new_clip);
-                new_clip
-            });
-
-            apply_gl_scissor(Some(current_clip));
+            let _guard = ScissorGuard::new(my_rect);
             render_lines();
-
-            let prev_clip = SCISSOR_STACK.with(|stack| {
-                let mut stack = stack.borrow_mut();
-                stack.pop();
-                stack.last().copied()
-            });
-            apply_gl_scissor(prev_clip);
         } else {
             render_lines();
         }

@@ -169,4 +169,47 @@ impl Assets {
     pub fn get_font(&self, name: &str) -> Option<&Font> {
         self.fonts.get(name)
     }
+
+    /// Unloads and removes a stored texture by name. Returns `true` if texture was present.
+    pub fn unload_texture(&mut self, name: &str) -> bool {
+        self.textures.remove(name).is_some()
+    }
+
+    /// Unloads and removes a stored texture frame sequence by name. Returns `true` if present.
+    pub fn unload_sequence(&mut self, name: &str) -> bool {
+        self.sequences.remove(name).is_some()
+    }
+
+    /// Unloads and removes a stored sound effect by name. Returns `true` if present.
+    pub fn unload_sound(&mut self, name: &str) -> bool {
+        self.sounds.remove(name).is_some()
+    }
+
+    /// Unloads and removes a stored font by name. Returns `true` if present.
+    pub fn unload_font(&mut self, name: &str) -> bool {
+        self.fonts.remove(name).is_some()
+    }
+
+    /// Clears and unloads all stored textures, frame sequences, sounds, and fonts.
+    pub fn clear_all(&mut self) {
+        self.textures.clear();
+        self.sequences.clear();
+        self.sounds.clear();
+        self.fonts.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_asset_unloading() {
+        let mut assets = Assets::new();
+        assert_eq!(assets.get_texture("hero"), None);
+        assert!(!assets.unload_texture("hero"));
+        assert!(!assets.unload_sound("boom"));
+        assert!(!assets.unload_font("main"));
+        assets.clear_all();
+    }
 }
