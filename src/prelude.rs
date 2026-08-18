@@ -25,9 +25,9 @@ pub use crate::{
     trigger::{Trigger, TriggerSystem},
     ui::{
         Button, Checkbox, Grid, HBox, Image, ImageObject, LayoutAlign, LayoutJustify, Margin, Padding,
-        Panel as UiPanel, ProgressBar, RevealMode, ScrollMode, Slider, Text, TextAlign, TextField,
-        TextFieldObject, TextLog, TextLogLine, TextLogObject, TextObject, Tooltip, UIAnchor, VBox,
-        UI, draw_nine_slice,
+        Panel as UiPanel, ProgressBar, RevealMode, RichText, RichTextObject, ScrollMode, Slider, Text, TextAlign, TextField,
+        TextFieldObject, TextLog, TextLogLine, TextLogObject, TextObject, TextSpan, Tooltip, UIAnchor, VBox,
+        UI, draw_nine_slice, margin, padding, parse_color, parse_rich_text, rich_text,
     },
     window::Window,
     world,

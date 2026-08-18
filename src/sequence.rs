@@ -289,7 +289,9 @@ impl Sequence {
                         obj.set_text(text);
                     }
                 }
-                // Record in StateStore as a fallback flag
+                // Also record the last shown text in StateStore under the key
+                // `__seq_text_<target_tag>`. This allows game code to read what
+                // was last displayed without holding a direct reference to the entity.
                 ctx.state
                     .set_text(&format!("__seq_text_{}", target_tag), text);
                 self.current += 1;

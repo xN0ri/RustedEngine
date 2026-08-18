@@ -53,8 +53,8 @@ pub use tilemap::Tilemap;
 pub use trigger::{Trigger, TriggerSystem};
 pub use ui::{
     Button, Checkbox, Grid, HBox, Image, LayoutAlign, LayoutJustify, Margin, Padding,
-    Panel as UiPanel, ProgressBar, RevealMode, ScrollMode, Slider, Text, TextAlign, TextField,
-    TextLog, TextLogLine, Tooltip, UIAnchor, VBox, UI,
+    Panel as UiPanel, ProgressBar, RevealMode, RichText, RichTextObject, ScrollMode, Slider, Text, TextAlign, TextField,
+    TextLog, TextLogLine, TextSpan, Tooltip, UIAnchor, VBox, UI, margin, padding, parse_color, parse_rich_text, rich_text,
 };
 
 #[cfg(test)]
@@ -161,7 +161,7 @@ mod tests {
 
         let button = Button::new(vec2(0.0, 0.0), vec2(10.0, 10.0), "Click")
             .hidden()
-            .desactivated();
+            .deactivated();
         assert!(!button.is_visible());
         assert!(!button.is_active());
 
@@ -173,7 +173,7 @@ mod tests {
 
         let panel = UiPanel::new(vec2(0.0, 0.0), vec2(100.0, 100.0))
             .hidden()
-            .desactivated();
+            .deactivated();
         assert!(!panel.is_visible());
         assert!(!panel.is_active());
 
@@ -188,7 +188,7 @@ mod tests {
             (),
         )
         .hidden()
-        .desactivated();
+        .deactivated();
         assert!(!behavior_obj.is_visible());
         assert!(!behavior_obj.is_active());
 
@@ -471,5 +471,48 @@ mod tests {
         // screen 800x600 (safe_screen), so: x = 800 - 100 - 20 = 680, y = 600 - 50 - 10 = 540
         assert_eq!(br.x, 680.0);
         assert_eq!(br.y, 540.0);
+    }
+
+    #[test]
+    fn test_rich_text_bbcode_parsing() {
+        use macroquad::color::{Color, WHITE, RED};
+
+        // Test parse_color
+        assert_eq!(parse_color("gold"), Some(Color::from_rgba(255, 215, 0, 255)));
+        assert_eq!(parse_color("#FF0000"), Some(Color::from_rgba(255, 0, 0, 255)));
+        assert_eq!(parse_color("invalid_color"), None);
+
+        // Test parse_rich_text with [color=gold]
+        let input = "Zdobyłeś [color=gold]100 złota[/color] i [color=#00FF00]Miecz[/color]!";
+        let spans = parse_rich_text(input, WHITE);
+
+        assert_eq!(spans.len(), 5);
+        assert_eq!(spans[0].text, "Zdobyłeś ");
+        assert_eq!(spans[0].color, WHITE);
+
+        assert_eq!(spans[1].text, "100 złota");
+        assert_eq!(spans[1].color, Color::from_rgba(255, 215, 0, 255));
+
+        assert_eq!(spans[2].text, " i ");
+        assert_eq!(spans[2].color, WHITE);
+
+        assert_eq!(spans[3].text, "Miecz");
+        assert_eq!(spans[3].color, Color::from_rgba(0, 255, 0, 255));
+
+        assert_eq!(spans[4].text, "!");
+        assert_eq!(spans[4].color, WHITE);
+
+        // Test nested or fallback colors
+        let input_nested = "[color=red]Red [color=blue]Blue[/color] Red[/color] White";
+        let spans_nested = parse_rich_text(input_nested, WHITE);
+        assert_eq!(spans_nested.len(), 4);
+        assert_eq!(spans_nested[0].text, "Red ");
+        assert_eq!(spans_nested[0].color, RED);
+        assert_eq!(spans_nested[1].text, "Blue");
+        assert_eq!(spans_nested[1].color, Color::from_rgba(0, 122, 255, 255));
+        assert_eq!(spans_nested[2].text, " Red");
+        assert_eq!(spans_nested[2].color, RED);
+        assert_eq!(spans_nested[3].text, " White");
+        assert_eq!(spans_nested[3].color, WHITE);
     }
 }

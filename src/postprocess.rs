@@ -138,6 +138,11 @@ impl SceneRenderTarget {
     }
 
     /// Concludes rendering to target and restores the default camera.
+    ///
+    /// ⚠️ **Deprecated:** Use `ctx.camera.end()` to restore the default camera state.
+    #[deprecated(
+        note = "Use ctx.camera.end() to restore camera state after begin_to_target()"
+    )]
     pub fn end(&self) {
         set_default_camera();
     }

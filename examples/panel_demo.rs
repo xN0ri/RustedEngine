@@ -6,7 +6,7 @@
 //!
 //! The `PanelManager` is an `Object` added to the `World` UI layer.
 
-use RustedEngine::prelude::*;
+use rusted_engine::prelude::*;
 use macroquad::prelude::*;
 
 // ---------------------------------------------------------------------------

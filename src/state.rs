@@ -165,11 +165,27 @@ impl StateStore {
         }
     }
 
+    /// Returns the float value for `key`, or `default` if not set.
+    pub fn get_float_or(&self, key: &str, default: f64) -> f64 {
+        match self.values.get(key) {
+            Some(StateValue::Float(v)) => *v,
+            _ => default,
+        }
+    }
+
     /// Returns the string text value for `key`, or `""` if not set or mismatched.
     pub fn get_text(&self, key: &str) -> &str {
         match self.values.get(key) {
             Some(StateValue::Text(v)) => v.as_str(),
             _ => "",
+        }
+    }
+
+    /// Returns the string text value for `key`, or `default` if not set.
+    pub fn get_text_or<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
+        match self.values.get(key) {
+            Some(StateValue::Text(v)) => v.as_str(),
+            _ => default,
         }
     }
 

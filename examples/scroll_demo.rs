@@ -5,7 +5,7 @@
 //! - `Text` with automatic word-wrapping via `with_max_width(...)`.
 //! - Scissor clipping keeping text inside panel boundaries during scroll.
 
-use RustedEngine::prelude::*;
+use rusted_engine::prelude::*;
 use macroquad::prelude::*;
 
 #[macroquad::main("RustedEngine - Scroll & Word-Wrap Demo")]

@@ -3,7 +3,7 @@
 //! Demonstrates a one-shot and a repeating trigger.
 //! Uses a generic `Counter` resource — the engine knows nothing about it.
 
-use RustedEngine::prelude::*;
+use rusted_engine::prelude::*;
 use macroquad::prelude::*;
 
 // Generic test resource — lives in the game, not the engine

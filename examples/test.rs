@@ -1,4 +1,4 @@
-use RustedEngine::prelude::*;
+use rusted_engine::prelude::*;
 use macroquad::prelude::*;
 
 struct PlayerData {

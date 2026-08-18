@@ -3,7 +3,7 @@
 //! Shows how to insert arbitrary typed resources into `ctx.resources`
 //! before running the engine, and read/mutate them inside entity update closures.
 
-use RustedEngine::prelude::*;
+use rusted_engine::prelude::*;
 use macroquad::prelude::*;
 
 // ---------------------------------------------------------------------------

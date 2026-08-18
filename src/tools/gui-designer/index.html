@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RustedEngine GUI Designer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ═══ HEADER BAR ═══ -->
+<header>
+  <div class="logo">
+    <div class="logo-ico">R</div>
+    RustedEngine GUI Designer
+  </div>
+  <div class="header-sep"></div>
+  <button class="btn" id="btn-export-draft" title="Export current UI layout as JSON file">💾 Save Draft</button>
+  <label class="btn" title="Import UI layout from JSON draft file">
+    📂 Load Draft
+    <input type="file" id="input-import-draft" accept=".json,.rustedui" style="display:none">
+  </label>
+  <select id="draft-slots" style="background:var(--bg-card);border:1px solid var(--border);border-radius:20px;color:var(--text);padding:4px 10px;font-size:11px;font-family:inherit;outline:none;" title="Quick Draft Slots in LocalStorage">
+    <option value="">Quick Drafts...</option>
+  </select>
+  <button class="btn" id="btn-save-slot" title="Save current layout to Quick Draft Slot">📌 Save Slot</button>
+  <button class="btn primary" id="btn-open-file">📂 Open .rs File</button>
+  <button class="btn success" id="btn-write-file" disabled>💾 Write File</button>
+  <button class="btn danger"  id="btn-clear">Clear</button>
+</header>
+
+<!-- ═══ TOP SETTINGS BAR ═══ -->
+<div id="settings-bar">
+  <div class="sf"><label>Res:</label>
+    <input type="number" id="vw" value="640" min="1" style="width:52px">
+    <span style="color:var(--text-subtle)">×</span>
+    <input type="number" id="vh" value="360" min="1" style="width:52px">
+  </div>
+  <div class="sf"><label>Comment:</label>
+    <input type="text" id="target-comment" value="// UI_HERE" style="width:105px" title="Insert code above this comment in .rs file">
+  </div>
+  <div class="sf"><label>Grid:</label><input type="number" id="grid-size" value="8" min="1" max="128" style="width:38px"></div>
+  <div class="sf"><label>Snap:</label><input type="checkbox" id="grid-snap" checked></div>
+  <div class="sf"><label>PixelArt:</label><input type="checkbox" id="pixelart-snap" checked title="Toggle Nearest-Neighbor pixel art filter"></div>
+  <div class="sf"><label>Scope:</label>
+    <select id="ctx-scope" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:3px 6px;font-size:11px;font-family:var(--mono);outline:none;" title="Prefix scope for assets and context (e.g. engine.ctx.assets or ctx.assets)">
+      <option value="engine.ctx" selected>engine.ctx</option>
+      <option value="ctx">ctx</option>
+    </select>
+  </div>
+  <div class="sf" style="margin-left:auto; color:var(--text-subtle);">
+    Ctrl+Z/Y: Undo/Redo &nbsp;|&nbsp; Ctrl+C/V/D: Copy/Paste &nbsp;|&nbsp; Del: Delete &nbsp;|&nbsp; Arrows: Nudge
+  </div>
+</div>
+
+<!-- ═══ WORKSPACE ═══ -->
+<div id="workspace">
+
+  <!-- Left Sidebar -->
+  <div id="left-panel">
+    <div class="sec-header">Palette</div>
+    <div id="palette">
+      <div class="palette-item active" data-type="Select" id="select-tool" style="grid-column:span 2">
+        <span class="ico">↖</span>Select
+      </div>
+      <div class="palette-item" data-type="Image"><span class="ico">🖼</span>Image</div>
+      <div class="palette-item" data-type="Button"><span class="ico">🔲</span>Button</div>
+      <div class="palette-item" data-type="Text"><span class="ico">📝</span>Text</div>
+      <div class="palette-item" data-type="Panel"><span class="ico">▭</span>Panel</div>
+      <div class="palette-item" data-type="ProgressBar"><span class="ico">▬</span>Progress</div>
+      <div class="palette-item" data-type="Slider"><span class="ico">🎚</span>Slider</div>
+      <div class="palette-item" data-type="Checkbox"><span class="ico">☑</span>Checkbox</div>
+      <div class="palette-item" data-type="TextField"><span class="ico">🔤</span>TextField</div>
+    </div>
+    <div class="sec-header" style="margin-top:4px">Layers</div>
+    <div id="layers-list"></div>
+
+    <!-- Asset Library Panel -->
+    <div class="sec-header" style="margin-top:4px; display:flex; justify-content:space-between; align-items:center;">
+      <span>Project Assets</span>
+      <label class="btn" style="font-size:9.5px; padding:2px 8px; border-radius:10px; cursor:pointer;" title="Load local assets folder with textures (.png, .jpg) & fonts (.ttf)">
+        📁 Assets Folder
+        <input type="file" id="assets-folder-input" webkitdirectory directory multiple style="display:none">
+      </label>
+    </div>
+    <div id="asset-library-panel">
+      <div class="asset-tabs" id="asset-tabs">
+        <div class="asset-tab active" data-tab="textures">🖼 Textures (<span id="count-textures">0</span>)</div>
+        <div class="asset-tab" data-tab="fonts">🔤 Fonts (<span id="count-fonts">0</span>)</div>
+      </div>
+      <div id="asset-list-textures" class="asset-list-container">
+        <div class="asset-empty-hint">Click 'Assets Folder' to scan project images & fonts.</div>
+      </div>
+      <div id="asset-list-fonts" class="asset-list-container" style="display:none">
+        <div class="asset-empty-hint">Click 'Assets Folder' to scan project images & fonts.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas Viewport -->
+  <div id="canvas-area">
+    <div id="vres-label">640 × 360</div>
+    <div id="file-label"></div>
+    <div id="canvas-wrapper"><canvas id="canvas"></canvas></div>
+  </div>
+
+  <!-- Right Inspector Sidebar -->
+  <div id="right-panel">
+    <div class="sec-header">Inspector</div>
+    <div id="properties">
+      <div class="empty-state" id="no-selection">
+        Select an element<br>to edit properties.<br><br>
+        <span style="font-size:10px;color:var(--text-subtle)">Pick a palette item,<br>then click canvas to place.</span>
+      </div>
+      <div id="prop-editor" style="display:none">
+        
+        <!-- Quick Alignment Toolbar -->
+        <div class="prop-group">
+          <div class="prop-label">Quick Align</div>
+          <div class="align-toolbar">
+            <div class="align-tool-btn" id="align-left" title="Align Left">⇤</div>
+            <div class="align-tool-btn" id="align-center-h" title="Center Horizontally">↔</div>
+            <div class="align-tool-btn" id="align-right" title="Align Right">⇥</div>
+            <div class="align-tool-btn" id="align-top" title="Align Top">⇡</div>
+            <div class="align-tool-btn" id="align-center-v" title="Center Vertically">↕</div>
+            <div class="align-tool-btn" id="align-bottom" title="Align Bottom">⇣</div>
+          </div>
+        </div>
+
+        <div class="prop-group">
+          <div class="prop-label">Tag Name</div>
+          <input class="prop-input" id="prop-tag" type="text" placeholder="element_name">
+        </div>
+        <div class="prop-group">
+          <div class="prop-label">Position (X / Y)</div>
+          <div class="prop-row">
+            <input class="prop-input" id="prop-x" type="number">
+            <input class="prop-input" id="prop-y" type="number">
+          </div>
+        </div>
+        <div class="prop-group">
+          <div class="prop-label">Size (W / H)</div>
+          <div class="prop-row">
+            <input class="prop-input" id="prop-w" type="number" min="1">
+            <input class="prop-input" id="prop-h" type="number" min="1">
+          </div>
+        </div>
+        <div class="prop-group" id="prop-asset-group">
+          <div class="prop-label">Project Textures</div>
+          <select class="prop-input" id="prop-asset-select" style="margin-bottom:6px">
+            <option value="">-- Custom File --</option>
+          </select>
+          <div class="prop-label">Asset Name</div>
+          <input class="prop-input" id="prop-asset" type="text" placeholder="texture_name">
+          <div class="prop-label" style="margin-top:6px">Asset Path</div>
+          <input class="prop-input" id="prop-asset-path" type="text" placeholder="assets/texture_name.png">
+          <label class="btn" style="margin-top:6px; width:100%; justify-content:center; font-size:11px; border-radius:8px;">
+            🖼 Load Texture File...
+            <input type="file" id="prop-img-file" accept="image/*" style="display:none">
+          </label>
+        </div>
+        <div class="prop-group" id="prop-label-group">
+          <div class="prop-label">Label / Text</div>
+          <input class="prop-input" id="prop-label-val" type="text" placeholder="...">
+        </div>
+        <div class="prop-group" id="prop-text-align-group">
+          <div class="prop-label">Text Align</div>
+          <select class="prop-input" id="prop-text-align">
+            <option value="Left" selected>Left</option>
+            <option value="Center">Center</option>
+            <option value="Right">Right</option>
+          </select>
+        </div>
+        <div class="prop-group" id="prop-font-size-group">
+          <div class="prop-label">Font Size</div>
+          <input class="prop-input" id="prop-font-size" type="number" value="16" min="6" max="200">
+        </div>
+        <div class="prop-group" id="prop-text-effects-group">
+          <div class="prop-label">Text Effects</div>
+          <div class="prop-row" style="align-items:center; font-size:11px;">
+            <label><input type="checkbox" id="prop-shadow-check"> Shadow</label>
+            <input class="prop-input" id="prop-shadow-x" type="number" value="2" style="width:40px" placeholder="X">
+            <input class="prop-input" id="prop-shadow-y" type="number" value="2" style="width:40px" placeholder="Y">
+          </div>
+          <div class="prop-row" style="align-items:center; font-size:11px; margin-top:6px;">
+            <label><input type="checkbox" id="prop-outline-check"> Outline</label>
+            <input class="prop-input" id="prop-outline-w" type="number" value="1" style="width:50px" placeholder="W">
+          </div>
+        </div>
+        <div class="prop-group" id="prop-font-group">
+          <div class="prop-label">Project Fonts</div>
+          <select class="prop-input" id="prop-font-select" style="margin-bottom:6px">
+            <option value="">-- Custom Font --</option>
+          </select>
+          <div class="prop-label">Font Asset Name</div>
+          <input class="prop-input" id="prop-font-name" type="text" placeholder="my_font">
+          <div class="prop-label" style="margin-top:6px">Font Path</div>
+          <input class="prop-input" id="prop-font-path" type="text" placeholder="assets/fonts/my_font.ttf">
+          <label class="btn" style="margin-top:6px; width:100%; justify-content:center; font-size:11px; border-radius:8px;">
+            🔤 Load TTF Font File...
+            <input type="file" id="prop-font-file" accept=".ttf,.otf,.woff,.woff2" style="display:none">
+          </label>
+        </div>
+        <div class="prop-group" id="prop-nineslice-group">
+          <div class="prop-label">NineSlice Margins (L / T / R / B)</div>
+          <div class="prop-row">
+            <input class="prop-input" id="ns-l" type="number" value="0" placeholder="L">
+            <input class="prop-input" id="ns-t" type="number" value="0" placeholder="T">
+          </div>
+          <div class="prop-row">
+            <input class="prop-input" id="ns-r" type="number" value="0" placeholder="R">
+            <input class="prop-input" id="ns-b" type="number" value="0" placeholder="B">
+          </div>
+        </div>
+        <div class="prop-group" id="prop-slider-group">
+          <div class="prop-label">Slider (Min / Max / Value)</div>
+          <div class="prop-row">
+            <input class="prop-input" id="slider-min" type="number" value="0" placeholder="Min">
+            <input class="prop-input" id="slider-max" type="number" value="1" placeholder="Max">
+            <input class="prop-input" id="slider-val" type="number" value="0.5" step="0.01" placeholder="Val">
+          </div>
+        </div>
+        <div class="prop-group" id="prop-checkbox-group">
+          <div class="prop-row" style="align-items:center; font-size:11px;">
+            <label><input type="checkbox" id="checkbox-checked" checked> Initial Checked State</label>
+          </div>
+        </div>
+        <div class="prop-group" id="prop-textfield-group">
+          <div class="prop-label">Placeholder Text</div>
+          <input class="prop-input" id="textfield-placeholder" type="text" placeholder="Type here...">
+        </div>
+        <div class="prop-group">
+          <div class="prop-label">UIAnchor &nbsp;<span style="color:var(--text-subtle);font-weight:400">(✕ = None)</span></div>
+          <div class="anchor-grid" id="anchor-grid">
+            <div class="anchor-btn" data-anchor="TopLeft"     title="TopLeft">↖</div>
+            <div class="anchor-btn" data-anchor="TopCenter"   title="TopCenter">↑</div>
+            <div class="anchor-btn" data-anchor="TopRight"    title="TopRight">↗</div>
+            <div class="anchor-btn" data-anchor="CenterLeft"  title="CenterLeft">←</div>
+            <div class="anchor-btn active" data-anchor="None" title="No anchor">✕</div>
+            <div class="anchor-btn" data-anchor="CenterRight" title="CenterRight">→</div>
+            <div class="anchor-btn" data-anchor="BottomLeft"  title="BottomLeft">↙</div>
+            <div class="anchor-btn" data-anchor="BottomCenter" title="BottomCenter">↓</div>
+            <div class="anchor-btn" data-anchor="BottomRight" title="BottomRight">↘</div>
+          </div>
+        </div>
+        <div class="prop-group">
+          <div class="prop-label">Padding (L / T / R / B)</div>
+          <div class="prop-row">
+            <input class="prop-input" id="pad-l" type="number" value="0" placeholder="L">
+            <input class="prop-input" id="pad-t" type="number" value="0" placeholder="T">
+          </div>
+          <div class="prop-row">
+            <input class="prop-input" id="pad-r" type="number" value="0" placeholder="R">
+            <input class="prop-input" id="pad-b" type="number" value="0" placeholder="B">
+          </div>
+        </div>
+        <div class="prop-group" style="margin-top:16px">
+          <button class="btn danger" id="btn-delete" style="width:100%; justify-content:center; border-radius:8px;">Delete Element</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Code Drawer -->
+    <div id="code-panel">
+      <div class="code-drawer-header">
+        <div class="sec-header" style="padding:0">Generated Code</div>
+        <div class="code-tabs" id="code-tabs">
+          <div class="code-tab active" data-mode="combined">Combined</div>
+          <div class="code-tab" data-mode="ui">UI Only</div>
+          <div class="code-tab" data-mode="assets">Assets Only</div>
+        </div>
+      </div>
+      <div id="code-output"></div>
+      <div class="code-actions">
+        <button class="btn primary" id="btn-copy" style="flex:1" title="Copy code view">📋 Copy Code</button>
+        <button class="btn" id="btn-copy-assets" style="flex:1" title="Copy engine.ctx.assets loading statements">📦 Copy Assets</button>
+        <button class="btn success" id="btn-write-file2" disabled style="flex:1">💾 Write</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

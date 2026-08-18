@@ -194,11 +194,6 @@ pub(crate) fn set_virtual_resolution(w: f32, h: f32) {
     VIRTUAL_RES.with(|r| *r.borrow_mut() = Some((w, h)));
 }
 
-/// Clears the virtual resolution override, restoring `safe_screen_*` to real screen dimensions.
-#[allow(dead_code)]
-pub(crate) fn clear_virtual_resolution() {
-    VIRTUAL_RES.with(|r| *r.borrow_mut() = None);
-}
 
 pub fn safe_screen_width() -> f32 {
     if cfg!(test) {
@@ -230,6 +225,15 @@ pub struct Padding {
 }
 
 impl Padding {
+    /// Creates [`Padding`] from any value convertible into `Padding` (`f32`, `(f32, f32)`, `(f32, f32, f32, f32)`).
+    ///
+    /// - `Padding::new(8.0)` — uniform on all 4 sides
+    /// - `Padding::new((8.0, 16.0))` — symmetric (horizontal, vertical)
+    /// - `Padding::new((l, t, r, b))` — explicit for each side
+    pub fn new(val: impl Into<Padding>) -> Self {
+        val.into()
+    }
+
     /// Zero padding on all sides (`0.0`).
     pub fn zero() -> Self {
         Self::default()
@@ -255,7 +259,7 @@ impl Padding {
         }
     }
 
-    /// Explicit padding for specific sides (Flutter-style `Padding::only(...)`).
+    /// Explicit padding for specific sides (`left`, `top`, `right`, `bottom`).
     pub fn only(left: f32, top: f32, right: f32, bottom: f32) -> Self {
         Self {
             left,
@@ -290,6 +294,30 @@ impl From<(f32, f32, f32, f32)> for Padding {
     }
 }
 
+/// Ergonomic constructor function for [`Padding`]. Accepts any layout specification:
+///
+/// | Value | Result |
+/// |-------|--------|
+/// | `padding(8.0)` | Uniform on all 4 sides |
+/// | `padding((8.0, 16.0))` | Symmetric (horizontal, vertical) |
+/// | `padding((l, t, r, b))` | Explicit for each side (left, top, right, bottom) |
+///
+/// # Example
+/// ```rust,ignore
+/// button.with_padding(padding(8.0));
+/// panel.with_padding(padding((12.0, 24.0)));
+/// label.with_padding(padding((4.0, 8.0, 4.0, 0.0)));
+/// ```
+pub fn padding(val: impl Into<Padding>) -> Padding {
+    val.into()
+}
+
+/// Legacy alias for [`padding`].
+#[deprecated(since = "0.5.0", note = "Use `padding()` or `Padding::new()` instead")]
+pub fn padd(val: impl Into<Padding>) -> Padding {
+    val.into()
+}
+
 /// External margin spacing box model helper for UI components and layouts.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Margin {
@@ -300,6 +328,11 @@ pub struct Margin {
 }
 
 impl Margin {
+    /// Creates [`Margin`] from any value convertible into `Margin` (`f32`, `(f32, f32)`, `(f32, f32, f32, f32)`).
+    pub fn new(val: impl Into<Margin>) -> Self {
+        val.into()
+    }
+
     /// Creates uniform margin for all 4 sides (`top`, `bottom`, `left`, `right`).
     pub fn all(val: f32) -> Self {
         Self { left: val, top: val, right: val, bottom: val }
@@ -311,7 +344,7 @@ impl Margin {
     }
 
     /// Creates explicit margin for each side (`left`, `top`, `right`, `bottom`).
-    pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
+    pub fn only(left: f32, top: f32, right: f32, bottom: f32) -> Self {
         Self { left, top, right, bottom }
     }
 
@@ -321,6 +354,11 @@ impl Margin {
     pub fn only_right(val: f32) -> Self { Self { right: val, ..Default::default() } }
 }
 
+/// Ergonomic constructor function for [`Margin`].
+pub fn margin(val: impl Into<Margin>) -> Margin {
+    val.into()
+}
+
 impl From<f32> for Margin {
     fn from(val: f32) -> Self { Margin::all(val) }
 }
@@ -328,7 +366,7 @@ impl From<(f32, f32)> for Margin {
     fn from((h, v): (f32, f32)) -> Self { Margin::symmetric(h, v) }
 }
 impl From<(f32, f32, f32, f32)> for Margin {
-    fn from((l, t, r, b): (f32, f32, f32, f32)) -> Self { Margin::new(l, r, t, b) }
+    fn from((l, t, r, b): (f32, f32, f32, f32)) -> Self { Margin::only(l, t, r, b) }
 }
 
 /// Text horizontal alignment modes.
@@ -417,21 +455,23 @@ pub fn draw_nine_slice(
 
 impl UIAnchor {
     /// Computes top-left `Vec2` position for an element of `size` relative to current screen dimensions (`screen_width()` × `screen_height()`).
+    /// The result is **rounded to whole virtual pixels** to prevent sub-pixel sampling artifacts when using [`FilterMode::Nearest`] textures.
     pub fn compute_position(&self, size: Vec2, padding: impl Into<Padding>) -> Vec2 {
         let p = padding.into();
         let sw = safe_screen_width();
         let sh = safe_screen_height();
-        match self {
-            UIAnchor::TopLeft => vec2(p.left, p.top),
-            UIAnchor::TopCenter => vec2((sw - size.x) * 0.5 + p.left - p.right, p.top),
-            UIAnchor::TopRight => vec2(sw - size.x - p.right, p.top),
-            UIAnchor::CenterLeft => vec2(p.left, (sh - size.y) * 0.5 + p.top - p.bottom),
-            UIAnchor::Center => vec2((sw - size.x) * 0.5 + p.left - p.right, (sh - size.y) * 0.5 + p.top - p.bottom),
+        let pos = match self {
+            UIAnchor::TopLeft     => vec2(p.left, p.top),
+            UIAnchor::TopCenter   => vec2((sw - size.x) * 0.5 + p.left - p.right, p.top),
+            UIAnchor::TopRight    => vec2(sw - size.x - p.right, p.top),
+            UIAnchor::CenterLeft  => vec2(p.left, (sh - size.y) * 0.5 + p.top - p.bottom),
+            UIAnchor::Center      => vec2((sw - size.x) * 0.5 + p.left - p.right, (sh - size.y) * 0.5 + p.top - p.bottom),
             UIAnchor::CenterRight => vec2(sw - size.x - p.right, (sh - size.y) * 0.5 + p.top - p.bottom),
-            UIAnchor::BottomLeft => vec2(p.left, sh - size.y - p.bottom),
-            UIAnchor::BottomCenter => vec2((sw - size.x) * 0.5 + p.left - p.right, sh - size.y - p.bottom),
+            UIAnchor::BottomLeft  => vec2(p.left, sh - size.y - p.bottom),
+            UIAnchor::BottomCenter=> vec2((sw - size.x) * 0.5 + p.left - p.right, sh - size.y - p.bottom),
             UIAnchor::BottomRight => vec2(sw - size.x - p.right, sh - size.y - p.bottom),
-        }
+        };
+        vec2(pos.x.round(), pos.y.round())
     }
 }
 
@@ -595,6 +635,7 @@ impl Text {
     }
 
     /// Builder pattern: Sets text component to deactivated (`active = false`) (alias for [`deactivated`](Text::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }
@@ -894,6 +935,492 @@ impl<Data> std::ops::Deref for Behavior<Text, Data> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// RichText — BBCode-formatted UI Text with color tags ([color=gold], [color=#HEX], [/color])
+// ---------------------------------------------------------------------------
+
+/// A parsed span of text with an associated color.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextSpan {
+    pub text: String,
+    pub color: Color,
+}
+
+/// Parses a color string (named color like `gold`, `red`, `blue`, or hex like `#FF5500`).
+pub fn parse_color(name_or_hex: &str) -> Option<Color> {
+    let s = name_or_hex.trim().to_lowercase();
+    if s.starts_with('#') {
+        let hex = s.trim_start_matches('#');
+        if hex.len() == 6 {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            Some(Color::from_rgba(r, g, b, 255))
+        } else if hex.len() == 8 {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            let a = u8::from_str_radix(&hex[6..8], 16).ok()?;
+            Some(Color::from_rgba(r, g, b, a))
+        } else {
+            None
+        }
+    } else {
+        match s.as_str() {
+            "gold" => Some(Color::from_rgba(255, 215, 0, 255)),
+            "red" => Some(RED),
+            "green" => Some(GREEN),
+            "blue" => Some(Color::from_rgba(0, 122, 255, 255)),
+            "white" => Some(WHITE),
+            "black" => Some(Color::from_rgba(0, 0, 0, 255)),
+            "yellow" => Some(Color::from_rgba(255, 255, 0, 255)),
+            "cyan" => Some(Color::from_rgba(0, 255, 255, 255)),
+            "magenta" => Some(Color::from_rgba(255, 0, 255, 255)),
+            "gray" | "grey" => Some(GRAY),
+            "lightgray" | "lightgrey" => Some(LIGHTGRAY),
+            "orange" => Some(Color::from_rgba(255, 165, 0, 255)),
+            "purple" => Some(Color::from_rgba(128, 0, 128, 255)),
+            "pink" => Some(Color::from_rgba(255, 192, 203, 255)),
+            "brown" => Some(Color::from_rgba(165, 42, 42, 255)),
+            _ => None,
+        }
+    }
+}
+
+/// Parses a BBCode string containing `[color=...]` and `[/color]` tags into a sequence of [`TextSpan`]s.
+pub fn parse_rich_text(content: &str, default_color: Color) -> Vec<TextSpan> {
+    let mut spans = Vec::new();
+    let mut color_stack = vec![default_color];
+    let mut current_text = String::new();
+
+    let mut rest = content;
+
+    while !rest.is_empty() {
+        if let Some(tag_start) = rest.find('[') {
+            if tag_start > 0 {
+                current_text.push_str(&rest[..tag_start]);
+            }
+
+            let after_bracket = &rest[tag_start..];
+            if let Some(tag_end) = after_bracket.find(']') {
+                let tag_content = &after_bracket[1..tag_end];
+                let full_tag_len = tag_end + 1;
+
+                let tag_lower = tag_content.to_lowercase();
+                if tag_lower == "/color" {
+                    if !current_text.is_empty() {
+                        let active_color = *color_stack.last().unwrap_or(&default_color);
+                        spans.push(TextSpan {
+                            text: current_text.clone(),
+                            color: active_color,
+                        });
+                        current_text.clear();
+                    }
+                    if color_stack.len() > 1 {
+                        color_stack.pop();
+                    }
+                    rest = &after_bracket[full_tag_len..];
+                    continue;
+                } else if tag_lower.starts_with("color=") {
+                    let color_spec = &tag_content[6..];
+                    if let Some(c) = parse_color(color_spec) {
+                        if !current_text.is_empty() {
+                            let active_color = *color_stack.last().unwrap_or(&default_color);
+                            spans.push(TextSpan {
+                                text: current_text.clone(),
+                                color: active_color,
+                            });
+                            current_text.clear();
+                        }
+                        color_stack.push(c);
+                        rest = &after_bracket[full_tag_len..];
+                        continue;
+                    }
+                }
+            }
+
+            current_text.push('[');
+            rest = &rest[tag_start + 1..];
+        } else {
+            current_text.push_str(rest);
+            break;
+        }
+    }
+
+    if !current_text.is_empty() {
+        let active_color = *color_stack.last().unwrap_or(&default_color);
+        spans.push(TextSpan {
+            text: current_text,
+            color: active_color,
+        });
+    }
+
+    spans
+}
+
+/// Helper function to create a [`RichText`] component.
+pub fn rich_text(content: impl Into<String>, position: Vec2, font_size: f32) -> RichText {
+    RichText::new(content, position, font_size)
+}
+
+/// UI RichText component supporting BBCode color tags (`[color=gold]...[/color]`).
+pub struct RichText {
+    pub content: String,
+    pub position: Vec2,
+    pub font_size: f32,
+    pub font: Option<Font>,
+    pub default_color: Color,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+    pub max_width: Option<f32>,
+    pub line_spacing: f32,
+    pub align: TextAlign,
+}
+
+impl RichText {
+    /// Creates a new [`RichText`] component with BBCode markup support.
+    pub fn new(content: impl Into<String>, position: Vec2, font_size: f32) -> Self {
+        Self {
+            content: content.into(),
+            position,
+            font_size,
+            font: None,
+            default_color: WHITE,
+            tag: String::new(),
+            visible: true,
+            active: true,
+            max_width: None,
+            line_spacing: 0.0,
+            align: TextAlign::Left,
+        }
+    }
+
+    /// Builder pattern: Sets base default color.
+    pub fn with_color(mut self, color: Color) -> Self {
+        self.default_color = color;
+        self
+    }
+
+    /// Builder pattern: Sets custom font.
+    pub fn with_font(mut self, font: Font) -> Self {
+        self.font = Some(font);
+        self
+    }
+
+    /// Builder pattern: Sets tag.
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
+        self
+    }
+
+    /// Builder pattern: Sets maximum width for word wrapping.
+    pub fn with_max_width(mut self, width: f32) -> Self {
+        self.max_width = Some(width);
+        self
+    }
+
+    /// Builder pattern: Sets vertical line spacing.
+    pub fn with_line_spacing(mut self, spacing: f32) -> Self {
+        self.line_spacing = spacing;
+        self
+    }
+
+    /// Builder pattern: Sets text alignment.
+    pub fn with_align(mut self, align: TextAlign) -> Self {
+        self.align = align;
+        self
+    }
+
+    /// Builder pattern: Sets hidden.
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Builder pattern: Sets deactivated.
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets deactivated (alias).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead")]
+    pub fn desactivated(self) -> Self {
+        self.deactivated()
+    }
+
+    /// Sets content text.
+    pub fn set_text(&mut self, text: &str) {
+        self.content = text.to_string();
+    }
+
+    /// Parses text spans for this component using current `content` and `default_color`.
+    pub fn parse_spans(&self) -> Vec<TextSpan> {
+        parse_rich_text(&self.content, self.default_color)
+    }
+
+    /// Returns resolved screen geometry `(pos, font_size, line_spacing, max_width)`.
+    pub(crate) fn resolved_geometry(&self) -> (Vec2, f32, f32, Option<f32>) {
+        let (scale, ui_offset) = get_ui_scale();
+        let pos = self.position * scale + get_draw_offset() * scale + ui_offset;
+        let font_size = self.font_size * scale;
+        let line_spacing = if self.line_spacing > 0.0 {
+            self.line_spacing * scale
+        } else {
+            font_size * 1.2
+        };
+        let max_width = self.max_width.map(|w| w * scale);
+        (pos, font_size, line_spacing, max_width)
+    }
+
+    /// Helper to wrap lines with measurement closure.
+    pub fn wrap_lines_with<F>(&self, text: &str, max_width: f32, measure: F) -> Vec<String>
+    where
+        F: Fn(&str) -> f32,
+    {
+        let mut lines = Vec::new();
+        for paragraph in text.split('\n') {
+            if paragraph.is_empty() {
+                lines.push(String::new());
+                continue;
+            }
+            let words: Vec<&str> = paragraph.split_whitespace().collect();
+            if words.is_empty() {
+                lines.push(String::new());
+                continue;
+            }
+            let mut current_line = String::new();
+            for word in words {
+                if current_line.is_empty() {
+                    current_line.push_str(word);
+                } else {
+                    let test_line = format!("{} {}", current_line, word);
+                    if measure(&test_line) <= max_width {
+                        current_line = test_line;
+                    } else {
+                        lines.push(current_line);
+                        current_line = word.to_string();
+                    }
+                }
+            }
+            if !current_line.is_empty() {
+                lines.push(current_line);
+            }
+        }
+        lines
+    }
+}
+
+impl Object for RichText {
+    fn update(&mut self, _ctx: &mut Context) {}
+
+    fn draw(&self) {
+        if !self.visible {
+            return;
+        }
+
+        let (pos, font_size, line_spacing, max_width) = self.resolved_geometry();
+        let font_ref = self.font.as_ref();
+        let spans = self.parse_spans();
+
+        struct RichWord {
+            text: String,
+            color: Color,
+            width: f32,
+        }
+
+        let space_w = measure_text(" ", font_ref, font_size as u16, 1.0).width;
+
+        let mut words = Vec::new();
+        for span in &spans {
+            let paragraph_parts: Vec<&str> = span.text.split('\n').collect();
+            for (p_idx, p_str) in paragraph_parts.iter().enumerate() {
+                if p_idx > 0 {
+                    words.push(RichWord {
+                        text: "\n".to_string(),
+                        color: span.color,
+                        width: 0.0,
+                    });
+                }
+                for w in p_str.split_whitespace() {
+                    let w_width = measure_text(w, font_ref, font_size as u16, 1.0).width;
+                    words.push(RichWord {
+                        text: w.to_string(),
+                        color: span.color,
+                        width: w_width,
+                    });
+                }
+            }
+        }
+
+        struct LineWord {
+            text: String,
+            color: Color,
+            x_offset: f32,
+        }
+
+        struct FormattedLine {
+            words: Vec<LineWord>,
+            total_width: f32,
+        }
+
+        let mut lines: Vec<FormattedLine> = Vec::new();
+        let mut current_line = FormattedLine {
+            words: Vec::new(),
+            total_width: 0.0,
+        };
+
+        let max_w = max_width.unwrap_or(f32::MAX);
+
+        for word in words {
+            if word.text == "\n" {
+                lines.push(current_line);
+                current_line = FormattedLine {
+                    words: Vec::new(),
+                    total_width: 0.0,
+                };
+                continue;
+            }
+
+            let word_w = word.width;
+            let space_needed = if current_line.words.is_empty() {
+                0.0
+            } else {
+                space_w
+            };
+
+            if !current_line.words.is_empty() && current_line.total_width + space_needed + word_w > max_w {
+                lines.push(current_line);
+                current_line = FormattedLine {
+                    words: Vec::new(),
+                    total_width: 0.0,
+                };
+            }
+
+            let x_pos = if current_line.words.is_empty() {
+                0.0
+            } else {
+                current_line.total_width + space_w
+            };
+
+            current_line.words.push(LineWord {
+                text: word.text,
+                color: word.color,
+                x_offset: x_pos,
+            });
+            current_line.total_width = x_pos + word_w;
+        }
+
+        lines.push(current_line);
+
+        for (line_idx, line) in lines.iter().enumerate() {
+            let y = pos.y + (line_idx as f32) * line_spacing;
+
+            let align_offset_x = match self.align {
+                TextAlign::Left => 0.0,
+                TextAlign::Center => -line.total_width * 0.5,
+                TextAlign::Right => -line.total_width,
+            };
+
+            let base_x = pos.x + align_offset_x;
+
+            for word in &line.words {
+                let word_x = base_x + word.x_offset;
+                let text_params = TextParams {
+                    font: font_ref,
+                    font_size: font_size as u16,
+                    color: word.color,
+                    ..Default::default()
+                };
+                draw_text_ex(&word.text, word_x, y, text_params);
+            }
+        }
+    }
+
+    fn is_text_layer(&self) -> bool {
+        true
+    }
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    fn set_text(&mut self, text: &str) {
+        self.set_text(text);
+    }
+
+    fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
+    }
+
+    fn set_position(&mut self, pos: Vec2) {
+        self.position = pos;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
+}
+
+impl Clickable for RichText {
+    fn click_rect(&self) -> Rect {
+        let (pos, font_size, line_spacing, max_width) = self.resolved_geometry();
+        let font_ref = self.font.as_ref();
+        let spans = self.parse_spans();
+        let full_plain_text: String = spans.into_iter().map(|s| s.text).collect();
+
+        let lines = self.wrap_lines_with(&full_plain_text, max_width.unwrap_or(f32::MAX), |s| {
+            measure_text(s, font_ref, font_size as u16, 1.0).width
+        });
+
+        let mut max_w: f32 = 0.0;
+        for line in &lines {
+            let w = measure_text(line, font_ref, font_size as u16, 1.0).width;
+            if w > max_w {
+                max_w = w;
+            }
+        }
+
+        let total_h = (lines.len().max(1) as f32) * line_spacing;
+
+        let align_offset_x = match self.align {
+            TextAlign::Left => 0.0,
+            TextAlign::Center => -max_w * 0.5,
+            TextAlign::Right => -max_w,
+        };
+
+        Rect {
+            x: pos.x + align_offset_x,
+            y: pos.y - font_size * 0.8,
+            w: max_w,
+            h: total_h,
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+}
+
+/// Type alias for a rich text component combined with game data and update closure.
+pub type RichTextObject<Data> = Behavior<RichText, Data>;
+
+impl<Data> std::ops::Deref for Behavior<RichText, Data> {
+    type Target = RichText;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
 impl<Data> std::ops::DerefMut for Behavior<Text, Data> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
@@ -1008,6 +1535,7 @@ impl Button {
     }
 
     /// Builder pattern: Sets button component to deactivated (`active = false`) (alias for [`deactivated`](Button::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }
@@ -1255,6 +1783,7 @@ impl ProgressBar {
     }
 
     /// Builder pattern: Sets progress bar to deactivated (`active = false`) (alias for [`deactivated`](ProgressBar::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }
@@ -1526,6 +2055,7 @@ impl Image {
     }
 
     /// Builder pattern: Sets image component to deactivated (`active = false`) (alias for [`deactivated`](Image::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }
@@ -1840,6 +2370,7 @@ impl Panel {
     }
 
     /// Builder pattern: Sets panel to deactivated (`active = false`) (alias for [`deactivated`](Panel::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }
@@ -2399,6 +2930,7 @@ impl TextLog {
     }
 
     /// Builder pattern: Sets the component to deactivated (`active = false`) (alias for [`deactivated`](TextLog::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }
@@ -2549,20 +3081,28 @@ impl Object for TextLog {
             for (i, entry) in self.lines.iter().enumerate() {
                 let draw_x = pos.x;
                 let draw_y = pos.y + (i as f32) * line_spacing + font_size * 0.75 - scroll_offset;
-                if let Some(ref font) = self.font {
-                    draw_text_ex(
-                        &entry.text,
-                        draw_x,
-                        draw_y,
-                        TextParams {
-                            font: Some(font),
-                            font_size: font_size as u16,
-                            color: entry.color,
-                            ..Default::default()
-                        },
-                    );
-                } else {
-                    draw_text(&entry.text, draw_x, draw_y, font_size, entry.color);
+
+                let spans = parse_rich_text(&entry.text, entry.color);
+                let mut x_offset = 0.0;
+
+                for span in spans {
+                    let word_x = draw_x + x_offset;
+                    if let Some(ref font) = self.font {
+                        draw_text_ex(
+                            &span.text,
+                            word_x,
+                            draw_y,
+                            TextParams {
+                                font: Some(font),
+                                font_size: font_size as u16,
+                                color: span.color,
+                                ..Default::default()
+                            },
+                        );
+                    } else {
+                        draw_text(&span.text, word_x, draw_y, font_size, span.color);
+                    }
+                    x_offset += measure_text(&span.text, self.font.as_ref(), font_size as u16, 1.0).width;
                 }
             }
         };
@@ -2702,6 +3242,7 @@ impl UI {
     }
 
     /// Builder pattern: Sets UI container to deactivated (`active = false`) (alias for [`deactivated`](UI::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }
@@ -2984,6 +3525,7 @@ impl TextField {
     }
 
     /// Builder pattern: Sets text field to deactivated (`active = false`) (alias for [`deactivated`](TextField::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }

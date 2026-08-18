@@ -82,6 +82,7 @@ impl AnimatedSprite {
     }
 
     /// Builder pattern: Sets component to deactivated (`active = false`) (alias).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }

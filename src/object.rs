@@ -87,7 +87,7 @@ pub trait Clickable {
 
     /// Returns `true` while the specified mouse button is held down over the entity (**screen space**).
     ///
-    /// ⚠️ For world-space entities rendered with a 2D camera, use [`clicked_ctx`](Clickable::clicked_ctx).
+    /// ⚠️ For world-space entities rendered with a 2D camera, use [`click_ctx`](Clickable::click_ctx) for pressed detection.
     fn clicked(&self, btn: Side) -> bool {
         self.is_hovered()
             && (is_mouse_button_down(btn.to_macroquad())
@@ -232,6 +232,12 @@ impl Sprite {
     }
 
     /// Sets the position vector.
+    pub fn set_position(&mut self, pos: Vec2) {
+        self.position = pos;
+    }
+
+    /// Sets the position vector.
+    #[deprecated(since = "0.5.0", note = "Use `set_position()` instead")]
     pub fn setpos(&mut self, pos: Vec2) {
         self.position = pos;
     }
@@ -340,6 +346,7 @@ impl Rectangle {
     }
 
     /// Builder pattern: Sets rectangle to deactivated (`active = false`) (alias for [`deactivated`](Rectangle::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self {
         self.deactivated()
     }
@@ -499,6 +506,7 @@ impl<Inner, Data> Behavior<Inner, Data> {
     }
 
     /// Builder pattern: Sets the inner entity to deactivated (`active = false`) (alias for [`deactivated`](Behavior::deactivated)).
+    #[deprecated(since = "0.5.0", note = "Use `deactivated()` instead (typo fix)")]
     pub fn desactivated(self) -> Self
     where
         Inner: Object,

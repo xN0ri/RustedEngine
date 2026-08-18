@@ -248,7 +248,11 @@ impl Engine {
         self
     }
 
-    /// Builder pattern: Sets whether the window should be resizable.
+    /// Builder pattern: Note — window resizability **cannot** be changed at runtime via this method.
+    /// Configure it at startup using [`Engine::conf`] or [`Engine::conf_custom`] instead.
+    ///
+    /// This method is kept as a no-op stub to avoid breaking API churn.
+    #[doc(hidden)]
     pub fn with_resizable(self, _enable: bool) -> Self {
         self
     }
