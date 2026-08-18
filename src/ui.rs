@@ -1632,7 +1632,7 @@ impl Object for Button {
 
         let text_dims = measure_text(&self.label, self.font.as_ref(), self.font_size as u16, 1.0);
         let tx = draw_pos.x + (current_size.x - text_dims.width) * 0.5;
-        let ty = draw_pos.y + (current_size.y + text_dims.offset_y) * 0.5;
+        let ty = draw_pos.y + (current_size.y + text_dims.height) * 0.5 - 2.0;
 
         if let Some(ref font) = self.font {
             draw_text_ex(
@@ -3674,8 +3674,14 @@ impl Object for TextField {
             self.text_color
         };
 
+        let text_dim = measure_text(
+            if text_to_draw.is_empty() { "A" } else { text_to_draw },
+            self.font.as_ref(),
+            self.font_size as u16,
+            1.0,
+        );
         let tx = if self.decorated { pos.x + 8.0 } else { pos.x };
-        let ty = pos.y + (self.size.y / 2.0) + (self.font_size / 3.0);
+        let ty = pos.y + (self.size.y + text_dim.height) * 0.5 - 2.0;
 
         if let Some(ref font) = self.font {
             draw_text_ex(
