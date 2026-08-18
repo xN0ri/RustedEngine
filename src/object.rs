@@ -73,6 +73,14 @@ pub trait Clickable {
         self.click_rect().contains(m_world)
     }
 
+    /// Returns `true` if the mouse cursor is over the UI entity (**UI canvas space**, accounting for virtual resolution mouse remapping).
+    fn is_hovered_ui(&self, ctx: &Context) -> bool {
+        if !self.is_active() {
+            return false;
+        }
+        self.click_rect().contains(ctx.input.mouse_position())
+    }
+
     /// Returns `true` during the single frame the specified mouse button was pressed over the entity (**screen space**).
     ///
     /// ⚠️ For world-space entities rendered with a 2D camera, use [`click_ctx`](Clickable::click_ctx).

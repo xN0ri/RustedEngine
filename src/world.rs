@@ -30,6 +30,17 @@ pub trait Object: 'static {
     /// Sets the screen-space position of this entity. No-op by default.
     fn set_position(&mut self, _pos: macroquad::math::Vec2) {}
 
+    /// Sets the screen-space size of this entity. No-op by default.
+    fn set_size(&mut self, _size: macroquad::math::Vec2) {}
+
+    /// Returns whether this entity expands to fill its parent container. Defaults to `false`.
+    fn is_fill_parent(&self) -> bool {
+        false
+    }
+
+    /// Sets whether this entity expands to fill its parent container.
+    fn set_fill_parent(&mut self, _fill: bool) {}
+
     /// Returns whether this entity is visible for rendering. Defaults to `true`.
     fn is_visible(&self) -> bool {
         true
@@ -66,6 +77,22 @@ pub trait Object: 'static {
     /// blurry upscaled font rasterization). Default: `false`.
     fn is_text_layer(&self) -> bool {
         false
+    }
+
+    /// Renders non-text visual components (backgrounds, borders, textures).
+    /// Default implementation calls [`draw`](Object::draw) if [`is_text_layer`](Object::is_text_layer) is false.
+    fn draw_non_text(&self) {
+        if !self.is_text_layer() {
+            self.draw();
+        }
+    }
+
+    /// Renders text visual components at native screen resolution.
+    /// Default implementation calls [`draw`](Object::draw) if [`is_text_layer`](Object::is_text_layer) is true.
+    fn draw_text_only(&self) {
+        if self.is_text_layer() {
+            self.draw();
+        }
     }
 
     /// Downcasting helper returning an immutable `&dyn Any` reference, or `None` by default.
@@ -332,9 +359,7 @@ impl World {
     /// Used when virtual resolution pipeline is active to render non-text UI into VRT.
     pub fn draw_ui_non_text(&self) {
         for obj in self.ui_objects.iter() {
-            if !obj.is_text_layer() {
-                obj.draw();
-            }
+            obj.draw_non_text();
         }
     }
 
@@ -342,9 +367,7 @@ impl World {
     /// Used when virtual resolution pipeline is active to render text directly at native screen resolution.
     pub fn draw_ui_text_only(&self) {
         for obj in self.ui_objects.iter() {
-            if obj.is_text_layer() {
-                obj.draw();
-            }
+            obj.draw_text_only();
         }
     }
 }

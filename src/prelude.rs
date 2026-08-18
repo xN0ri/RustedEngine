@@ -1,6 +1,7 @@
 //! Prelude re-exporting common structs, traits, enums, and macros for easy importing via `use RustyEngine::prelude::*;`.
 
 pub use crate::{
+    column, row, ui_vec,
     actions::ActionMap,
     animated_texture::AnimatedSprite,
     asset_manager::Assets,
@@ -24,10 +25,11 @@ pub use crate::{
     time::{Time, Timer},
     trigger::{Trigger, TriggerSystem},
     ui::{
-        Button, Checkbox, Grid, HBox, Image, ImageObject, LayoutAlign, LayoutJustify, Margin, Padding,
-        Panel as UiPanel, ProgressBar, RevealMode, RichText, RichTextObject, ScrollMode, Slider, Text, TextAlign, TextField,
-        TextFieldObject, TextLog, TextLogLine, TextLogObject, TextObject, TextSpan, Tooltip, UIAnchor, VBox,
-        UI, draw_nine_slice, margin, padding, parse_color, parse_rich_text, rich_text,
+        Align, Button, Checkbox, Column, Container, CrossAxisAlignment, Gap, Grid, HBox, Image, ImageObject,
+        IntoUIObject, LayoutAlign, LayoutJustify, MainAxisAlignment, Margin, Padding, Panel as UiPanel,
+        ProgressBar, RevealMode, RichText, RichTextObject, Row, ScrollMode, Slider, Text, TextAlign, TextAlignment, TextField,
+        TextFieldObject, TextLog, TextLogObject, TextObject, UIAnchor, VBox,
+        UI, draw_nine_slice, margin, padding, parse_color, parse_rich_text, rich_text, Tooltip,
     },
     window::Window,
     world,

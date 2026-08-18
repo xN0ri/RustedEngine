@@ -819,25 +819,30 @@ impl Object for Text {
         let (pos, font_size, line_spacing, max_width) = self.resolved_geometry();
 
         let render_line = |str_val: &str, x: f32, y: f32, color: Color| {
+            let rx = x.round();
+            let ry = y.round();
+            let fs = font_size.round();
             if let Some(ref font) = self.font {
                 draw_text_ex(
                     str_val,
-                    x,
-                    y,
+                    rx,
+                    ry,
                     TextParams {
                         font: Some(font),
-                        font_size: font_size as u16,
+                        font_size: fs as u16,
                         color,
                         ..Default::default()
                     },
                 );
             } else {
-                draw_text(str_val, x, y, font_size, color);
+                draw_text(str_val, rx, ry, fs, color);
             }
         };
 
-        let draw_single_line = |line: &str, base_x: f32, base_y: f32| {
-            let width = measure_text(line, self.font.as_ref(), font_size as u16, 1.0).width;
+        let draw_single_line = |line: &str, base_x: f32, top_y: f32| {
+            let dims = measure_text(line, self.font.as_ref(), font_size.round() as u16, 1.0);
+            let base_y = top_y + font_size * 0.75;
+            let width = dims.width;
             let align_offset_x = match self.alignment {
                 TextAlign::Left => 0.0,
                 TextAlign::Center => -width * 0.5,
@@ -882,6 +887,22 @@ impl Object for Text {
         } else {
             draw_single_line(&self.content, pos.x, pos.y);
         }
+    }
+
+    fn bounds(&self) -> Option<Rect> {
+        let (pos, font_size, _line_spacing, max_width) = self.resolved_geometry();
+        let h = self.wrapped_height();
+        let w = if let Some(mw) = max_width {
+            mw
+        } else {
+            measure_text(&self.content, self.font.as_ref(), font_size as u16, 1.0).width
+        };
+        Some(Rect {
+            x: pos.x,
+            y: pos.y,
+            w,
+            h,
+        })
     }
 
     fn is_text_layer(&self) -> bool {
@@ -1588,13 +1609,15 @@ impl Object for Button {
             return;
         }
 
-        let is_currently_hovered = self.is_hovered_ctx(ctx);
+        let is_currently_hovered = self.is_hovered_ui(ctx) || self.is_hovered_ctx(ctx);
         if is_currently_hovered && !self.was_hovered && let Some(ref sound) = self.hover_sound {
             ctx.audio.play(&ctx.assets, sound);
         }
         self.was_hovered = is_currently_hovered;
 
-        if self.is_clicked_ctx(ctx) {
+        let mouse_clicked = is_mouse_button_pressed(MouseButton::Left)
+            || ctx.input.is_mouse_button_pressed(macroquad::input::MouseButton::Left);
+        if is_currently_hovered && mouse_clicked {
             if let Some(ref sound) = self.click_sound {
                 ctx.audio.play(&ctx.assets, sound);
             }
@@ -1927,6 +1950,12 @@ pub struct Image {
     pub screen_padding: f32,
     /// Optional screen anchor alignment preset and padding for dynamic re-alignment.
     pub anchor: Option<(UIAnchor, Padding)>,
+    /// Child UI components rendered inside this image container.
+    pub children: Vec<Box<dyn Object>>,
+    /// Optional 9-slice corner margins (left, top, right, bottom) for stretch-resistant border rendering.
+    pub nine_slice_margins: Option<(f32, f32, f32, f32)>,
+    /// Whether this image expands to fill its parent container.
+    pub fill_parent: bool,
 }
 
 impl Image {
@@ -1949,7 +1978,28 @@ impl Image {
             auto_screen_size: false,
             screen_padding: 0.0,
             anchor: None,
+            children: Vec::new(),
+            fill_parent: false,
+            nine_slice_margins: None,
         }
+    }
+
+    /// Builder pattern: Configures 9-slice rendering with corner margins `(left, top, right, bottom)` to preserve rounded corners.
+    pub fn with_nine_slice(mut self, left: f32, top: f32, right: f32, bottom: f32) -> Self {
+        self.nine_slice_margins = Some((left, top, right, bottom));
+        self
+    }
+
+    /// Builder pattern: Enables expanding size to fill parent container bounds.
+    pub fn fill_parent(mut self) -> Self {
+        self.fill_parent = true;
+        self
+    }
+
+    /// Builder pattern: Adds a child UI widget positioned relative to this image (centered by default).
+    pub fn child<O: IntoUIObject>(mut self, child: O) -> Self {
+        self.children.push(child.into_ui_box());
+        self
     }
 
     /// Factory: Loads texture from asset manager by name. Defaults to native texture size at `(0, 0)`.
@@ -2098,7 +2148,7 @@ impl Clickable for Image {
 }
 
 impl Object for Image {
-    fn update(&mut self, _ctx: &mut Context) {
+    fn update(&mut self, ctx: &mut Context) {
         if let Some((anchor, pad)) = self.anchor {
             self.position = anchor.compute_position(self.size, pad);
         } else if self.auto_screen_size {
@@ -2107,27 +2157,56 @@ impl Object for Image {
             self.position = vec2(self.screen_padding, self.screen_padding);
             self.size = vec2((sw - self.screen_padding * 2.0).max(10.0), (sh - self.screen_padding * 2.0).max(10.0));
         }
+        for child in &mut self.children {
+            if child.is_fill_parent() {
+                child.set_size(self.size);
+            }
+            let child_size = child.bounds().map(|b| vec2(b.w, b.h)).unwrap_or(Vec2::ZERO);
+            let offset = (self.size - child_size) * 0.5;
+            child.set_position(self.position + offset);
+            child.update(ctx);
+        }
     }
 
     fn draw(&self) {
         if !self.visible {
             return;
         }
-        let pos = self.position + get_draw_offset();
-        draw_texture_ex(
-            &self.texture,
-            pos.x,
-            pos.y,
-            self.tint,
-            DrawTextureParams {
-                dest_size: Some(self.size),
-                ..Default::default()
-            },
-        );
+        let pos = (self.position + get_draw_offset()).round();
+        if let Some(margins) = self.nine_slice_margins {
+            draw_nine_slice(&self.texture, pos, self.size, margins, self.tint);
+        } else {
+            draw_texture_ex(
+                &self.texture,
+                pos.x,
+                pos.y,
+                self.tint,
+                DrawTextureParams {
+                    source: Some(Rect::new(0.0, 0.0, self.texture.width(), self.texture.height())),
+                    dest_size: Some(self.size),
+                    ..Default::default()
+                },
+            );
+        }
+        for child in &self.children {
+            child.draw();
+        }
     }
 
-    fn tag(&self) -> &str {
-        &self.tag
+    fn set_position(&mut self, pos: Vec2) {
+        self.position = pos;
+    }
+
+    fn set_size(&mut self, size: Vec2) {
+        self.size = size;
+    }
+
+    fn is_fill_parent(&self) -> bool {
+        self.fill_parent
+    }
+
+    fn set_fill_parent(&mut self, fill: bool) {
+        self.fill_parent = fill;
     }
 
     fn is_visible(&self) -> bool {
@@ -2136,10 +2215,6 @@ impl Object for Image {
 
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
-    }
-
-    fn set_position(&mut self, pos: macroquad::math::Vec2) {
-        self.position = pos;
     }
 
     fn is_active(&self) -> bool {
@@ -3364,6 +3439,14 @@ impl Default for UI {
 // TextField — Interactive UI text input field
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextAlignment {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
 /// Interactive UI text input field supporting focus management, character typing,
 /// placeholder text, blinking cursor, custom fonts, and optional decorations.
 #[allow(clippy::type_complexity)]
@@ -3390,6 +3473,9 @@ pub struct TextField {
     pub on_submit: Option<Box<dyn FnMut(&str, &mut Context)>>,
     pub padding: Padding,
     pub margin: Margin,
+    pub fill_parent: bool,
+    pub alignment: TextAlignment,
+    pub text_offset: Vec2,
 }
 
 impl TextField {
@@ -3418,7 +3504,16 @@ impl TextField {
             on_submit: None,
             padding: Padding::default(),
             margin: Margin::default(),
+            fill_parent: false,
+            alignment: TextAlignment::Left,
+            text_offset: Vec2::ZERO,
         }
+    }
+
+    /// Builder pattern: Enables expanding size to fill parent container bounds.
+    pub fn fill_parent(mut self) -> Self {
+        self.fill_parent = true;
+        self
     }
 
     /// Builder pattern: Attaches an `on_submit` callback executed when Enter key is pressed while focused.
@@ -3439,15 +3534,55 @@ impl TextField {
         self
     }
 
+    /// Builder pattern: Sets text alignment (Left, Center, Right).
+    pub fn with_text_alignment(mut self, alignment: TextAlignment) -> Self {
+        self.alignment = alignment;
+        self
+    }
+
+    /// Builder pattern: Sets manual pixel text offset (dx, dy).
+    pub fn with_text_offset(mut self, offset: Vec2) -> Self {
+        self.text_offset = offset;
+        self
+    }
+
     /// Builder pattern: Sets initial text.
     pub fn with_text(mut self, text: &str) -> Self {
         self.text = text.to_string();
         self
     }
 
+    /// Builder pattern: Enables focus state by default.
+    pub fn focused(mut self) -> Self {
+        self.focused = true;
+        self.cursor_timer = 0.0;
+        self
+    }
+
+    /// Builder pattern: Sets focus state.
+    pub fn with_focused(mut self, focused: bool) -> Self {
+        self.focused = focused;
+        if focused {
+            self.cursor_timer = 0.0;
+        }
+        self
+    }
+
     /// Builder pattern: Sets a custom TTF font.
     pub fn with_font(mut self, font: Font) -> Self {
         self.font = Some(font);
+        self
+    }
+
+    /// Builder pattern: Sets a custom TTF font loaded in the asset manager by name.
+    pub fn with_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(font) = assets.get_font(name) {
+            self.font = Some(font.clone());
+        }
         self
     }
 
@@ -3567,9 +3702,10 @@ impl TextField {
 
     /// Returns bounding rectangle of the text field.
     pub fn rect(&self) -> Rect {
+        let pos = self.position + get_draw_offset();
         Rect {
-            x: self.position.x,
-            y: self.position.y,
+            x: pos.x,
+            y: pos.y,
             w: self.size.x,
             h: self.size.y,
         }
@@ -3591,10 +3727,16 @@ impl Object for TextField {
             return;
         }
 
-        if is_mouse_button_pressed(MouseButton::Left) {
-            self.focused = self.is_hovered_ctx(ctx);
-            if self.focused {
+        let mouse_clicked = is_mouse_button_pressed(MouseButton::Left)
+            || ctx.input.is_mouse_button_pressed(macroquad::input::MouseButton::Left);
+
+        if mouse_clicked {
+            let is_hovered = self.is_hovered_ui(ctx) || self.is_hovered() || self.is_hovered_ctx(ctx);
+            if is_hovered {
+                self.focused = true;
                 self.cursor_timer = 0.0;
+            } else {
+                self.focused = false;
             }
         }
 
@@ -3613,55 +3755,61 @@ impl Object for TextField {
                 }
             }
 
-            if is_key_pressed(KeyCode::Backspace) {
+            let backspace = is_key_pressed(KeyCode::Backspace)
+                || ctx.input.is_key_pressed(macroquad::input::KeyCode::Backspace);
+            if backspace {
                 self.text.pop();
             }
 
-            if is_key_pressed(KeyCode::Enter)
-                && let Some(ref mut callback) = self.on_submit
-            {
+            let enter = is_key_pressed(KeyCode::Enter)
+                || ctx.input.is_key_pressed(macroquad::input::KeyCode::Enter);
+            if enter && let Some(ref mut callback) = self.on_submit {
                 let txt = self.text.clone();
                 (callback)(&txt, ctx);
             }
         }
     }
 
-    fn draw(&self) {
+    fn draw_non_text(&self) {
+        if !self.visible || !self.decorated {
+            return;
+        }
+        let pos = self.position + get_draw_offset();
+        draw_rectangle(pos.x, pos.y, self.size.x, self.size.y, self.bg_color);
+
+        let bc = if self.focused {
+            Some(self.focus_border_color)
+        } else {
+            self.border_color
+        };
+
+        if let Some(border_color) = bc {
+            let bw = self.border_width;
+            draw_rectangle(pos.x, pos.y, self.size.x, bw, border_color);
+            draw_rectangle(
+                pos.x,
+                pos.y + self.size.y - bw,
+                self.size.x,
+                bw,
+                border_color,
+            );
+            draw_rectangle(pos.x, pos.y, bw, self.size.y, border_color);
+            draw_rectangle(
+                pos.x + self.size.x - bw,
+                pos.y,
+                bw,
+                self.size.y,
+                border_color,
+            );
+        }
+    }
+
+    fn draw_text_only(&self) {
         if !self.visible {
             return;
         }
-
+        let (scale, ui_offset) = get_ui_scale();
         let pos = self.position + get_draw_offset();
-
-        if self.decorated {
-            draw_rectangle(pos.x, pos.y, self.size.x, self.size.y, self.bg_color);
-
-            let bc = if self.focused {
-                Some(self.focus_border_color)
-            } else {
-                self.border_color
-            };
-
-            if let Some(border_color) = bc {
-                let bw = self.border_width;
-                draw_rectangle(pos.x, pos.y, self.size.x, bw, border_color);
-                draw_rectangle(
-                    pos.x,
-                    pos.y + self.size.y - bw,
-                    self.size.x,
-                    bw,
-                    border_color,
-                );
-                draw_rectangle(pos.x, pos.y, bw, self.size.y, border_color);
-                draw_rectangle(
-                    pos.x + self.size.x - bw,
-                    pos.y,
-                    bw,
-                    self.size.y,
-                    border_color,
-                );
-            }
-        }
 
         let text_to_draw = if self.text.is_empty() {
             &self.placeholder
@@ -3674,43 +3822,74 @@ impl Object for TextField {
             self.text_color
         };
 
+        let scaled_font_size = ((self.font_size * scale).round() as u16).max(1);
         let text_dim = measure_text(
             if text_to_draw.is_empty() { "A" } else { text_to_draw },
             self.font.as_ref(),
-            self.font_size as u16,
+            scaled_font_size,
             1.0,
         );
-        let tx = if self.decorated { pos.x + 8.0 } else { pos.x };
-        let ty = pos.y + (self.size.y + text_dim.height) * 0.5 - 2.0;
+
+        let base_left = if self.decorated { 8.0 } else { 0.0 };
+        let pad_left = self.padding.left.max(base_left);
+        let pad_right = self.padding.right.max(base_left);
+
+        let unscaled_text_w = text_dim.width / scale;
+        let start_x = match self.alignment {
+            TextAlignment::Left => pos.x + pad_left,
+            TextAlignment::Center => pos.x + (self.size.x - unscaled_text_w) * 0.5,
+            TextAlignment::Right => pos.x + self.size.x - pad_right - unscaled_text_w,
+        };
+
+        let unscaled_text_h = if text_dim.height > 0.0 { text_dim.height / scale } else { self.font_size };
+        let unscaled_offset_y = if text_dim.offset_y > 0.0 { text_dim.offset_y / scale } else { self.font_size * 0.70 };
+
+        let unscaled_tx = start_x + self.text_offset.x;
+        let unscaled_ty = pos.y + (self.size.y - unscaled_text_h) * 0.5 + unscaled_offset_y + self.text_offset.y;
+
+        let final_tx = (unscaled_tx * scale + ui_offset.x).round();
+        let final_ty = (unscaled_ty * scale + ui_offset.y).round();
 
         if let Some(ref font) = self.font {
             draw_text_ex(
                 text_to_draw,
-                tx,
-                ty,
+                final_tx,
+                final_ty,
                 TextParams {
                     font: Some(font),
-                    font_size: self.font_size as u16,
+                    font_size: scaled_font_size,
                     color: color_to_draw,
                     ..Default::default()
                 },
             );
         } else {
-            draw_text(text_to_draw, tx, ty, self.font_size, color_to_draw);
+            draw_text(text_to_draw, final_tx, final_ty, scaled_font_size as f32, color_to_draw);
         }
 
-        if self.focused && (self.cursor_timer % 0.8) < 0.4 {
-            let text_dim = measure_text(
+        if self.focused && (self.cursor_timer % 1.0) < 0.5 {
+            let typed_dim = measure_text(
                 if self.text.is_empty() { "" } else { &self.text },
                 self.font.as_ref(),
-                self.font_size as u16,
+                scaled_font_size,
                 1.0,
             );
-            let cursor_x = tx + text_dim.width + 2.0;
-            let cursor_top = pos.y + 4.0;
-            let cursor_height = (self.size.y - 8.0).max(self.font_size);
-            draw_rectangle(cursor_x, cursor_top, 2.0, cursor_height, self.text_color);
+            let unscaled_cursor_x = unscaled_tx + (typed_dim.width / scale) + 1.0;
+            let unscaled_cursor_top = unscaled_ty - unscaled_offset_y + 1.0;
+            let unscaled_cursor_height = unscaled_text_h * 0.85;
+
+            let final_cx = (unscaled_cursor_x * scale + ui_offset.x).round();
+            let final_cy = (unscaled_cursor_top * scale + ui_offset.y).round();
+            let final_cw = scale.max(1.0).round();
+            let final_ch = (unscaled_cursor_height * scale).round();
+
+            let cursor_color = Color::new(self.text_color.r, self.text_color.g, self.text_color.b, 0.85);
+            draw_rectangle(final_cx, final_cy, final_cw, final_ch, cursor_color);
         }
+    }
+
+    fn draw(&self) {
+        self.draw_non_text();
+        self.draw_text_only();
     }
 
     fn tag(&self) -> &str {
@@ -3727,6 +3906,18 @@ impl Object for TextField {
 
     fn set_position(&mut self, pos: macroquad::math::Vec2) {
         self.position = pos;
+    }
+
+    fn set_size(&mut self, size: macroquad::math::Vec2) {
+        self.size = size;
+    }
+
+    fn is_fill_parent(&self) -> bool {
+        self.fill_parent
+    }
+
+    fn set_fill_parent(&mut self, fill: bool) {
+        self.fill_parent = fill;
     }
 
     fn is_active(&self) -> bool {
@@ -4377,6 +4568,689 @@ impl Object for Tooltip {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Flutter-like Declarative Layout System (Column, Row, Container, Gap, Align)
+// ---------------------------------------------------------------------------
+
+/// Conversion trait allowing zero-`Box` child passing into containers and components.
+pub trait IntoUIObject {
+    fn into_ui_box(self) -> Box<dyn Object>;
+}
+
+impl<T: Object> IntoUIObject for T {
+    fn into_ui_box(self) -> Box<dyn Object> {
+        Box::new(self)
+    }
+}
+
+impl IntoUIObject for Box<dyn Object> {
+    fn into_ui_box(self) -> Box<dyn Object> {
+        self
+    }
+}
+
+/// Alignment preset within a parent bounding container.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Align {
+    TopLeft,
+    TopCenter,
+    TopRight,
+    CenterLeft,
+    Center,
+    CenterRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+impl Align {
+    /// Computes relative offset `Vec2(x, y)` inside `parent_size` for a child of `child_size` with `padding`.
+    pub fn compute_offset(self, parent_size: Vec2, child_size: Vec2, padding: Padding) -> Vec2 {
+        let avail_w = (parent_size.x - padding.left - padding.right).max(0.0);
+        let avail_h = (parent_size.y - padding.top - padding.bottom).max(0.0);
+
+        let (rx, ry) = match self {
+            Align::TopLeft => (0.0, 0.0),
+            Align::TopCenter => ((avail_w - child_size.x) * 0.5, 0.0),
+            Align::TopRight => (avail_w - child_size.x, 0.0),
+            Align::CenterLeft => (0.0, (avail_h - child_size.y) * 0.5),
+            Align::Center => ((avail_w - child_size.x) * 0.5, (avail_h - child_size.y) * 0.5),
+            Align::CenterRight => (avail_w - child_size.x, (avail_h - child_size.y) * 0.5),
+            Align::BottomLeft => (0.0, avail_h - child_size.y),
+            Align::BottomCenter => ((avail_w - child_size.x) * 0.5, avail_h - child_size.y),
+            Align::BottomRight => (avail_w - child_size.x, avail_h - child_size.y),
+        };
+
+        vec2(padding.left + rx, padding.top + ry)
+    }
+}
+
+/// Main axis alignment for [`Column`] (vertical) and [`Row`] (horizontal).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MainAxisAlignment {
+    #[default]
+    Start,
+    Center,
+    End,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+}
+
+/// Cross axis alignment for [`Column`] (horizontal) and [`Row`] (vertical).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CrossAxisAlignment {
+    #[default]
+    Start,
+    Center,
+    End,
+    Stretch,
+}
+
+/// Spacing widget for creating fixed gaps between elements inside [`Column`] or [`Row`].
+pub struct Gap {
+    pub width: f32,
+    pub height: f32,
+    pub visible: bool,
+}
+
+impl Gap {
+    /// Creates a uniform gap size `(size × size)`.
+    pub fn new(size: f32) -> Self {
+        Self { width: size, height: size, visible: true }
+    }
+
+    /// Creates a vertical gap of height `h`.
+    pub fn height(h: f32) -> Self {
+        Self { width: 0.0, height: h, visible: true }
+    }
+
+    /// Creates a horizontal gap of width `w`.
+    pub fn width(w: f32) -> Self {
+        Self { width: w, height: 0.0, visible: true }
+    }
+}
+
+impl Object for Gap {
+    fn update(&mut self, _ctx: &mut Context) {}
+    fn draw(&self) {}
+    fn bounds(&self) -> Option<Rect> {
+        Some(Rect { x: 0.0, y: 0.0, w: self.width, h: self.height })
+    }
+    fn is_visible(&self) -> bool { self.visible }
+    fn set_visible(&mut self, visible: bool) { self.visible = visible; }
+}
+
+/// Flexible container widget supporting background color, border, padding, margin, alignment, and child layout.
+pub struct Container {
+    pub position: Vec2,
+    pub size: Vec2,
+    pub padding: Padding,
+    pub margin: Margin,
+    pub bg_color: Option<Color>,
+    pub border_color: Option<Color>,
+    pub border_width: f32,
+    pub alignment: Option<Align>,
+    pub child: Option<Box<dyn Object>>,
+    pub anchor: Option<(UIAnchor, Padding)>,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+    pub fill_parent: bool,
+}
+
+impl Container {
+    pub fn new() -> Self {
+        Self {
+            position: Vec2::ZERO,
+            size: Vec2::ZERO,
+            padding: Padding::default(),
+            margin: Margin::default(),
+            bg_color: None,
+            border_color: None,
+            border_width: 1.0,
+            alignment: None,
+            child: None,
+            anchor: None,
+            tag: String::new(),
+            visible: true,
+            active: true,
+            fill_parent: false,
+        }
+    }
+
+    pub fn fill_parent(mut self) -> Self {
+        self.fill_parent = true;
+        self
+    }
+
+    pub fn with_child<O: IntoUIObject>(mut self, child: O) -> Self {
+        self.child = Some(child.into_ui_box());
+        self
+    }
+
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self
+    }
+
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self
+    }
+
+    pub fn with_background(mut self, color: Color) -> Self {
+        self.bg_color = Some(color);
+        self
+    }
+
+    pub fn with_border(mut self, color: Color, width: f32) -> Self {
+        self.border_color = Some(color);
+        self.border_width = width;
+        self
+    }
+
+    pub fn with_alignment(mut self, align: Align) -> Self {
+        self.alignment = Some(align);
+        self
+    }
+
+    pub fn align_to_screen(mut self, anchor: UIAnchor, padding: impl Into<Padding>) -> Self {
+        let pad = padding.into();
+        self.position = anchor.compute_position(self.size, pad);
+        self.anchor = Some((anchor, pad));
+        self
+    }
+
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
+        self
+    }
+}
+
+impl Object for Container {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.visible || !self.active { return; }
+        if let Some((anchor, pad)) = self.anchor {
+            self.position = anchor.compute_position(self.size, pad);
+        }
+        if let Some(ref mut child) = self.child {
+            if child.is_fill_parent() {
+                let avail_w = (self.size.x - self.padding.left - self.padding.right).max(0.0);
+                let avail_h = (self.size.y - self.padding.top - self.padding.bottom).max(0.0);
+                child.set_size(vec2(avail_w, avail_h));
+            }
+            let child_size = child.bounds().map(|b| vec2(b.w, b.h)).unwrap_or(Vec2::ZERO);
+            let align = self.alignment.unwrap_or(Align::TopLeft);
+            let offset = align.compute_offset(self.size, child_size, self.padding);
+            child.set_position(self.position + offset);
+            child.update(ctx);
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible { return; }
+        let pos = self.position + get_draw_offset();
+        if let Some(bg) = self.bg_color {
+            draw_rectangle(pos.x, pos.y, self.size.x, self.size.y, bg);
+        }
+        if let Some(border) = self.border_color {
+            let bw = self.border_width;
+            draw_rectangle(pos.x, pos.y, self.size.x, bw, border);
+            draw_rectangle(pos.x, pos.y + self.size.y - bw, self.size.x, bw, border);
+            draw_rectangle(pos.x, pos.y, bw, self.size.y, border);
+            draw_rectangle(pos.x + self.size.x - bw, pos.y, bw, self.size.y, border);
+        }
+        if let Some(ref child) = self.child {
+            child.draw();
+        }
+    }
+
+    fn bounds(&self) -> Option<Rect> {
+        Some(Rect { x: self.position.x, y: self.position.y, w: self.size.x, h: self.size.y })
+    }
+
+    fn tag(&self) -> &str { &self.tag }
+    fn is_visible(&self) -> bool { self.visible }
+    fn set_visible(&mut self, visible: bool) { self.visible = visible; }
+    fn is_active(&self) -> bool { self.active }
+    fn set_active(&mut self, active: bool) { self.active = active; }
+    fn set_position(&mut self, pos: Vec2) { self.position = pos; }
+    fn set_size(&mut self, size: Vec2) { self.size = size; }
+    fn is_fill_parent(&self) -> bool { self.fill_parent }
+    fn set_fill_parent(&mut self, fill: bool) { self.fill_parent = fill; }
+}
+
+impl Clickable for Container {
+    fn click_rect(&self) -> Rect {
+        Rect { x: self.position.x, y: self.position.y, w: self.size.x, h: self.size.y }
+    }
+    fn is_active(&self) -> bool { self.active }
+}
+
+/// Vertical column container layout widget (Flutter-inspired).
+pub struct Column {
+    pub position: Vec2,
+    pub size: Vec2,
+    pub main_axis_alignment: MainAxisAlignment,
+    pub cross_axis_alignment: CrossAxisAlignment,
+    pub spacing: f32,
+    pub padding: Padding,
+    pub margin: Margin,
+    pub children: Vec<Box<dyn Object>>,
+    pub anchor: Option<(UIAnchor, Padding)>,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+}
+
+impl Column {
+    pub fn new() -> Self {
+        Self {
+            position: Vec2::ZERO,
+            size: Vec2::ZERO,
+            main_axis_alignment: MainAxisAlignment::Start,
+            cross_axis_alignment: CrossAxisAlignment::Start,
+            spacing: 0.0,
+            padding: Padding::default(),
+            margin: Margin::default(),
+            children: Vec::new(),
+            anchor: None,
+            tag: String::new(),
+            visible: true,
+            active: true,
+        }
+    }
+
+    pub fn child<O: IntoUIObject>(mut self, child: O) -> Self {
+        self.children.push(child.into_ui_box());
+        self
+    }
+
+    pub fn children<I>(mut self, items: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: IntoUIObject,
+    {
+        for item in items {
+            self.children.push(item.into_ui_box());
+        }
+        self
+    }
+
+    pub fn with_children<I>(self, items: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: IntoUIObject,
+    {
+        self.children(items)
+    }
+
+    pub fn with_spacing(mut self, spacing: f32) -> Self {
+        self.spacing = spacing;
+        self
+    }
+
+    pub fn with_main_axis_alignment(mut self, align: MainAxisAlignment) -> Self {
+        self.main_axis_alignment = align;
+        self
+    }
+
+    pub fn with_cross_axis_alignment(mut self, align: CrossAxisAlignment) -> Self {
+        self.cross_axis_alignment = align;
+        self
+    }
+
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self
+    }
+
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self
+    }
+
+    pub fn align_to_screen(mut self, anchor: UIAnchor, padding: impl Into<Padding>) -> Self {
+        let pad = padding.into();
+        self.position = anchor.compute_position(self.size, pad);
+        self.anchor = Some((anchor, pad));
+        self
+    }
+
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
+        self
+    }
+
+    fn layout_children(&mut self) {
+        if self.children.is_empty() { return; }
+
+        let mut child_sizes: Vec<Vec2> = Vec::with_capacity(self.children.len());
+        let mut total_child_h = 0.0f32;
+        let mut max_child_w = 0.0f32;
+
+        for child in &self.children {
+            if let Some(b) = child.bounds() {
+                child_sizes.push(vec2(b.w, b.h));
+                total_child_h += b.h;
+                max_child_w = max_child_w.max(b.w);
+            } else {
+                child_sizes.push(Vec2::ZERO);
+            }
+        }
+
+        let num_children = self.children.len() as f32;
+        let total_spacing = self.spacing * (num_children - 1.0).max(0.0);
+        let content_h = total_child_h + total_spacing;
+        let content_w = max_child_w;
+
+        if self.size == Vec2::ZERO {
+            self.size = vec2(content_w + self.padding.left + self.padding.right, content_h + self.padding.top + self.padding.bottom);
+        }
+
+        let avail_h = (self.size.y - self.padding.top - self.padding.bottom).max(0.0);
+        let avail_w = (self.size.x - self.padding.left - self.padding.right).max(0.0);
+
+        let (start_y, gap_between) = match self.main_axis_alignment {
+            MainAxisAlignment::Start => (self.padding.top, self.spacing),
+            MainAxisAlignment::Center => (self.padding.top + (avail_h - content_h).max(0.0) * 0.5, self.spacing),
+            MainAxisAlignment::End => (self.padding.top + (avail_h - content_h).max(0.0), self.spacing),
+            MainAxisAlignment::SpaceBetween => {
+                let g = if num_children > 1.0 { (avail_h - total_child_h) / (num_children - 1.0) } else { 0.0 };
+                (self.padding.top, g)
+            }
+            MainAxisAlignment::SpaceAround => {
+                let g = if num_children > 0.0 { (avail_h - total_child_h) / num_children } else { 0.0 };
+                (self.padding.top + g * 0.5, g)
+            }
+            MainAxisAlignment::SpaceEvenly => {
+                let g = if num_children > 0.0 { (avail_h - total_child_h) / (num_children + 1.0) } else { 0.0 };
+                (self.padding.top + g, g)
+            }
+        };
+
+        let mut current_y = start_y;
+        for (i, child) in self.children.iter_mut().enumerate() {
+            let sz = child_sizes[i];
+            let x_offset = match self.cross_axis_alignment {
+                CrossAxisAlignment::Start => self.padding.left,
+                CrossAxisAlignment::Center => self.padding.left + (avail_w - sz.x).max(0.0) * 0.5,
+                CrossAxisAlignment::End => self.padding.left + (avail_w - sz.x).max(0.0),
+                CrossAxisAlignment::Stretch => self.padding.left,
+            };
+
+            child.set_position(self.position + vec2(x_offset, current_y));
+            current_y += sz.y + gap_between;
+        }
+    }
+}
+
+impl Object for Column {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.visible || !self.active { return; }
+        self.layout_children();
+        if let Some((anchor, pad)) = self.anchor {
+            self.position = anchor.compute_position(self.size, pad);
+            self.layout_children();
+        }
+        for child in &mut self.children {
+            child.update(ctx);
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible { return; }
+        for child in &self.children {
+            child.draw();
+        }
+    }
+
+    fn bounds(&self) -> Option<Rect> {
+        Some(Rect { x: self.position.x, y: self.position.y, w: self.size.x, h: self.size.y })
+    }
+
+    fn set_position(&mut self, pos: Vec2) { self.position = pos; }
+    fn set_size(&mut self, size: Vec2) { self.size = size; }
+    fn is_visible(&self) -> bool { self.visible }
+    fn set_visible(&mut self, visible: bool) { self.visible = visible; }
+    fn is_active(&self) -> bool { self.active }
+    fn set_active(&mut self, active: bool) { self.active = active; }
+    fn tag(&self) -> &str { &self.tag }
+}
+
+impl Clickable for Column {
+    fn click_rect(&self) -> Rect {
+        Rect { x: self.position.x, y: self.position.y, w: self.size.x, h: self.size.y }
+    }
+    fn is_active(&self) -> bool { self.active }
+}
+
+/// Horizontal row container layout widget (Flutter-inspired).
+pub struct Row {
+    pub position: Vec2,
+    pub size: Vec2,
+    pub main_axis_alignment: MainAxisAlignment,
+    pub cross_axis_alignment: CrossAxisAlignment,
+    pub spacing: f32,
+    pub padding: Padding,
+    pub margin: Margin,
+    pub children: Vec<Box<dyn Object>>,
+    pub anchor: Option<(UIAnchor, Padding)>,
+    pub tag: String,
+    pub visible: bool,
+    pub active: bool,
+}
+
+impl Row {
+    pub fn new() -> Self {
+        Self {
+            position: Vec2::ZERO,
+            size: Vec2::ZERO,
+            main_axis_alignment: MainAxisAlignment::Start,
+            cross_axis_alignment: CrossAxisAlignment::Start,
+            spacing: 0.0,
+            padding: Padding::default(),
+            margin: Margin::default(),
+            children: Vec::new(),
+            anchor: None,
+            tag: String::new(),
+            visible: true,
+            active: true,
+        }
+    }
+
+    pub fn child<O: IntoUIObject>(mut self, child: O) -> Self {
+        self.children.push(child.into_ui_box());
+        self
+    }
+
+    pub fn children<I>(mut self, items: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: IntoUIObject,
+    {
+        for item in items {
+            self.children.push(item.into_ui_box());
+        }
+        self
+    }
+
+    pub fn with_children<I>(self, items: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: IntoUIObject,
+    {
+        self.children(items)
+    }
+
+    pub fn with_spacing(mut self, spacing: f32) -> Self {
+        self.spacing = spacing;
+        self
+    }
+
+    pub fn with_main_axis_alignment(mut self, align: MainAxisAlignment) -> Self {
+        self.main_axis_alignment = align;
+        self
+    }
+
+    pub fn with_cross_axis_alignment(mut self, align: CrossAxisAlignment) -> Self {
+        self.cross_axis_alignment = align;
+        self
+    }
+
+    pub fn with_padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+        self
+    }
+
+    pub fn with_margin(mut self, margin: impl Into<Margin>) -> Self {
+        self.margin = margin.into();
+        self
+    }
+
+    pub fn align_to_screen(mut self, anchor: UIAnchor, padding: impl Into<Padding>) -> Self {
+        let pad = padding.into();
+        self.position = anchor.compute_position(self.size, pad);
+        self.anchor = Some((anchor, pad));
+        self
+    }
+
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
+        self
+    }
+
+    fn layout_children(&mut self) {
+        if self.children.is_empty() { return; }
+
+        let mut child_sizes: Vec<Vec2> = Vec::with_capacity(self.children.len());
+        let mut total_child_w = 0.0f32;
+        let mut max_child_h = 0.0f32;
+
+        for child in &self.children {
+            if let Some(b) = child.bounds() {
+                child_sizes.push(vec2(b.w, b.h));
+                total_child_w += b.w;
+                max_child_h = max_child_h.max(b.h);
+            } else {
+                child_sizes.push(Vec2::ZERO);
+            }
+        }
+
+        let num_children = self.children.len() as f32;
+        let total_spacing = self.spacing * (num_children - 1.0).max(0.0);
+        let content_w = total_child_w + total_spacing;
+        let content_h = max_child_h;
+
+        if self.size == Vec2::ZERO {
+            self.size = vec2(content_w + self.padding.left + self.padding.right, content_h + self.padding.top + self.padding.bottom);
+        }
+
+        let avail_w = (self.size.x - self.padding.left - self.padding.right).max(0.0);
+        let avail_h = (self.size.y - self.padding.top - self.padding.bottom).max(0.0);
+
+        let (start_x, gap_between) = match self.main_axis_alignment {
+            MainAxisAlignment::Start => (self.padding.left, self.spacing),
+            MainAxisAlignment::Center => (self.padding.left + (avail_w - content_w).max(0.0) * 0.5, self.spacing),
+            MainAxisAlignment::End => (self.padding.left + (avail_w - content_w).max(0.0), self.spacing),
+            MainAxisAlignment::SpaceBetween => {
+                let g = if num_children > 1.0 { (avail_w - total_child_w) / (num_children - 1.0) } else { 0.0 };
+                (self.padding.left, g)
+            }
+            MainAxisAlignment::SpaceAround => {
+                let g = if num_children > 0.0 { (avail_w - total_child_w) / num_children } else { 0.0 };
+                (self.padding.left + g * 0.5, g)
+            }
+            MainAxisAlignment::SpaceEvenly => {
+                let g = if num_children > 0.0 { (avail_w - total_child_w) / (num_children + 1.0) } else { 0.0 };
+                (self.padding.left + g, g)
+            }
+        };
+
+        let mut current_x = start_x;
+        for (i, child) in self.children.iter_mut().enumerate() {
+            let sz = child_sizes[i];
+            let y_offset = match self.cross_axis_alignment {
+                CrossAxisAlignment::Start => self.padding.top,
+                CrossAxisAlignment::Center => self.padding.top + (avail_h - sz.y).max(0.0) * 0.5,
+                CrossAxisAlignment::End => self.padding.top + (avail_h - sz.y).max(0.0),
+                CrossAxisAlignment::Stretch => self.padding.top,
+            };
+
+            child.set_position(self.position + vec2(current_x, y_offset));
+            current_x += sz.x + gap_between;
+        }
+    }
+}
+
+impl Object for Row {
+    fn update(&mut self, ctx: &mut Context) {
+        if !self.visible || !self.active { return; }
+        if let Some((anchor, pad)) = self.anchor {
+            self.position = anchor.compute_position(self.size, pad);
+        }
+        self.layout_children();
+        for child in &mut self.children {
+            child.update(ctx);
+        }
+    }
+
+    fn draw(&self) {
+        if !self.visible { return; }
+        for child in &self.children {
+            child.draw();
+        }
+    }
+
+    fn bounds(&self) -> Option<Rect> {
+        Some(Rect { x: self.position.x, y: self.position.y, w: self.size.x, h: self.size.y })
+    }
+
+    fn tag(&self) -> &str { &self.tag }
+    fn is_visible(&self) -> bool { self.visible }
+    fn set_visible(&mut self, visible: bool) { self.visible = visible; }
+    fn is_active(&self) -> bool { self.active }
+    fn set_active(&mut self, active: bool) { self.active = active; }
+    fn set_position(&mut self, pos: Vec2) { self.position = pos; }
+}
+
+impl Clickable for Row {
+    fn click_rect(&self) -> Rect {
+        Rect { x: self.position.x, y: self.position.y, w: self.size.x, h: self.size.y }
+    }
+    fn is_active(&self) -> bool { self.active }
+}
+
+/// Helper macro for vector of UI objects without writing `Box::new(...)`.
+#[macro_export]
+macro_rules! ui_vec {
+    ($($elem:expr),* $(,)?) => {
+        vec![$(Box::new($elem) as Box<dyn $crate::world::Object>),*]
+    };
+}
+
+/// Declarative Flutter-like [`Column`] layout macro.
+#[macro_export]
+macro_rules! column {
+    ($($child:expr),* $(,)?) => {
+        $crate::ui::Column::new().with_children($crate::ui_vec![$($child),*])
+    };
+}
+
+/// Declarative Flutter-like [`Row`] layout macro.
+#[macro_export]
+macro_rules! row {
+    ($($child:expr),* $(,)?) => {
+        $crate::ui::Row::new().with_children($crate::ui_vec![$($child),*])
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4508,5 +5382,63 @@ mod tests {
         assert!(!cb.checked);
         cb.checked = true;
         assert!(cb.checked);
+    }
+
+    #[test]
+    fn test_flutter_like_layout_system() {
+        let mut col = column![
+            Button::new(Vec2::ZERO, vec2(100.0, 30.0), "Btn 1"),
+            Gap::height(10.0),
+            row![
+                Button::new(Vec2::ZERO, vec2(40.0, 20.0), "R1"),
+                Gap::width(5.0),
+                Button::new(Vec2::ZERO, vec2(40.0, 20.0), "R2"),
+            ],
+        ]
+        .with_spacing(5.0)
+        .with_main_axis_alignment(MainAxisAlignment::Start)
+        .with_cross_axis_alignment(CrossAxisAlignment::Center);
+
+        col.layout_children();
+
+        assert_eq!(col.children.len(), 3);
+        assert_eq!(col.children[0].bounds().unwrap().y, 0.0);
+        assert_eq!(col.children[1].bounds().unwrap().h, 10.0);
+        assert_eq!(col.children[2].bounds().unwrap().y, 50.0);
+
+        let mut container = Container::new()
+            .with_size(vec2(200.0, 100.0))
+            .with_padding(Padding::all(10.0))
+            .with_alignment(Align::Center)
+            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 20.0), "Inner"));
+
+        if let Some(ref mut child) = container.child {
+            let child_size = child.bounds().map(|b| vec2(b.w, b.h)).unwrap_or(Vec2::ZERO);
+            let offset = container.alignment.unwrap().compute_offset(container.size, child_size, container.padding);
+            child.set_position(container.position + offset);
+        }
+
+        assert_eq!(container.child.as_ref().unwrap().bounds().unwrap().x, 75.0);
+        assert_eq!(container.child.as_ref().unwrap().bounds().unwrap().y, 40.0);
+    }
+
+    #[test]
+    fn test_fill_parent_layout() {
+        let mut container = Container::new()
+            .with_size(vec2(300.0, 200.0))
+            .with_padding(Padding::all(10.0))
+            .with_child(TextField::new(Vec2::ZERO, vec2(50.0, 20.0), "Test").fill_parent());
+
+        if let Some(ref mut child) = container.child {
+            if child.is_fill_parent() {
+                let avail_w = (container.size.x - container.padding.left - container.padding.right).max(0.0);
+                let avail_h = (container.size.y - container.padding.top - container.padding.bottom).max(0.0);
+                child.set_size(vec2(avail_w, avail_h));
+            }
+        }
+
+        let child_bounds = container.child.as_ref().unwrap().bounds().unwrap();
+        assert_eq!(child_bounds.w, 280.0);
+        assert_eq!(child_bounds.h, 180.0);
     }
 }
