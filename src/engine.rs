@@ -368,7 +368,7 @@ impl Engine {
             if let Some(scene_name) = self.ctx.pending_scene.take() {
                 self.scene_manager.switch_to(&scene_name);
             }
-            self.scene_manager.update_pending();
+            self.scene_manager.update_pending(&mut self.ctx);
 
             // --- Virtual resolution setup (opt-in, no-op when None) ---
             if let Some((vw, vh)) = self.virtual_resolution {

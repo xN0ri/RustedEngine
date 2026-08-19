@@ -539,6 +539,8 @@ pub struct Text {
     pub bitmap_font: Option<std::rc::Rc<crate::bitmap_font::BitmapFont>>,
     /// Whether this text expands to fill its parent container width.
     pub fill_parent: bool,
+    /// Explicit bounds dimensions when embedded in a container or with `fill_parent`.
+    pub size: Vec2,
 }
 
 impl Text {
@@ -567,6 +569,7 @@ impl Text {
             margin: Margin::default(),
             bitmap_font: None,
             fill_parent: false,
+            size: Vec2::ZERO,
         }
     }
 
@@ -834,9 +837,9 @@ impl Text {
         self.revealed_chars >= self.full_content.len() as f32
     }
 
-    /// Returns resolved screen-space geometry `(pos, font_size, line_spacing, max_width)`
+    /// Returns resolved screen-space geometry `(pos, font_size, line_spacing, max_width, size)`
     /// accounting for current UI scale factor, draw offset, and letterbox viewport origin.
-    pub(crate) fn resolved_geometry(&self) -> (Vec2, f32, f32, Option<f32>) {
+    pub(crate) fn resolved_geometry(&self) -> (Vec2, f32, f32, Option<f32>, Vec2) {
         let (scale, ui_offset) = get_ui_scale();
         let pos = self.position * scale + get_draw_offset() * scale + ui_offset;
         let font_size = self.font_size * scale;
@@ -846,7 +849,8 @@ impl Text {
             font_size * 1.2
         };
         let max_width = self.max_width.map(|w| w * scale);
-        (pos, font_size, line_spacing, max_width)
+        let size = self.size * scale;
+        (pos, font_size, line_spacing, max_width, size)
     }
 }
 
@@ -875,7 +879,7 @@ impl Object for Text {
         if !self.visible {
             return;
         }
-        let (pos, font_size, line_spacing, max_width) = self.resolved_geometry();
+        let (pos, font_size, line_spacing, max_width, size) = self.resolved_geometry();
 
         if let Some(ref bm) = self.bitmap_font {
             let scale_f = font_size / bm.native_size as f32;
@@ -884,21 +888,39 @@ impl Object for Text {
                 let dims = bm.measure(line, scale_f);
                 let align_offset_x = match self.alignment {
                     TextAlign::Left => 0.0,
-                    TextAlign::Center => -dims.x * 0.5,
-                    TextAlign::Right => -dims.x,
+                    TextAlign::Center => {
+                        if size.x > 0.0 {
+                            (size.x - dims.x) * 0.5
+                        } else {
+                            -dims.x * 0.5
+                        }
+                    }
+                    TextAlign::Right => {
+                        if size.x > 0.0 {
+                            size.x - dims.x
+                        } else {
+                            -dims.x
+                        }
+                    }
+                };
+                let align_offset_y = if size.y > 0.0 {
+                    (size.y - dims.y) * 0.5
+                } else {
+                    0.0
                 };
                 let final_x = base_x + align_offset_x;
+                let final_y = top_y + align_offset_y;
                 if let Some((shadow_color, shadow_offset)) = self.shadow {
                     let (scale, _) = get_ui_scale();
                     bm.draw(
                         line,
                         final_x + shadow_offset.x * scale,
-                        top_y + shadow_offset.y * scale,
+                        final_y + shadow_offset.y * scale,
                         scale_f,
                         shadow_color,
                     );
                 }
-                bm.draw(line, final_x, top_y, scale_f, self.color);
+                bm.draw(line, final_x, final_y, scale_f, self.color);
             };
 
             if let Some(max_w) = max_width {
@@ -938,14 +960,32 @@ impl Object for Text {
 
         let draw_single_line = |line: &str, base_x: f32, top_y: f32| {
             let dims = measure_text(line, self.font.as_ref(), font_size.round() as u16, 1.0);
-            let base_y = top_y + font_size * 0.75;
+            let cap_h = font_size * 0.7;
+            let align_offset_y = if size.y > 0.0 {
+                (size.y - cap_h) * 0.5
+            } else {
+                0.0
+            };
+            let base_y = top_y + self.padding.top + align_offset_y + cap_h;
             let width = dims.width;
             let align_offset_x = match self.alignment {
                 TextAlign::Left => 0.0,
-                TextAlign::Center => -width * 0.5,
-                TextAlign::Right => -width,
+                TextAlign::Center => {
+                    if size.x > 0.0 {
+                        (size.x - width) * 0.5
+                    } else {
+                        -width * 0.5
+                    }
+                }
+                TextAlign::Right => {
+                    if size.x > 0.0 {
+                        size.x - width
+                    } else {
+                        -width
+                    }
+                }
             };
-            let final_x = base_x + align_offset_x;
+            let final_x = base_x + self.padding.left + align_offset_x;
 
             if let Some((outline_color, stroke)) = self.outline {
                 let s = stroke * (font_size / self.font_size);
@@ -987,7 +1027,7 @@ impl Object for Text {
     }
 
     fn bounds(&self) -> Option<Rect> {
-        let (pos, font_size, _line_spacing, max_width) = self.resolved_geometry();
+        let (pos, font_size, _line_spacing, max_width, _size) = self.resolved_geometry();
         let raw_h = self.wrapped_height();
         let raw_w = if let Some(mw) = max_width {
             mw
@@ -1029,7 +1069,8 @@ impl Object for Text {
     }
 
     fn set_size(&mut self, size: macroquad::math::Vec2) {
-        if size.x > 0.0 {
+        self.size = size;
+        if size.x > 0.0 && self.max_width.is_none() {
             self.max_width = Some(size.x);
         }
     }
@@ -2430,10 +2471,12 @@ impl Object for Image {
         for child in &mut self.children {
             if child.is_fill_parent() {
                 child.set_size(self.size);
+                child.set_position(self.position);
+            } else {
+                let child_size = child.bounds().map(|b| vec2(b.w, b.h)).unwrap_or(Vec2::ZERO);
+                let offset = (self.size - child_size) * 0.5;
+                child.set_position(self.position + offset);
             }
-            let child_size = child.bounds().map(|b| vec2(b.w, b.h)).unwrap_or(Vec2::ZERO);
-            let offset = (self.size - child_size) * 0.5;
-            child.set_position(self.position + offset);
             child.update(ctx);
         }
     }
@@ -5800,7 +5843,7 @@ mod tests {
         assert_eq!(size, vec2(200.0, 100.0));
 
         let text = Text::new("Test", vec2(10.0, 20.0), 12.0, WHITE);
-        let (t_pos, t_font_size, _t_spacing, _t_max_w) = text.resolved_geometry();
+        let (t_pos, t_font_size, _t_spacing, _t_max_w, _t_size) = text.resolved_geometry();
         assert_eq!(t_pos, vec2(47.5, 32.0));
         assert_eq!(t_font_size, 12.0);
 
@@ -5818,7 +5861,7 @@ mod tests {
         assert_eq!(size, vec2(200.0, 100.0));
 
         let text = Text::new("Test", vec2(10.0, 20.0), 12.0, WHITE);
-        let (t_pos, t_font_size, _t_spacing, _t_max_w) = text.resolved_geometry();
+        let (t_pos, t_font_size, _t_spacing, _t_max_w, _t_size) = text.resolved_geometry();
         assert_eq!(t_pos, vec2(10.0, 20.0));
         assert_eq!(t_font_size, 12.0);
     }
