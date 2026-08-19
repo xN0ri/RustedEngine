@@ -413,6 +413,14 @@ impl Object for Rectangle {
         self.active = active;
     }
 
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
+    }
+
+    fn set_size(&mut self, size: macroquad::math::Vec2) {
+        self.size = size;
+    }
+
     fn bounds(&self) -> Option<macroquad::math::Rect> {
         Some(macroquad::math::Rect {
             x: self.position.x,

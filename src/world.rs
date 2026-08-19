@@ -119,6 +119,74 @@ pub trait Object: 'static {
     fn get_children_mut<'a>(&'a mut self) -> Vec<&'a mut (dyn Object + 'static)> {
         Vec::new()
     }
+
+    /// Returns a reference to the first child object matching `tag` (searches recursively).
+    fn find_child(&self, tag: &str) -> Option<&dyn Object> {
+        for child in self.get_children() {
+            if child.has_tag(tag) {
+                return Some(child);
+            }
+            if let Some(found) = child.find_child(tag) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Returns a mutable reference to the first child object matching `tag` (searches recursively).
+    fn find_child_mut<'a>(&'a mut self, tag: &str) -> Option<&'a mut (dyn Object + 'static)> {
+        for child in self.get_children_mut() {
+            if child.has_tag(tag) {
+                return Some(child);
+            }
+            if let Some(found) = child.find_child_mut(tag) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Finds and downcasts the first child object matching `tag` to immutable reference type `T`.
+    fn get_child<T: Object + 'static>(&self, tag: &str) -> Option<&T>
+    where
+        Self: Sized,
+    {
+        self.find_child(tag)?.as_any()?.downcast_ref::<T>()
+    }
+
+    /// Finds and downcasts the first child object matching `tag` to mutable reference type `T`.
+    fn get_child_mut<'a, T: Object + 'static>(&'a mut self, tag: &str) -> Option<&'a mut T>
+    where
+        Self: Sized,
+    {
+        self.find_child_mut(tag)?.as_any_mut()?.downcast_mut::<T>()
+    }
+
+    /// Finds and downcasts the first child object matching concrete type `T`.
+    fn find_child_typed<T: Object + 'static>(&self) -> Option<&T>
+    where
+        Self: Sized,
+    {
+        find_child_typed_rec::<T>(self)
+    }
+
+    /// Finds and downcasts the first child object matching concrete type `T` (mutable).
+    fn find_child_typed_mut<'a, T: Object + 'static>(&'a mut self) -> Option<&'a mut T>
+    where
+        Self: Sized,
+    {
+        find_child_typed_rec_mut::<T>(self)
+    }
+
+    /// Sets text content on a child entity matching `tag`. Returns `true` if found.
+    fn set_child_text(&mut self, tag: &str, text: &str) -> bool {
+        if let Some(child) = self.find_child_mut(tag) {
+            child.set_text(text);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// Game world container holding separate entity rendering and logic layers:
@@ -151,6 +219,31 @@ fn collect_by_tag_mut<'a>(obj: &'a mut (dyn Object + 'static), tag: &str, result
             collect_by_tag_mut(child, tag, results);
         }
     }
+}
+
+fn find_child_typed_rec<'a, T: Object + 'static>(obj: &'a (dyn Object + 'static)) -> Option<&'a T> {
+    for child in obj.get_children() {
+        if let Some(val) = child.as_any().and_then(|a| a.downcast_ref::<T>()) {
+            return Some(val);
+        }
+        if let Some(found) = find_child_typed_rec::<T>(child) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn find_child_typed_rec_mut<'a, T: Object + 'static>(obj: &'a mut (dyn Object + 'static)) -> Option<&'a mut T> {
+    for child in obj.get_children_mut() {
+        let is_t = child.as_any_mut().map_or(false, |a| a.is::<T>());
+        if is_t {
+            return child.as_any_mut()?.downcast_mut::<T>();
+        }
+        if let Some(found) = find_child_typed_rec_mut::<T>(child) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 impl World {
