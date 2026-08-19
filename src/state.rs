@@ -118,6 +118,13 @@ impl StateStore {
         self.set(key, StateValue::Text(v.into()));
     }
 
+    /// Serializes any Serde [`Serialize`](serde::Serialize) struct to JSON and stores it under `key`.
+    pub fn set_struct<T: serde::Serialize>(&mut self, key: &str, value: &T) -> Result<(), serde_json::Error> {
+        let json_str = serde_json::to_string(value)?;
+        self.set(key, StateValue::Text(json_str));
+        Ok(())
+    }
+
     // ----- Getters -----
 
     /// Retrieves an optional reference to a [`StateValue`] entry by key.
@@ -189,6 +196,15 @@ impl StateStore {
         }
     }
 
+    /// Deserializes a Serde [`DeserializeOwned`](serde::de::DeserializeOwned) struct from JSON stored under `key`.
+    pub fn get_struct<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
+        let text = self.get_text(key);
+        if text.is_empty() {
+            return None;
+        }
+        serde_json::from_str(text).ok()
+    }
+
     // ----- Convenience Operations -----
 
     /// Returns `true` if `key` exists in the store regardless of type.
@@ -227,5 +243,29 @@ impl StateStore {
         let json = std::fs::read_to_string(path)?;
         let store = serde_json::from_str(&json)?;
         Ok(store)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct UserCredentials {
+        username: String,
+        password_hash: String,
+    }
+
+    #[test]
+    fn test_state_struct_serialization() {
+        let mut state = StateStore::new();
+        let creds = UserCredentials {
+            username: "admin".to_string(),
+            password_hash: "hash123".to_string(),
+        };
+
+        state.set_struct("user", &creds).unwrap();
+        let loaded: Option<UserCredentials> = state.get_struct("user");
+        assert_eq!(loaded, Some(creds));
     }
 }

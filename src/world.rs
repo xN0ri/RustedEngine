@@ -95,6 +95,11 @@ pub trait Object: 'static {
         }
     }
 
+    /// Returns current text content string of this object if applicable, or `None` by default.
+    fn get_text(&self) -> Option<String> {
+        None
+    }
+
     /// Downcasting helper returning an immutable `&dyn Any` reference, or `None` by default.
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
@@ -103,6 +108,16 @@ pub trait Object: 'static {
     /// Downcasting helper returning a mutable `&mut dyn Any` reference, or `None` by default.
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
+    }
+
+    /// Returns references to nested child objects for recursive UI layout queries.
+    fn get_children(&self) -> Vec<&dyn Object> {
+        Vec::new()
+    }
+
+    /// Returns mutable references to nested child objects for recursive UI layout queries.
+    fn get_children_mut<'a>(&'a mut self) -> Vec<&'a mut (dyn Object + 'static)> {
+        Vec::new()
     }
 }
 
@@ -117,6 +132,25 @@ pub struct World {
     ui_objects: Vec<Box<dyn Object>>,
     logic: Vec<Box<dyn Object>>,
     sequences: Vec<crate::sequence::Sequence>,
+}
+
+fn collect_by_tag<'a>(obj: &'a (dyn Object + 'static), tag: &str, results: &mut Vec<&'a (dyn Object + 'static)>) {
+    if obj.has_tag(tag) {
+        results.push(obj);
+    }
+    for child in obj.get_children() {
+        collect_by_tag(child, tag, results);
+    }
+}
+
+fn collect_by_tag_mut<'a>(obj: &'a mut (dyn Object + 'static), tag: &str, results: &mut Vec<&'a mut (dyn Object + 'static)>) {
+    if obj.has_tag(tag) {
+        results.push(obj);
+    } else {
+        for child in obj.get_children_mut() {
+            collect_by_tag_mut(child, tag, results);
+        }
+    }
 }
 
 impl World {
@@ -215,38 +249,65 @@ impl World {
 
     /// Queries world-space objects by tag (read-only).
     pub fn find_by_tag(&self, tag: &str) -> Vec<&dyn Object> {
-        self.objects
-            .iter()
-            .filter(|o| o.has_tag(tag))
-            .map(|o| o.as_ref())
-            .collect()
+        let mut results = Vec::new();
+        for o in &self.objects {
+            collect_by_tag(o.as_ref(), tag, &mut results);
+        }
+        results
     }
 
     /// Queries world-space objects by tag (mutable).
     pub fn find_by_tag_mut<'a>(&'a mut self, tag: &str) -> Vec<&'a mut (dyn Object + 'static)> {
-        self.objects
-            .iter_mut()
-            .filter(|o| o.has_tag(tag))
-            .map(|o| o.as_mut())
-            .collect()
+        let mut results = Vec::new();
+        for o in &mut self.objects {
+            collect_by_tag_mut(o.as_mut(), tag, &mut results);
+        }
+        results
     }
 
-    /// Queries screen-space UI objects by tag (read-only).
+    /// Queries screen-space UI objects by tag (read-only), including nested layout children.
     pub fn find_ui_by_tag(&self, tag: &str) -> Vec<&dyn Object> {
-        self.ui_objects
-            .iter()
-            .filter(|o| o.has_tag(tag))
-            .map(|o| o.as_ref())
-            .collect()
+        let mut results = Vec::new();
+        for o in &self.ui_objects {
+            collect_by_tag(o.as_ref(), tag, &mut results);
+        }
+        results
     }
 
-    /// Queries screen-space UI objects by tag (mutable).
+    /// Queries screen-space UI objects by tag (mutable), including nested layout children.
     pub fn find_ui_by_tag_mut<'a>(&'a mut self, tag: &str) -> Vec<&'a mut (dyn Object + 'static)> {
-        self.ui_objects
-            .iter_mut()
-            .filter(|o| o.has_tag(tag))
-            .map(|o| o.as_mut())
-            .collect()
+        let mut results = Vec::new();
+        for o in &mut self.ui_objects {
+            collect_by_tag_mut(o.as_mut(), tag, &mut results);
+        }
+        results
+    }
+
+    /// Returns current text content string of any UI component matching `tag`.
+    pub fn get_ui_text(&self, tag: &str) -> Option<String> {
+        self.find_ui_by_tag(tag).into_iter().find_map(|o| o.get_text())
+    }
+
+    /// Sets text content on all UI components matching `tag`.
+    pub fn set_ui_text(&mut self, tag: &str, text: impl Into<String>) {
+        let t = text.into();
+        for o in self.find_ui_by_tag_mut(tag) {
+            o.set_text(&t);
+        }
+    }
+
+    /// Finds and downcasts the first UI object matching `tag` to immutable reference type `T`.
+    pub fn get_ui<T: Object + 'static>(&self, tag: &str) -> Option<&T> {
+        self.find_ui_by_tag(tag)
+            .into_iter()
+            .find_map(|o| o.as_any()?.downcast_ref::<T>())
+    }
+
+    /// Finds and downcasts the first UI object matching `tag` to mutable reference type `T`.
+    pub fn get_ui_mut<'a, T: Object + 'static>(&'a mut self, tag: &str) -> Option<&'a mut T> {
+        self.find_ui_by_tag_mut(tag)
+            .into_iter()
+            .find_map(|o| o.as_any_mut()?.downcast_mut::<T>())
     }
 
     /// Queries logic-layer objects by tag (read-only).
@@ -322,6 +383,9 @@ impl World {
 
     /// Updates all world, UI objects, logic objects, and scripted sequences.
     pub fn update(&mut self, ctx: &mut Context) {
+        let old_ptr = ctx.world_ptr;
+        ctx.world_ptr = Some(self as *mut World);
+
         for obj in self.objects.iter_mut() {
             obj.update(ctx);
         }
@@ -339,6 +403,8 @@ impl World {
             seqs.retain(|seq| !seq.is_finished());
             self.sequences.extend(seqs);
         }
+
+        ctx.world_ptr = old_ptr;
     }
 
     /// Renders world-space objects inside camera view bounds.
@@ -424,4 +490,36 @@ macro_rules! world {
     (objects: [$($obj:expr),* $(,)?] $(,)?) => {
         $crate::world::World::new_with_objects($crate::world_objects![$($obj),*])
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::*;
+    use macroquad::prelude::*;
+
+    #[test]
+    fn test_easy_ui_queries() {
+        let mut world = World::new();
+
+        let login_ui = crate::column![
+            Text::new("Welcome!", Vec2::ZERO, 16.0, WHITE).with_tag("welcome_label"),
+            Container::new().with_child(
+                TextField::new(Vec2::ZERO, Vec2::ZERO, "Username").with_tag("user_input").with_text("szymon")
+            )
+        ];
+
+        world.add_ui(login_ui);
+
+        assert_eq!(world.get_ui_text("user_input"), Some("szymon".to_string()));
+        assert_eq!(world.get_ui_text("welcome_label"), Some("Welcome!".to_string()));
+
+        if let Some(tf) = world.get_ui_mut::<TextField>("user_input") {
+            tf.text = "admin".to_string();
+        }
+        assert_eq!(world.get_ui_text("user_input"), Some("admin".to_string()));
+
+        world.set_ui_text("welcome_label", "Hello!");
+        assert_eq!(world.get_ui_text("welcome_label"), Some("Hello!".to_string()));
+    }
 }

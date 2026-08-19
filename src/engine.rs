@@ -77,6 +77,8 @@ pub struct Context {
     pub(crate) cursor: Option<CustomCursor>,
     /// Pending scene switch request name.
     pub(crate) pending_scene: Option<String>,
+    /// Pointer to active scene world instance during update pass.
+    pub(crate) world_ptr: Option<*mut crate::world::World>,
 }
 
 impl Context {
@@ -96,6 +98,43 @@ impl Context {
             save_system: crate::save_system::SaveSystem::default(),
             cursor: None,
             pending_scene: None,
+            world_ptr: None,
+        }
+    }
+
+    /// Returns current text content string of any UI component matching `tag` in the active world.
+    pub fn get_ui_text(&self, tag: &str) -> Option<String> {
+        if let Some(ptr) = self.world_ptr {
+            unsafe { (*ptr).get_ui_text(tag) }
+        } else {
+            None
+        }
+    }
+
+    /// Sets text content on all UI components matching `tag` in the active world.
+    pub fn set_ui_text(&mut self, tag: &str, text: impl Into<String>) {
+        if let Some(ptr) = self.world_ptr {
+            unsafe {
+                (*ptr).set_ui_text(tag, text);
+            }
+        }
+    }
+
+    /// Finds and downcasts the first UI object matching `tag` to immutable reference type `T` in active world.
+    pub fn get_ui<T: crate::world::Object + 'static>(&self, tag: &str) -> Option<&T> {
+        if let Some(ptr) = self.world_ptr {
+            unsafe { (*ptr).get_ui::<T>(tag) }
+        } else {
+            None
+        }
+    }
+
+    /// Finds and downcasts the first UI object matching `tag` to mutable reference type `T` in active world.
+    pub fn get_ui_mut<T: crate::world::Object + 'static>(&mut self, tag: &str) -> Option<&mut T> {
+        if let Some(ptr) = self.world_ptr {
+            unsafe { (*ptr).get_ui_mut::<T>(tag) }
+        } else {
+            None
         }
     }
 

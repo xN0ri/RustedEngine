@@ -6,6 +6,7 @@ pub use crate::{
     animated_texture::AnimatedSprite,
     asset_manager::Assets,
     audio::{AmbientPool, Audio},
+    bitmap_font::{BitmapFont, GlyphInfo, register_font_id},
     camera::Camera,
     content::{ContentError, load_content, load_content_dir},
     draggable::{DragState, Draggable},

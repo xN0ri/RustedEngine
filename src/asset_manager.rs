@@ -13,6 +13,7 @@ pub struct Assets {
     sequences: HashMap<String, Vec<Texture2D>>,
     sounds: HashMap<String, Sound>,
     fonts: HashMap<String, Font>,
+    bitmap_fonts: HashMap<String, std::rc::Rc<crate::bitmap_font::BitmapFont>>,
 }
 
 impl Assets {
@@ -23,6 +24,7 @@ impl Assets {
             sequences: HashMap::new(),
             sounds: HashMap::new(),
             fonts: HashMap::new(),
+            bitmap_fonts: HashMap::new(),
         }
     }
 
@@ -165,9 +167,50 @@ impl Assets {
         Ok(font)
     }
 
+    /// Manually inserts a pre-loaded [`Font`] handle under `name`.
+    pub fn insert_font(&mut self, name: &str, font: Font) {
+        self.fonts.insert(name.to_string(), font);
+    }
+
     /// Retrieves a reference to a stored font by name.
     pub fn get_font(&self, name: &str) -> Option<&Font> {
         self.fonts.get(name)
+    }
+
+    /// Asynchronously loads a TTF font from `path`, bakes it into a pixel-perfect [`BitmapFont`](crate::bitmap_font::BitmapFont)
+    /// texture atlas at `native_size`, and stores it under `name` in assets.
+    pub async fn load_bitmap_font(
+        &mut self,
+        name: &str,
+        path: &str,
+        native_size: u32,
+    ) -> Result<std::rc::Rc<crate::bitmap_font::BitmapFont>, macroquad::Error> {
+        let _font = self.load_font(name, path).await?;
+        let bm = self.bake_bitmap_font(name, native_size).unwrap();
+        Ok(bm)
+    }
+
+    /// Bakes an already loaded TTF font (`name`) in assets into a [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas at `native_size`.
+    pub fn bake_bitmap_font(
+        &mut self,
+        name: &str,
+        native_size: u32,
+    ) -> Option<std::rc::Rc<crate::bitmap_font::BitmapFont>> {
+        let font = self.fonts.get(name)?;
+        let font_id = crate::bitmap_font::register_font_id(name);
+        let bm = crate::bitmap_font::BitmapFont::get_or_create(
+            font,
+            font_id,
+            native_size,
+            crate::bitmap_font::BitmapFont::default_charset(),
+        );
+        self.bitmap_fonts.insert(name.to_string(), std::rc::Rc::clone(&bm));
+        Some(bm)
+    }
+
+    /// Retrieves a reference to a stored [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas by name.
+    pub fn get_bitmap_font(&self, name: &str) -> Option<std::rc::Rc<crate::bitmap_font::BitmapFont>> {
+        self.bitmap_fonts.get(name).cloned()
     }
 
     /// Unloads and removes a stored texture by name. Returns `true` if texture was present.
@@ -190,12 +233,18 @@ impl Assets {
         self.fonts.remove(name).is_some()
     }
 
-    /// Clears and unloads all stored textures, frame sequences, sounds, and fonts.
+    /// Unloads and removes a stored bitmap font by name. Returns `true` if present.
+    pub fn unload_bitmap_font(&mut self, name: &str) -> bool {
+        self.bitmap_fonts.remove(name).is_some()
+    }
+
+    /// Clears and unloads all stored textures, frame sequences, sounds, fonts, and bitmap fonts.
     pub fn clear_all(&mut self) {
         self.textures.clear();
         self.sequences.clear();
         self.sounds.clear();
         self.fonts.clear();
+        self.bitmap_fonts.clear();
     }
 }
 

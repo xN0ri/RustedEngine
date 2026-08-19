@@ -656,6 +656,26 @@ impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
     fn is_text_layer(&self) -> bool {
         self.inner.is_text_layer()
     }
+
+    fn get_text(&self) -> Option<String> {
+        self.inner.get_text()
+    }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn get_children(&self) -> Vec<&dyn Object> {
+        self.inner.get_children()
+    }
+
+    fn get_children_mut<'a>(&'a mut self) -> Vec<&'a mut (dyn Object + 'static)> {
+        self.inner.get_children_mut()
+    }
 }
 
 impl<Data> std::ops::Deref for Behavior<Sprite, Data> {

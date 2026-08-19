@@ -230,13 +230,14 @@ impl Padding {
     /// - `Padding::new(8.0)` — uniform on all 4 sides
     /// - `Padding::new((8.0, 16.0))` — symmetric (horizontal, vertical)
     /// - `Padding::new((l, t, r, b))` — explicit for each side
-    pub fn new(val: impl Into<Padding>) -> Self {
-        val.into()
-    }
-
     /// Zero padding on all sides (`0.0`).
     pub fn zero() -> Self {
         Self::default()
+    }
+
+    /// Creates [`Padding`] from any value convertible into `Padding` (`f32`, `(f32, f32)`, `(f32, f32, f32, f32)`).
+    pub fn new(val: impl Into<Padding>) -> Self {
+        val.into()
     }
 
     /// Uniform padding on all 4 sides (`val`).
@@ -267,6 +268,23 @@ impl Padding {
             right,
             bottom,
         }
+    }
+
+    pub fn only_top(val: f32) -> Self { Self { top: val, ..Default::default() } }
+    pub fn only_bottom(val: f32) -> Self { Self { bottom: val, ..Default::default() } }
+    pub fn only_left(val: f32) -> Self { Self { left: val, ..Default::default() } }
+    pub fn only_right(val: f32) -> Self { Self { right: val, ..Default::default() } }
+}
+
+impl From<Margin> for Padding {
+    fn from(m: Margin) -> Self {
+        Padding { left: m.left, top: m.top, right: m.right, bottom: m.bottom }
+    }
+}
+
+impl From<Padding> for Margin {
+    fn from(p: Padding) -> Self {
+        Margin { left: p.left, top: p.top, right: p.right, bottom: p.bottom }
     }
 }
 
@@ -328,6 +346,11 @@ pub struct Margin {
 }
 
 impl Margin {
+    /// Zero margin on all sides.
+    pub fn zero() -> Self {
+        Self::default()
+    }
+
     /// Creates [`Margin`] from any value convertible into `Margin` (`f32`, `(f32, f32)`, `(f32, f32, f32, f32)`).
     pub fn new(val: impl Into<Margin>) -> Self {
         val.into()
@@ -512,6 +535,10 @@ pub struct Text {
     pub outline: Option<(Color, f32)>,
     pub padding: Padding,
     pub margin: Margin,
+    /// Optional pre-baked pixel-art bitmap font.
+    pub bitmap_font: Option<std::rc::Rc<crate::bitmap_font::BitmapFont>>,
+    /// Whether this text expands to fill its parent container width.
+    pub fill_parent: bool,
 }
 
 impl Text {
@@ -538,7 +565,21 @@ impl Text {
             outline: None,
             padding: Padding::default(),
             margin: Margin::default(),
+            bitmap_font: None,
+            fill_parent: false,
         }
+    }
+
+    /// Builder pattern: Enables expanding width to fill parent container bounds.
+    pub fn fill_parent(mut self) -> Self {
+        self.fill_parent = true;
+        self
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`] atlas for 100% crisp pixel font rendering.
+    pub fn with_bitmap_font(mut self, bitmap_font: std::rc::Rc<crate::bitmap_font::BitmapFont>) -> Self {
+        self.bitmap_font = Some(bitmap_font);
+        self
     }
 
     /// Builder pattern: Sets horizontal text alignment.
@@ -583,14 +624,28 @@ impl Text {
         self
     }
 
-    /// Builder pattern: Sets a custom TTF font loaded in the asset manager by name.
+    /// Builder pattern: Sets a font loaded in asset manager by name (automatically selects [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas if loaded, otherwise falls back to TTF [`Font`]).
     pub fn with_font_from_assets(
         mut self,
         assets: &crate::asset_manager::Assets,
         name: &str,
     ) -> Self {
-        if let Some(font) = assets.get_font(name) {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
+        } else if let Some(font) = assets.get_font(name) {
             self.font = Some(font.clone());
+        }
+        self
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas loaded in asset manager by name.
+    pub fn with_bitmap_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
         }
         self
     }
@@ -767,7 +822,11 @@ impl Text {
         let font_ref = self.font.as_ref();
         let font_size = self.font_size;
         let lines = self.wrap_lines(|s| measure_text(s, font_ref, font_size as u16, 1.0).width);
-        lines.len() as f32 * self.effective_line_spacing()
+        if lines.len() <= 1 {
+            (font_size * 0.75).round().max(1.0)
+        } else {
+            lines.len() as f32 * self.effective_line_spacing()
+        }
     }
 
     /// Returns `true` if the text reveal animation has finished displaying all characters.
@@ -817,6 +876,44 @@ impl Object for Text {
             return;
         }
         let (pos, font_size, line_spacing, max_width) = self.resolved_geometry();
+
+        if let Some(ref bm) = self.bitmap_font {
+            let scale_f = font_size / bm.native_size as f32;
+
+            let draw_single_line = |line: &str, base_x: f32, top_y: f32| {
+                let dims = bm.measure(line, scale_f);
+                let align_offset_x = match self.alignment {
+                    TextAlign::Left => 0.0,
+                    TextAlign::Center => -dims.x * 0.5,
+                    TextAlign::Right => -dims.x,
+                };
+                let final_x = base_x + align_offset_x;
+                if let Some((shadow_color, shadow_offset)) = self.shadow {
+                    let (scale, _) = get_ui_scale();
+                    bm.draw(
+                        line,
+                        final_x + shadow_offset.x * scale,
+                        top_y + shadow_offset.y * scale,
+                        scale_f,
+                        shadow_color,
+                    );
+                }
+                bm.draw(line, final_x, top_y, scale_f, self.color);
+            };
+
+            if let Some(max_w) = max_width {
+                let lines = self.wrap_lines_with(&self.content, max_w, |s| {
+                    bm.measure(s, scale_f).x
+                });
+                for (i, line) in lines.iter().enumerate() {
+                    let y = pos.y + (i as f32) * line_spacing;
+                    draw_single_line(line, pos.x, y);
+                }
+            } else {
+                draw_single_line(&self.content, pos.x, pos.y);
+            }
+            return;
+        }
 
         let render_line = |str_val: &str, x: f32, y: f32, color: Color| {
             let rx = x.round();
@@ -891,18 +988,20 @@ impl Object for Text {
 
     fn bounds(&self) -> Option<Rect> {
         let (pos, font_size, _line_spacing, max_width) = self.resolved_geometry();
-        let h = self.wrapped_height();
-        let w = if let Some(mw) = max_width {
+        let raw_h = self.wrapped_height();
+        let raw_w = if let Some(mw) = max_width {
             mw
+        } else if let Some(ref bm) = self.bitmap_font {
+            let scale_f = font_size / bm.native_size as f32;
+            bm.measure(&self.content, scale_f).x
         } else {
             measure_text(&self.content, self.font.as_ref(), font_size as u16, 1.0).width
         };
-        Some(Rect {
-            x: pos.x,
-            y: pos.y,
-            w,
-            h,
-        })
+        let x = pos.x + self.margin.left;
+        let y = pos.y + self.margin.top;
+        let w = (raw_w - self.margin.left - self.margin.right).max(1.0);
+        let h = (raw_h + self.margin.top + self.margin.bottom).max(1.0);
+        Some(Rect { x, y, w, h })
     }
 
     fn is_text_layer(&self) -> bool {
@@ -929,6 +1028,20 @@ impl Object for Text {
         self.position = pos;
     }
 
+    fn set_size(&mut self, size: macroquad::math::Vec2) {
+        if size.x > 0.0 {
+            self.max_width = Some(size.x);
+        }
+    }
+
+    fn is_fill_parent(&self) -> bool {
+        self.fill_parent
+    }
+
+    fn set_fill_parent(&mut self, fill: bool) {
+        self.fill_parent = fill;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
@@ -939,6 +1052,18 @@ impl Object for Text {
 
     fn content_height(&self) -> Option<f32> {
         Some(self.position.y + self.wrapped_height())
+    }
+
+    fn get_text(&self) -> Option<String> {
+        Some(self.content.clone())
+    }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
@@ -1097,6 +1222,8 @@ pub struct RichText {
     pub max_width: Option<f32>,
     pub line_spacing: f32,
     pub align: TextAlign,
+    /// Optional pre-baked pixel-art bitmap font.
+    pub bitmap_font: Option<std::rc::Rc<crate::bitmap_font::BitmapFont>>,
 }
 
 impl RichText {
@@ -1114,7 +1241,14 @@ impl RichText {
             max_width: None,
             line_spacing: 0.0,
             align: TextAlign::Left,
+            bitmap_font: None,
         }
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`] atlas for 100% crisp pixel font rendering.
+    pub fn with_bitmap_font(mut self, bitmap_font: std::rc::Rc<crate::bitmap_font::BitmapFont>) -> Self {
+        self.bitmap_font = Some(bitmap_font);
+        self
     }
 
     /// Builder pattern: Sets base default color.
@@ -1126,6 +1260,32 @@ impl RichText {
     /// Builder pattern: Sets custom font.
     pub fn with_font(mut self, font: Font) -> Self {
         self.font = Some(font);
+        self
+    }
+
+    /// Builder pattern: Sets a font loaded in asset manager by name (automatically selects [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas if loaded, otherwise falls back to TTF [`Font`]).
+    pub fn with_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
+        } else if let Some(font) = assets.get_font(name) {
+            self.font = Some(font.clone());
+        }
+        self
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas loaded in asset manager by name.
+    pub fn with_bitmap_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
+        }
         self
     }
 
@@ -1251,7 +1411,12 @@ impl Object for RichText {
             width: f32,
         }
 
-        let space_w = measure_text(" ", font_ref, font_size as u16, 1.0).width;
+        let space_w = if let Some(ref bm) = self.bitmap_font {
+            let scale_f = font_size / bm.native_size as f32;
+            bm.measure(" ", scale_f).x
+        } else {
+            measure_text(" ", font_ref, font_size as u16, 1.0).width
+        };
 
         let mut words = Vec::new();
         for span in &spans {
@@ -1265,7 +1430,12 @@ impl Object for RichText {
                     });
                 }
                 for w in p_str.split_whitespace() {
-                    let w_width = measure_text(w, font_ref, font_size as u16, 1.0).width;
+                    let w_width = if let Some(ref bm) = self.bitmap_font {
+                        let scale_f = font_size / bm.native_size as f32;
+                        bm.measure(w, scale_f).x
+                    } else {
+                        measure_text(w, font_ref, font_size as u16, 1.0).width
+                    };
                     words.push(RichWord {
                         text: w.to_string(),
                         color: span.color,
@@ -1348,13 +1518,18 @@ impl Object for RichText {
 
             for word in &line.words {
                 let word_x = base_x + word.x_offset;
-                let text_params = TextParams {
-                    font: font_ref,
-                    font_size: font_size as u16,
-                    color: word.color,
-                    ..Default::default()
-                };
-                draw_text_ex(&word.text, word_x, y, text_params);
+                if let Some(ref bm) = self.bitmap_font {
+                    let scale_f = font_size / bm.native_size as f32;
+                    bm.draw(&word.text, word_x, y, scale_f, word.color);
+                } else {
+                    let text_params = TextParams {
+                        font: font_ref,
+                        font_size: font_size as u16,
+                        color: word.color,
+                        ..Default::default()
+                    };
+                    draw_text_ex(&word.text, word_x, y, text_params);
+                }
             }
         }
     }
@@ -1389,6 +1564,18 @@ impl Object for RichText {
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+
+    fn get_text(&self) -> Option<String> {
+        Some(self.content.clone())
+    }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
@@ -1473,6 +1660,8 @@ pub struct Button {
     pub padding: Padding,
     pub margin: Margin,
     was_hovered: bool,
+    /// Optional pre-baked pixel-art bitmap font.
+    pub bitmap_font: Option<std::rc::Rc<crate::bitmap_font::BitmapFont>>,
 }
 
 impl Button {
@@ -1497,7 +1686,40 @@ impl Button {
             padding: Padding::default(),
             margin: Margin::default(),
             was_hovered: false,
+            bitmap_font: None,
         }
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`] atlas for 100% crisp pixel font rendering.
+    pub fn with_bitmap_font(mut self, bitmap_font: std::rc::Rc<crate::bitmap_font::BitmapFont>) -> Self {
+        self.bitmap_font = Some(bitmap_font);
+        self
+    }
+
+    /// Builder pattern: Sets a font loaded in asset manager by name (automatically selects [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas if loaded, otherwise falls back to TTF [`Font`]).
+    pub fn with_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
+        } else if let Some(font) = assets.get_font(name) {
+            self.font = Some(font.clone());
+        }
+        self
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas loaded in asset manager by name.
+    pub fn with_bitmap_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
+        }
+        self
     }
 
     /// Builder pattern: Attaches an `on_click` callback closure executed when button is pressed.
@@ -1653,24 +1875,32 @@ impl Object for Button {
 
         draw_rectangle(draw_pos.x, draw_pos.y, current_size.x, current_size.y, bg_color);
 
-        let text_dims = measure_text(&self.label, self.font.as_ref(), self.font_size as u16, 1.0);
-        let tx = draw_pos.x + (current_size.x - text_dims.width) * 0.5;
-        let ty = draw_pos.y + (current_size.y + text_dims.height) * 0.5 - 2.0;
-
-        if let Some(ref font) = self.font {
-            draw_text_ex(
-                &self.label,
-                tx,
-                ty,
-                TextParams {
-                    font: Some(font),
-                    font_size: self.font_size as u16,
-                    color: self.text_color,
-                    ..Default::default()
-                },
-            );
+        if let Some(ref bm) = self.bitmap_font {
+            let scale_f = self.font_size / bm.native_size as f32;
+            let text_dims = bm.measure(&self.label, scale_f);
+            let tx = draw_pos.x + (current_size.x - text_dims.x) * 0.5;
+            let ty = draw_pos.y + (current_size.y - text_dims.y) * 0.5;
+            bm.draw(&self.label, tx, ty, scale_f, self.text_color);
         } else {
-            draw_text(&self.label, tx, ty, self.font_size, self.text_color);
+            let text_dims = measure_text(&self.label, self.font.as_ref(), self.font_size as u16, 1.0);
+            let tx = draw_pos.x + (current_size.x - text_dims.width) * 0.5;
+            let ty = draw_pos.y + (current_size.y + text_dims.height) * 0.5 - 2.0;
+
+            if let Some(ref font) = self.font {
+                draw_text_ex(
+                    &self.label,
+                    tx,
+                    ty,
+                    TextParams {
+                        font: Some(font),
+                        font_size: self.font_size as u16,
+                        color: self.text_color,
+                        ..Default::default()
+                    },
+                );
+            } else {
+                draw_text(&self.label, tx, ty, self.font_size, self.text_color);
+            }
         }
     }
 
@@ -1700,6 +1930,22 @@ impl Object for Button {
 
     fn bounds(&self) -> Option<Rect> {
         Some(self.rect())
+    }
+
+    fn get_text(&self) -> Option<String> {
+        Some(self.label.clone())
+    }
+
+    fn set_text(&mut self, text: &str) {
+        self.label = text.to_string();
+    }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
@@ -1956,6 +2202,8 @@ pub struct Image {
     pub nine_slice_margins: Option<(f32, f32, f32, f32)>,
     /// Whether this image expands to fill its parent container.
     pub fill_parent: bool,
+    /// Optional click event callback handler.
+    pub on_click: Option<Box<dyn FnMut(&mut Context)>>,
 }
 
 impl Image {
@@ -1981,6 +2229,7 @@ impl Image {
             children: Vec::new(),
             fill_parent: false,
             nine_slice_margins: None,
+            on_click: None,
         }
     }
 
@@ -2122,6 +2371,12 @@ impl Image {
         self
     }
 
+    /// Builder pattern: Attaches a click handler callback.
+    pub fn on_click<F: FnMut(&mut Context) + 'static>(mut self, callback: F) -> Self {
+        self.on_click = Some(Box::new(callback));
+        self
+    }
+
     /// Returns `true` if image is visible.
     pub fn is_visible(&self) -> bool {
         self.visible
@@ -2149,6 +2404,21 @@ impl Clickable for Image {
 
 impl Object for Image {
     fn update(&mut self, ctx: &mut Context) {
+        if !self.active || !self.visible {
+            return;
+        }
+
+        let mouse_clicked = is_mouse_button_pressed(MouseButton::Left)
+            || ctx.input.is_mouse_button_pressed(macroquad::input::MouseButton::Left);
+        if mouse_clicked {
+            let is_hovered = self.is_hovered_ui(ctx) || self.is_hovered() || self.is_hovered_ctx(ctx);
+            if is_hovered {
+                if let Some(ref mut callback) = self.on_click {
+                    (callback)(ctx);
+                }
+            }
+        }
+
         if let Some((anchor, pad)) = self.anchor {
             self.position = anchor.compute_position(self.size, pad);
         } else if self.auto_screen_size {
@@ -2232,6 +2502,14 @@ impl Object for Image {
             w: self.size.x,
             h: self.size.y,
         })
+    }
+
+    fn get_children(&self) -> Vec<&dyn Object> {
+        self.children.iter().map(|c| c.as_ref()).collect()
+    }
+
+    fn get_children_mut<'a>(&'a mut self) -> Vec<&'a mut (dyn Object + 'static)> {
+        self.children.iter_mut().map(|c| c.as_mut()).collect()
     }
 }
 
@@ -2802,6 +3080,22 @@ impl Object for Panel {
         }
         if max_h > 0.0 { Some(max_h) } else { None }
     }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn get_children(&self) -> Vec<&dyn Object> {
+        self.children.iter().map(|c| c.as_ref()).collect()
+    }
+
+    fn get_children_mut<'a>(&'a mut self) -> Vec<&'a mut (dyn Object + 'static)> {
+        self.children.iter_mut().map(|c| c.as_mut()).collect()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2867,6 +3161,8 @@ pub struct TextLog {
     lines: Vec<TextLogLine>,
     scroll_offset: f32,
     target_scroll: f32,
+    /// Optional pre-baked pixel-art bitmap font.
+    pub bitmap_font: Option<std::rc::Rc<crate::bitmap_font::BitmapFont>>,
 }
 
 /// Single colored line entry stored inside a [`TextLog`].
@@ -2891,13 +3187,46 @@ impl TextLog {
             active: true,
             max_lines: None,
             clip_content: true,
-            scroll_mode: ScrollMode::Instant,
+            scroll_mode: ScrollMode::Smooth(12.0),
             auto_screen_size: false,
             screen_padding: 0.0,
             lines: Vec::new(),
             scroll_offset: 0.0,
             target_scroll: 0.0,
+            bitmap_font: None,
         }
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`] atlas for 100% crisp pixel font rendering.
+    pub fn with_bitmap_font(mut self, bitmap_font: std::rc::Rc<crate::bitmap_font::BitmapFont>) -> Self {
+        self.bitmap_font = Some(bitmap_font);
+        self
+    }
+
+    /// Builder pattern: Sets a font loaded in asset manager by name (automatically selects [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas if loaded, otherwise falls back to TTF [`Font`]).
+    pub fn with_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
+        } else if let Some(font) = assets.get_font(name) {
+            self.font = Some(font.clone());
+        }
+        self
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas loaded in asset manager by name.
+    pub fn with_bitmap_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
+        }
+        self
     }
 
     /// Builder pattern: Resizes and positions log to cover the full screen (`screen_width()` × `screen_height()`).
@@ -2945,18 +3274,6 @@ impl TextLog {
     /// Builder pattern: Sets a custom TTF font.
     pub fn with_font(mut self, font: Font) -> Self {
         self.font = Some(font);
-        self
-    }
-
-    /// Builder pattern: Sets a custom TTF font loaded from the asset manager by name.
-    pub fn with_font_from_assets(
-        mut self,
-        assets: &crate::asset_manager::Assets,
-        name: &str,
-    ) -> Self {
-        if let Some(font) = assets.get_font(name) {
-            self.font = Some(font.clone());
-        }
         self
     }
 
@@ -3162,22 +3479,28 @@ impl Object for TextLog {
 
                 for span in spans {
                     let word_x = draw_x + x_offset;
-                    if let Some(ref font) = self.font {
-                        draw_text_ex(
-                            &span.text,
-                            word_x,
-                            draw_y,
-                            TextParams {
-                                font: Some(font),
-                                font_size: font_size as u16,
-                                color: span.color,
-                                ..Default::default()
-                            },
-                        );
+                    if let Some(ref bm) = self.bitmap_font {
+                        let scale_f = font_size / bm.native_size as f32;
+                        bm.draw(&span.text, word_x, draw_y, scale_f, span.color);
+                        x_offset += bm.measure(&span.text, scale_f).x;
                     } else {
-                        draw_text(&span.text, word_x, draw_y, font_size, span.color);
+                        if let Some(ref font) = self.font {
+                            draw_text_ex(
+                                &span.text,
+                                word_x,
+                                draw_y,
+                                TextParams {
+                                    font: Some(font),
+                                    font_size: font_size as u16,
+                                    color: span.color,
+                                    ..Default::default()
+                                },
+                            );
+                        } else {
+                            draw_text(&span.text, word_x, draw_y, font_size, span.color);
+                        }
+                        x_offset += measure_text(&span.text, self.font.as_ref(), font_size as u16, 1.0).width;
                     }
-                    x_offset += measure_text(&span.text, self.font.as_ref(), font_size as u16, 1.0).width;
                 }
             }
         };
@@ -3252,6 +3575,18 @@ impl Object for TextLog {
 
     fn content_height(&self) -> Option<f32> {
         Some(self.content_h())
+    }
+
+    fn get_text(&self) -> Option<String> {
+        Some(self.lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n"))
+    }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
@@ -3470,12 +3805,17 @@ pub struct TextField {
     pub decorated: bool,
     pub max_length: Option<usize>,
     pub cursor_timer: f32,
+    pub backspace_timer: f32,
+    pub backspace_repeat_timer: f32,
     pub on_submit: Option<Box<dyn FnMut(&str, &mut Context)>>,
+    pub on_change: Option<Box<dyn FnMut(&str, &mut Context)>>,
     pub padding: Padding,
     pub margin: Margin,
     pub fill_parent: bool,
     pub alignment: TextAlignment,
     pub text_offset: Vec2,
+    /// Optional pre-baked pixel-art bitmap font.
+    pub bitmap_font: Option<std::rc::Rc<crate::bitmap_font::BitmapFont>>,
 }
 
 impl TextField {
@@ -3501,13 +3841,23 @@ impl TextField {
             decorated: true,
             max_length: None,
             cursor_timer: 0.0,
+            backspace_timer: 0.0,
+            backspace_repeat_timer: 0.0,
             on_submit: None,
+            on_change: None,
             padding: Padding::default(),
             margin: Margin::default(),
             fill_parent: false,
             alignment: TextAlignment::Left,
             text_offset: Vec2::ZERO,
+            bitmap_font: None,
         }
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`] atlas for 100% crisp pixel font rendering.
+    pub fn with_bitmap_font(mut self, bitmap_font: std::rc::Rc<crate::bitmap_font::BitmapFont>) -> Self {
+        self.bitmap_font = Some(bitmap_font);
+        self
     }
 
     /// Builder pattern: Enables expanding size to fill parent container bounds.
@@ -3519,6 +3869,12 @@ impl TextField {
     /// Builder pattern: Attaches an `on_submit` callback executed when Enter key is pressed while focused.
     pub fn on_submit<F: FnMut(&str, &mut Context) + 'static>(mut self, callback: F) -> Self {
         self.on_submit = Some(Box::new(callback));
+        self
+    }
+
+    /// Builder pattern: Attaches an `on_change` callback executed whenever the typed text changes.
+    pub fn on_change<F: FnMut(&str, &mut Context) + 'static>(mut self, callback: F) -> Self {
+        self.on_change = Some(Box::new(callback));
         self
     }
 
@@ -3574,14 +3930,28 @@ impl TextField {
         self
     }
 
-    /// Builder pattern: Sets a custom TTF font loaded in the asset manager by name.
+    /// Builder pattern: Sets a font loaded in asset manager by name (automatically selects [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas if loaded, otherwise falls back to TTF [`Font`]).
     pub fn with_font_from_assets(
         mut self,
         assets: &crate::asset_manager::Assets,
         name: &str,
     ) -> Self {
-        if let Some(font) = assets.get_font(name) {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
+        } else if let Some(font) = assets.get_font(name) {
             self.font = Some(font.clone());
+        }
+        self
+    }
+
+    /// Builder pattern: Attaches a pre-baked [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas loaded in asset manager by name.
+    pub fn with_bitmap_font_from_assets(
+        mut self,
+        assets: &crate::asset_manager::Assets,
+        name: &str,
+    ) -> Self {
+        if let Some(bm) = assets.get_bitmap_font(name) {
+            self.bitmap_font = Some(bm);
         }
         self
     }
@@ -3742,6 +4112,7 @@ impl Object for TextField {
 
         if self.focused {
             self.cursor_timer += ctx.time.deltatime();
+            let old_text = self.text.clone();
 
             while let Some(c) = macroquad::input::get_char_pressed() {
                 if !c.is_control() {
@@ -3755,10 +4126,34 @@ impl Object for TextField {
                 }
             }
 
-            let backspace = is_key_pressed(KeyCode::Backspace)
+            let bs_down = macroquad::input::is_key_down(KeyCode::Backspace)
+                || ctx.input.is_key_down(macroquad::input::KeyCode::Backspace);
+            let bs_pressed = is_key_pressed(KeyCode::Backspace)
                 || ctx.input.is_key_pressed(macroquad::input::KeyCode::Backspace);
-            if backspace {
+
+            if bs_pressed {
                 self.text.pop();
+                self.backspace_timer = 0.0;
+                self.backspace_repeat_timer = 0.0;
+            } else if bs_down {
+                self.backspace_timer += ctx.time.deltatime();
+                if self.backspace_timer >= 0.35 {
+                    self.backspace_repeat_timer += ctx.time.deltatime();
+                    while self.backspace_repeat_timer >= 0.04 {
+                        self.backspace_repeat_timer -= 0.04;
+                        self.text.pop();
+                    }
+                }
+            } else {
+                self.backspace_timer = 0.0;
+                self.backspace_repeat_timer = 0.0;
+            }
+
+            if self.text != old_text {
+                if let Some(ref mut callback) = self.on_change {
+                    let txt = self.text.clone();
+                    (callback)(&txt, ctx);
+                }
             }
 
             let enter = is_key_pressed(KeyCode::Enter)
@@ -3811,6 +4206,14 @@ impl Object for TextField {
         let (scale, ui_offset) = get_ui_scale();
         let pos = self.position + get_draw_offset();
 
+        let clip_rect = Rect {
+            x: pos.x * scale + ui_offset.x,
+            y: pos.y * scale + ui_offset.y,
+            w: self.size.x * scale,
+            h: self.size.y * scale,
+        };
+        let _guard = ScissorGuard::new(clip_rect);
+
         let text_to_draw = if self.text.is_empty() {
             &self.placeholder
         } else {
@@ -3822,6 +4225,46 @@ impl Object for TextField {
             self.text_color
         };
 
+        let base_left = if self.decorated { 8.0 } else { 0.0 };
+        let pad_left = self.padding.left.max(base_left);
+        let pad_right = self.padding.right.max(base_left);
+        let avail_w = (self.size.x - pad_left - pad_right).max(10.0);
+
+        if let Some(ref bm) = self.bitmap_font {
+            let scale_f = (self.font_size * scale) / bm.native_size as f32;
+            let bm_dim = bm.measure(if text_to_draw.is_empty() { "A" } else { text_to_draw }, scale_f);
+            let typed_dim = bm.measure(&self.text, scale_f);
+            let typed_unscaled_w = typed_dim.x / scale;
+
+            let mut scroll_x = 0.0f32;
+            if typed_unscaled_w > avail_w - 4.0 {
+                scroll_x = typed_unscaled_w - (avail_w - 4.0);
+            }
+
+            let start_x = match self.alignment {
+                TextAlignment::Left => pos.x + pad_left,
+                TextAlignment::Center => pos.x + (self.size.x - bm_dim.x / scale) * 0.5,
+                TextAlignment::Right => pos.x + self.size.x - pad_right - (bm_dim.x / scale),
+            };
+            let unscaled_tx = start_x + self.text_offset.x - scroll_x;
+            let unscaled_ty = pos.y + (self.size.y - bm_dim.y / scale) * 0.5 + self.text_offset.y;
+
+            let final_tx = (unscaled_tx * scale + ui_offset.x).round();
+            let final_ty = (unscaled_ty * scale + ui_offset.y).round();
+
+            bm.draw(text_to_draw, final_tx, final_ty, scale_f, color_to_draw);
+
+            if self.focused && (self.cursor_timer % 1.0) < 0.5 {
+                let final_cx = final_tx + typed_dim.x + 1.0;
+                let cur_h = (self.font_size * scale * 0.72).round().max(2.0);
+                let final_cy = (final_ty + (bm_dim.y - cur_h) * 0.5).round();
+                let final_cw = (1.0 * scale).round().max(1.0);
+                let cursor_color = Color::new(self.text_color.r, self.text_color.g, self.text_color.b, 0.85);
+                draw_rectangle(final_cx, final_cy, final_cw, cur_h, cursor_color);
+            }
+            return;
+        }
+
         let scaled_font_size = ((self.font_size * scale).round() as u16).max(1);
         let text_dim = measure_text(
             if text_to_draw.is_empty() { "A" } else { text_to_draw },
@@ -3830,9 +4273,18 @@ impl Object for TextField {
             1.0,
         );
 
-        let base_left = if self.decorated { 8.0 } else { 0.0 };
-        let pad_left = self.padding.left.max(base_left);
-        let pad_right = self.padding.right.max(base_left);
+        let typed_dim = measure_text(
+            &self.text,
+            self.font.as_ref(),
+            scaled_font_size,
+            1.0,
+        );
+        let typed_unscaled_w = typed_dim.width / scale;
+
+        let mut scroll_x = 0.0f32;
+        if typed_unscaled_w > avail_w - 4.0 {
+            scroll_x = typed_unscaled_w - (avail_w - 4.0);
+        }
 
         let unscaled_text_w = text_dim.width / scale;
         let start_x = match self.alignment {
@@ -3844,7 +4296,7 @@ impl Object for TextField {
         let unscaled_text_h = if text_dim.height > 0.0 { text_dim.height / scale } else { self.font_size };
         let unscaled_offset_y = if text_dim.offset_y > 0.0 { text_dim.offset_y / scale } else { self.font_size * 0.70 };
 
-        let unscaled_tx = start_x + self.text_offset.x;
+        let unscaled_tx = start_x + self.text_offset.x - scroll_x;
         let unscaled_ty = pos.y + (self.size.y - unscaled_text_h) * 0.5 + unscaled_offset_y + self.text_offset.y;
 
         let final_tx = (unscaled_tx * scale + ui_offset.x).round();
@@ -3867,23 +4319,15 @@ impl Object for TextField {
         }
 
         if self.focused && (self.cursor_timer % 1.0) < 0.5 {
-            let typed_dim = measure_text(
-                if self.text.is_empty() { "" } else { &self.text },
-                self.font.as_ref(),
-                scaled_font_size,
-                1.0,
-            );
             let unscaled_cursor_x = unscaled_tx + (typed_dim.width / scale) + 1.0;
-            let unscaled_cursor_top = unscaled_ty - unscaled_offset_y + 1.0;
-            let unscaled_cursor_height = unscaled_text_h * 0.85;
-
+            let cur_h = (self.font_size * scale * 0.72).round().max(2.0);
             let final_cx = (unscaled_cursor_x * scale + ui_offset.x).round();
-            let final_cy = (unscaled_cursor_top * scale + ui_offset.y).round();
-            let final_cw = scale.max(1.0).round();
-            let final_ch = (unscaled_cursor_height * scale).round();
+            let text_top_y = final_ty - unscaled_offset_y * scale;
+            let final_cy = (text_top_y + (unscaled_text_h * scale - cur_h) * 0.5).round();
+            let final_cw = (1.0 * scale).round().max(1.0);
 
             let cursor_color = Color::new(self.text_color.r, self.text_color.g, self.text_color.b, 0.85);
-            draw_rectangle(final_cx, final_cy, final_cw, final_ch, cursor_color);
+            draw_rectangle(final_cx, final_cy, final_cw, cur_h, cursor_color);
         }
     }
 
@@ -3930,6 +4374,22 @@ impl Object for TextField {
 
     fn bounds(&self) -> Option<Rect> {
         Some(self.rect())
+    }
+
+    fn get_text(&self) -> Option<String> {
+        Some(self.text.clone())
+    }
+
+    fn set_text(&mut self, text: &str) {
+        self.text = text.to_string();
+    }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
@@ -4824,6 +5284,14 @@ impl Object for Container {
     fn set_size(&mut self, size: Vec2) { self.size = size; }
     fn is_fill_parent(&self) -> bool { self.fill_parent }
     fn set_fill_parent(&mut self, fill: bool) { self.fill_parent = fill; }
+
+    fn get_children(&self) -> Vec<&dyn Object> {
+        self.child.as_ref().map(|c| c.as_ref() as &dyn Object).into_iter().collect()
+    }
+
+    fn get_children_mut<'a>(&'a mut self) -> Vec<&'a mut (dyn Object + 'static)> {
+        self.child.as_mut().map(|c| c.as_mut() as &mut (dyn Object + 'static)).into_iter().collect()
+    }
 }
 
 impl Clickable for Container {
@@ -4957,6 +5425,15 @@ impl Column {
         let avail_h = (self.size.y - self.padding.top - self.padding.bottom).max(0.0);
         let avail_w = (self.size.x - self.padding.left - self.padding.right).max(0.0);
 
+        for (i, child) in self.children.iter_mut().enumerate() {
+            if child.is_fill_parent() {
+                child.set_size(vec2(avail_w, child_sizes[i].y));
+                if let Some(b) = child.bounds() {
+                    child_sizes[i] = vec2(b.w, b.h);
+                }
+            }
+        }
+
         let (start_y, gap_between) = match self.main_axis_alignment {
             MainAxisAlignment::Start => (self.padding.top, self.spacing),
             MainAxisAlignment::Center => (self.padding.top + (avail_h - content_h).max(0.0) * 0.5, self.spacing),
@@ -5022,6 +5499,22 @@ impl Object for Column {
     fn is_active(&self) -> bool { self.active }
     fn set_active(&mut self, active: bool) { self.active = active; }
     fn tag(&self) -> &str { &self.tag }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn get_children(&self) -> Vec<&dyn Object> {
+        self.children.iter().map(|c| c.as_ref()).collect()
+    }
+
+    fn get_children_mut<'a>(&'a mut self) -> Vec<&'a mut (dyn Object + 'static)> {
+        self.children.iter_mut().map(|c| c.as_mut()).collect()
+    }
 }
 
 impl Clickable for Column {
@@ -5216,8 +5709,23 @@ impl Object for Row {
     fn is_visible(&self) -> bool { self.visible }
     fn set_visible(&mut self, visible: bool) { self.visible = visible; }
     fn is_active(&self) -> bool { self.active }
-    fn set_active(&mut self, active: bool) { self.active = active; }
     fn set_position(&mut self, pos: Vec2) { self.position = pos; }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn get_children(&self) -> Vec<&dyn Object> {
+        self.children.iter().map(|c| c.as_ref()).collect()
+    }
+
+    fn get_children_mut<'a>(&'a mut self) -> Vec<&'a mut (dyn Object + 'static)> {
+        self.children.iter_mut().map(|c| c.as_mut()).collect()
+    }
 }
 
 impl Clickable for Row {
@@ -5339,9 +5847,19 @@ mod tests {
         assert_eq!(p.left, 16.0);
         assert_eq!(p.top, 8.0);
 
+        let p_left = Padding::only_left(5.0);
+        assert_eq!(p_left.left, 5.0);
+        assert_eq!(p_left.top, 0.0);
+
+        let p_top = Padding::only_top(10.0);
+        assert_eq!(p_top.top, 10.0);
+
         let m = Margin::only_top(20.0);
         assert_eq!(m.top, 20.0);
         assert_eq!(m.left, 0.0);
+
+        let m_from_p: Margin = p_left.into();
+        assert_eq!(m_from_p.left, 5.0);
     }
 
     #[test]
@@ -5440,5 +5958,19 @@ mod tests {
         let child_bounds = container.child.as_ref().unwrap().bounds().unwrap();
         assert_eq!(child_bounds.w, 280.0);
         assert_eq!(child_bounds.h, 180.0);
+    }
+
+    #[test]
+    fn test_text_field_scrolling_and_backspace() {
+        let mut tf = TextField::new(Vec2::ZERO, vec2(100.0, 30.0), "Enter text...");
+        assert_eq!(tf.text, "");
+        assert_eq!(tf.backspace_timer, 0.0);
+        assert_eq!(tf.backspace_repeat_timer, 0.0);
+
+        tf.text = "Hello World".to_string();
+        assert_eq!(tf.text, "Hello World");
+
+        tf.text.pop();
+        assert_eq!(tf.text, "Hello Worl");
     }
 }

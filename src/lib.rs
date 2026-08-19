@@ -20,6 +20,7 @@ pub mod actions;
 pub mod animated_texture;
 pub mod asset_manager;
 pub mod audio;
+pub mod bitmap_font;
 pub mod camera;
 pub mod content;
 pub mod draggable;
@@ -44,6 +45,7 @@ pub mod window;
 pub mod world;
 
 pub use animated_texture::AnimatedSprite;
+pub use bitmap_font::{BitmapFont, GlyphInfo, register_font_id};
 pub use content::{ContentError, load_content, load_content_dir};
 pub use events::EventBus;
 pub use panel_manager::{PanelId, PanelManager};
