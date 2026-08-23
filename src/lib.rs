@@ -765,4 +765,351 @@ mod tests {
 
         assert_eq!(engine.letterbox_color, macroquad::color::DARKGRAY);
     }
+
+    // =======================================================================
+    // Rigorous Lifecycle & Architectural Semantics Tests
+    // =======================================================================
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct EventX(u32);
+
+    #[test]
+    fn test_event_ordering_and_logic_reception() {
+        let mut world = World::new();
+        let mut ctx = Context::new();
+
+        // Object A emits EventX(1)
+        let obj_a = Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE)
+            .with_data(())
+            .update(|_, ctx| ctx.emit(EventX(1)));
+
+        // Object B emits EventX(2)
+        let obj_b = Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE)
+            .with_data(())
+            .update(|_, ctx| ctx.emit(EventX(2)));
+
+        // Logic layer runs AFTER objects and collects all events in order
+        let logic = Logic::run(|ctx| {
+            let events = ctx.poll::<EventX>();
+            if !events.is_empty() {
+                ctx.state.set_int("count", events.len() as i64);
+                ctx.state.set_int("first", events[0].0 as i64);
+                ctx.state.set_int("second", events[1].0 as i64);
+            }
+        });
+
+        world.add(obj_a);
+        world.add(obj_b);
+        world.add_logic(logic);
+
+        world.update(&mut ctx);
+
+        assert_eq!(ctx.state.get_int("count"), 2);
+        assert_eq!(ctx.state.get_int("first"), 1);
+        assert_eq!(ctx.state.get_int("second"), 2);
+    }
+
+    #[test]
+    fn test_object_ordering_independence() {
+        // Case 1: [A, B] -> Logic receives both events
+        let mut world1 = World::new();
+        let mut ctx1 = Context::new();
+
+        world1.add(Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE).with_data(()).update(|_, ctx| ctx.emit(EventX(10))));
+        world1.add(Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE).with_data(()).update(|_, ctx| ctx.emit(EventX(20))));
+        world1.add_logic(Logic::run(|ctx| {
+            let sum: u32 = ctx.poll::<EventX>().iter().map(|e| e.0).sum();
+            ctx.state.set_int("sum", sum as i64);
+        }));
+
+        world1.update(&mut ctx1);
+        assert_eq!(ctx1.state.get_int("sum"), 30);
+
+        // Case 2: [B, A] -> Logic receives the exact same total events
+        let mut world2 = World::new();
+        let mut ctx2 = Context::new();
+
+        world2.add(Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE).with_data(()).update(|_, ctx| ctx.emit(EventX(20))));
+        world2.add(Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE).with_data(()).update(|_, ctx| ctx.emit(EventX(10))));
+        world2.add_logic(Logic::run(|ctx| {
+            let sum: u32 = ctx.poll::<EventX>().iter().map(|e| e.0).sum();
+            ctx.state.set_int("sum", sum as i64);
+        }));
+
+        world2.update(&mut ctx2);
+        assert_eq!(ctx2.state.get_int("sum"), 30);
+    }
+
+    #[test]
+    fn test_deferred_spawn_semantics() {
+        let mut world = World::new();
+        let mut ctx = Context::new();
+
+        // Object A spawns Object B during its update pass
+        let spawner = Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE)
+            .with_data(())
+            .update(|_, ctx| {
+                if !ctx.state.get_bool("spawned") {
+                    ctx.state.set_bool("spawned", true);
+                    let spawned_b = Sprite::solid(vec2(10.0, 10.0), vec2(10.0, 10.0), RED)
+                        .with_data(())
+                        .with_tag("spawned_b")
+                        .update(|_, ctx| {
+                            ctx.state.increment("b_updates", 1);
+                        });
+                    ctx.spawn(spawned_b);
+                }
+            });
+
+        world.add(spawner);
+
+        // Frame 1: Spawner runs, queues B. B does NOT update during Frame 1.
+        world.update(&mut ctx);
+        assert_eq!(ctx.state.get_int("b_updates"), 0);
+        assert_eq!(world.objects().len(), 2); // B is now attached after frame 1 cleanup/drain
+
+        // Frame 2: Both Spawner and B update. B's update counter becomes 1.
+        world.update(&mut ctx);
+        assert_eq!(ctx.state.get_int("b_updates"), 1);
+
+        // Frame 3: Both update again.
+        world.update(&mut ctx);
+        assert_eq!(ctx.state.get_int("b_updates"), 2);
+    }
+
+    #[test]
+    fn test_deferred_destroy_semantics() {
+        let mut world = World::new();
+        let mut ctx = Context::new();
+
+        let obj = Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE)
+            .with_data(())
+            .update(|o, ctx| {
+                ctx.state.set_bool("pre_destroy", true);
+                o.destroy();
+                // Verifies execution continues after destroy call in the same pass
+                ctx.state.set_bool("post_destroy", true);
+            });
+
+        world.add(obj);
+
+        // Frame 1: Object updates, destroys itself, finishes update pass, and gets reaped at end
+        world.update(&mut ctx);
+        assert!(ctx.state.get_bool("pre_destroy"));
+        assert!(ctx.state.get_bool("post_destroy"));
+        assert_eq!(world.objects().len(), 0); // Reaped
+
+        // Reset flags for Frame 2
+        ctx.state.set_bool("pre_destroy", false);
+        ctx.state.set_bool("post_destroy", false);
+
+        // Frame 2: Object is completely absent and does not run
+        world.update(&mut ctx);
+        assert!(!ctx.state.get_bool("pre_destroy"));
+        assert!(!ctx.state.get_bool("post_destroy"));
+    }
+
+    #[test]
+    fn test_trigger_one_shot_evaluation_pattern() {
+        let mut ts = TriggerSystem::new();
+        let mut ctx = Context::new();
+
+        // One-shot trigger: fires on step >= 2
+        ts.register(Trigger::new(
+            |ctx| ctx.state.get_int("step") >= 2,
+            |ctx| { ctx.state.increment("fires", 1); },
+        ));
+
+        // Sequence of condition values: false, false, true, true, true
+        let steps = [0, 1, 2, 3, 4];
+        for step in steps {
+            ctx.state.set_int("step", step);
+            TriggerSystem::update_with_context(ts.triggers_mut(), &mut ctx);
+        }
+
+        // Fired exactly ONCE at step == 2
+        assert_eq!(ctx.state.get_int("fires"), 1);
+    }
+
+    #[test]
+    fn test_trigger_repeating_evaluation_pattern() {
+        let mut ts = TriggerSystem::new();
+        let mut ctx = Context::new();
+
+        // Repeating trigger: fires every frame cond is true
+        ts.register(Trigger::new(
+            |ctx| ctx.state.get_bool("cond"),
+            |ctx| { ctx.state.increment("fires", 1); },
+        ).repeating());
+
+        // Sequence of condition values: false, false, true, true, false, true
+        let pattern = [false, false, true, true, false, true];
+        let mut expected_fires = 0;
+
+        for cond in pattern {
+            if cond { expected_fires += 1; }
+            ctx.state.set_bool("cond", cond);
+            TriggerSystem::update_with_context(ts.triggers_mut(), &mut ctx);
+        }
+
+        assert_eq!(ctx.state.get_int("fires"), expected_fires);
+        assert_eq!(ctx.state.get_int("fires"), 3);
+    }
+
+    #[test]
+    fn test_scene_switch_lifecycle_and_state_preservation() {
+        let mut ctx = Context::new();
+
+        let scene_a = Scene::new_empty("SceneA")
+            .on_exit_hook(|ctx| {
+                ctx.state.set_bool("scene_a_exited", true);
+            });
+
+        let scene_b = Scene::new_empty("SceneB")
+            .on_enter(|ctx| {
+                ctx.state.set_bool("scene_b_entered", true);
+            });
+
+        let mut mgr = SceneManager::new(vec![scene_a, scene_b]);
+
+        // Register a trigger on Context
+        ctx.triggers.register(Trigger::new(
+            |ctx| ctx.state.get_bool("trigger_condition"),
+            |ctx| { ctx.state.set_bool("trigger_action_fired", true); },
+        ));
+
+        // Queue a deferred spawn on Context
+        ctx.spawn(Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE).with_tag("carried_over"));
+
+        // Switch to SceneB
+        mgr.switch_to("SceneB");
+        mgr.update_pending(&mut ctx);
+
+        // 1. on_exit & on_enter executed in proper order
+        assert!(ctx.state.get_bool("scene_a_exited"));
+        assert!(ctx.state.get_bool("scene_b_entered"));
+
+        // 2. Events & Signals emitted automatically on transition
+        let changes = ctx.events.poll::<SceneChanged>();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].from, "SceneA");
+        assert_eq!(changes[0].to, "SceneB");
+        assert!(ctx.poll_signal("sys:scene_loaded"));
+        assert!(ctx.poll_signal("sys:enter_scene_SceneB"));
+
+        // 3. Triggers continue to live on Context and fire across scenes
+        ctx.state.set_bool("trigger_condition", true);
+        let mut triggers = std::mem::take(&mut ctx.triggers);
+        TriggerSystem::update_with_context(triggers.triggers_mut(), &mut ctx);
+        ctx.triggers = triggers;
+        assert!(ctx.state.get_bool("trigger_action_fired"));
+
+        // 4. Deferred spawn drains into active SceneB's world
+        let cur_scene = mgr.get_current_scene();
+        cur_scene.world_mut().update(&mut ctx);
+        assert!(!cur_scene.world().find_by_tag("carried_over").is_empty());
+    }
+
+    #[test]
+    fn test_event_draining_between_multiple_logic_objects() {
+        let mut world = World::new();
+        let mut ctx = Context::new();
+
+        // Emitter
+        world.add(Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE).with_data(()).update(|_, ctx| {
+            ctx.emit(EventX(777));
+        }));
+
+        // Logic A: Polls (consumes/drains) the event
+        world.add_logic(Logic::run(|ctx| {
+            let events = ctx.poll::<EventX>();
+            ctx.state.set_int("logic_a_received", events.len() as i64);
+        }));
+
+        // Logic B: Polls the same event channel AFTER Logic A
+        world.add_logic(Logic::run(|ctx| {
+            let events = ctx.poll::<EventX>();
+            ctx.state.set_int("logic_b_received", events.len() as i64);
+            ctx.state.set_bool("logic_b_has_events", ctx.events.has_events::<EventX>());
+        }));
+
+        world.update(&mut ctx);
+
+        // Logic A drained the channel
+        assert_eq!(ctx.state.get_int("logic_a_received"), 1);
+        // Logic B received 0 because poll() is a destructive drain
+        assert_eq!(ctx.state.get_int("logic_b_received"), 0);
+        assert!(!ctx.state.get_bool("logic_b_has_events"));
+    }
+
+    #[test]
+    fn test_mid_frame_scene_switch_deferred_boundary() {
+        let mut ctx = Context::new();
+
+        // Scene 1 contains:
+        // - Logic A (calls ctx.switch_scene("GameOver"))
+        // - Logic B (located AFTER Logic A in the same scene)
+        // - UI entity (Text)
+        let scene1 = Scene::new(
+            "Game",
+            world! {
+                objects: [
+                    Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), WHITE)
+                ],
+                ui: [
+                    Text::new("Score", vec2(10.0, 10.0), 16.0, WHITE)
+                ],
+                logic: [
+                    Logic::run(|ctx| {
+                        ctx.state.set_bool("logic_a_ran", true);
+                        ctx.switch_scene("GameOver");
+                    }),
+                    Logic::run(|ctx| {
+                        // Logic B executes in the same frame after Logic A
+                        ctx.state.set_bool("logic_b_ran_in_same_frame", true);
+                    }),
+                ],
+            },
+        ).on_exit_hook(|ctx| {
+            ctx.state.set_bool("scene1_exit_hook_fired", true);
+        });
+
+        // Scene 2 (GameOver)
+        let scene2 = Scene::new_empty("GameOver")
+            .on_enter(|ctx| {
+                ctx.state.set_bool("scene2_enter_hook_fired", true);
+            });
+
+        let mut mgr = SceneManager::new(vec![scene1, scene2]);
+
+        // === FRAME 1: Scene 1 updates ===
+        // Note: Scene switch request is queued via ctx.switch_scene("GameOver")
+        let cur_scene = mgr.get_current_scene();
+        cur_scene.world_mut().update(&mut ctx);
+
+        // 1. Both Logic A and Logic B completed in Frame 1 (no mid-frame interruption)
+        assert!(ctx.state.get_bool("logic_a_ran"));
+        assert!(ctx.state.get_bool("logic_b_ran_in_same_frame"));
+
+        // 2. on_exit / on_enter did NOT fire mid-frame (avoids reentrancy)
+        assert!(!ctx.state.get_bool("scene1_exit_hook_fired"));
+        assert!(!ctx.state.get_bool("scene2_enter_hook_fired"));
+
+        // === FRAME BOUNDARY (Start of Frame 2 in Engine loop) ===
+        if let Some(next_scene) = ctx.pending_scene.take() {
+            mgr.switch_to(&next_scene);
+        }
+        mgr.update_pending(&mut ctx);
+
+        // 3. Scene transition executes cleanly at frame boundary
+        assert!(ctx.state.get_bool("scene1_exit_hook_fired"));
+        assert!(ctx.state.get_bool("scene2_enter_hook_fired"));
+        assert_eq!(mgr.current_scene_index(), 1);
+
+        // 4. Scene 2 receives the SceneChanged event
+        let events = ctx.events.poll::<SceneChanged>();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].from, "Game");
+        assert_eq!(events[0].to, "GameOver");
+    }
 }

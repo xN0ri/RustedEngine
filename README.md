@@ -1,141 +1,84 @@
-# RustedEngine 🦀🎮
+# 🦀 RustedEngine
 
 [![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org/)
 [![Macroquad](https://img.shields.io/badge/built%20with-Macroquad-blue.svg)](https://macroquad.rs/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**RustedEngine** is a lightweight, ergonomic, and universal 2D game engine framework for **Rust**, built on top of [Macroquad](https://macroquad.rs/).
+A lightweight, code-first **2D game framework for Rust**, built on top of [Macroquad](https://macroquad.rs/).
 
-Designed with simplicity, high performance, and API elegance in mind, RustedEngine eliminates boilerplate while offering a clean, intuitive mental model for rapid 2D game development.
-
----
-
-## Key Features
-
-* 🚀 **Zero-Boilerplate Ergonomics & Lifecycle**:
-  * Deferred spawning (`ctx.spawn`, `ctx.spawn_ui`, `ctx.spawn_logic`) to safely spawn entities during update passes.
-  * Automatic frame cleanup of destroyed entities (`object.destroy()`, `object.is_destroyed()`).
-  * **Blanket `Deref/DerefMut`** on `Behavior<Inner, Data>` — direct field access on any wrapped component, no boilerplate.
-
-* 👾 **Behavior & Data Binding**:
-  * Bind any graphic component (`Sprite`, `Rectangle`, `AnimatedSprite`, `Tilemap`, `ParticleEmitter`) with a custom state struct via `.with_data(data)`.
-  * Pure scripted controller logic via `Logic<Data>` (no graphic overhead).
-  * Spatial sprite helpers: `sprite.center()`, `sprite.set_center()`, `sprite.look_at()`, `sprite.circle()`.
-
-* 🎬 **Scene & World Management**:
-  * Multi-scene management via `SceneManager`: `ctx.switch_scene("name")`.
-  * `on_enter` / `on_exit` lifecycle hooks per scene.
-  * Three distinct entity layers: **world-space** objects, **screen-space** UI objects, and **logic** controllers.
-  * `scene!` and `world!` declarative construction macros.
-
-* ⚡ **Trigger System**:
-  * Condition→action rules with full `&mut Context` access: `Trigger::new(|ctx| ..., |ctx| ...)`.
-  * One-shot and repeating modes. Convenience builders: `Trigger::when_flag_true("key", action)`.
-  * Automatically driven every frame — no manual update call needed.
-
-* 📐 **2D Geometry & Spatial Collision**:
-  * Standalone primitives: `Circle`, `Segment`, `Capsule`.
-  * High-performance intersection tests: segment-circle, circle-circle, circle-rect, capsule-circle, segment-segment, ray sweeps.
-  * World proximity queries: `world.find_nearest()`, `world.find_within_radius()`.
-
-* 🧮 **Vector Math & Spring Smoothing**:
-  * `Vec2Ext`: `clamp_len()`, `move_towards()`, `perpendicular()`, `project_onto()`, `reflect()`, `angle_between()`, `rotated()`.
-  * Zero-overshoot critically-damped spring smoothing: `smooth_damp()` & `smooth_damp_vec2()`.
-
-* 🎬 **Animation & Tweening**:
-  * `Tween`: scalar animation with 12 easing curves (`EaseOutCubic`, `EaseInBounce`, etc.).
-  * `TweenVec2`: 2D position/size tween in a single struct — `tween.tick(dt) -> Vec2`.
-  * `AnimatedSprite`: frame-based sprite animation with named clips.
-
-* 🎲 **Comprehensive RNG & Procedural Noise**:
-  * Deterministic seeded PRNG (`Rng::new(seed)`, PCG32).
-  * Spatial sampling: `random_in_circle()`, `random_in_annulus()`, `random_in_sector()`, `random_in_triangle()`, `random_on_rect_perimeter()`.
-  * Statistical: Gaussian `random_normal()`, fair `ShuffleBag`, `WeightedList`.
-  * Multi-octave Perlin / fBm gradient `Noise`.
-
-* ⏱️ **Time Control**:
-  * `ctx.dt()` — scaled delta. `ctx.raw_dt()` — unscaled physical delta.
-  * `ctx.pause()`, `ctx.unpause()`, `ctx.toggle_pause()`, `ctx.set_time_scale(s)`.
-  * `ctx.elapsed()`, `ctx.fps()`.
-  * `Timer::once(s)`, `Timer::repeating(s)` — `.tick(dt)`, `.time_remaining()`, `.set_duration(s)`.
-
-* 🖥️ **Integrated UI Subsystem**:
-  * Rich widget library: `Text` (word-wrap, typewriter, BBCode color), `Button`, `ProgressBar`, `TextField`, `Slider`, `Checkbox`, `TextLog`, scrollable `Panel`.
-  * Flutter-like layout tree: `Column`, `Row`, `Container`, `VBox`, `HBox`, `Grid` with auto-alignment, margin, padding.
-  * `PanelManager`: full desktop-style window manager with focus, Z-layering, drag, and resize.
-
-* 🎥 **2D Camera Suite**:
-  * Lerp tracking (`camera.follow`), motion leading (`camera.look_ahead`), screen shake (`camera.shake`).
-  * View frustum culling: `camera.is_on_screen()`, `camera.is_rect_on_screen()`.
-  * Virtual resolution pipeline with letterboxing — `ctx.mouse_world()` always remapped correctly.
-
-* 🔔 **Type-Safe Event Bus & Signals**:
-  * Typed event channels: `ctx.emit(MyEvent { .. })`, `ctx.poll::<MyEvent>()`.
-  * Named string signals: `ctx.emit_signal("boss_dead")`, `ctx.poll_signal("boss_dead")`, `ctx.has_signal("boss_dead")`.
-
-* 💾 **State Store & Persistence**:
-  * `ctx.state` — key-value store (`bool`, `int`, `float`, `text`, `Vec2`) with Serde JSON serialization.
-  * `ctx.state.increment("score", 10)` returns the updated value.
-  * `SaveSystem`: multi-slot save files with CRC32 integrity checking.
-
-* 🎞️ **Scripted Sequences**:
-  * `Sequence` / `SequenceBuilder` for cutscenes, tutorials, dialogue flows.
-  * Steps: `ShowText`, `Wait`, `WaitForInput`, `Branch`, `BranchTo`, `RepeatUntil`, `PlaySound`, `AppendLine`, `Label`, `JumpTo`.
-  * `Step::run(|ctx, world| { ... })` — arbitrary logic injection at any point in a sequence.
-
-* 🔊 **Audio**:
-  * `ctx.play_sound()`, `ctx.play_sound_varied()` (pitch/volume randomization), `ctx.play_sound_throttled()`.
-  * `AmbientPool`: seamless looping ambient layers.
-  * `BitmapFont`: zero-blur pixel font baking from TrueType.
-
-* 🌐 **Resources**:
-  * Type-erased heterogeneous resource store: `ctx.resources.insert(MyData)`, `ctx.resources.get::<MyData>()`.
+Designed for developers who want to build 2D games rapidly without writing hundreds of lines of engine boilerplate, without fighting complex ECS setups, and without dealing with `Rc<RefCell<...>>` borrow checker headaches.
 
 ---
 
-## Quickstart
+## ✨ Why RustedEngine?
+
+* 🎯 **Code-First & Minimal Boilerplate**: Create entities with custom state, input handling, and update loops in just a few lines.
+* 🧩 **Ergonomic `Behavior<Inner, Data>`**: Attach custom structs to any sprite, shape, or particle emitter. Thanks to blanket `Deref`, you access inner fields directly (`player.position` instead of `player.inner.position`).
+* 🧠 **Headless `Logic` Controllers**: Separate game rules, score tracking, and cutscenes from visual entities.
+* 📡 **Type-Safe Event Bus**: Decouple communication between entities and systems with clean, zero-cost event channels.
+* 🎥 **Virtual Resolution & Letterboxing**: Design your game in a fixed pixel resolution (e.g. `320x180` or `640x360`), and RustedEngine handles letterboxing and mouse coordinate remapping automatically.
+* 🖥️ **Rich UI Layout System**: Flutter-like declarative containers (`Column`, `Row`, `Grid`, `Padding`), buttons, sliders, progress bars, and draggable window panels.
+
+---
+
+## ⚡ Quickstart
+
+Add `macroquad` and `rusted_engine` to your `Cargo.toml`. Here is a complete, working game scene:
 
 ```rust
 use rusted_engine::prelude::*;
 use macroquad::prelude::*;
 
+// 1. Events for cross-system communication
+#[derive(Clone, Debug)]
+struct PlayerDied { reason: &'static str }
+
+// 2. Private state for our entity
 struct PlayerData {
     speed: f32,
     hp: i32,
 }
 
-#[macroquad::main("My Game")]
+#[macroquad::main("My First Game")]
 async fn main() {
-    let player = Sprite::solid(vec2(0.0, 0.0), vec2(32.0, 32.0), BLUE)
-        .with_data(PlayerData { speed: 250.0, hp: 100 })
-        .with_tag("player")
+    // 3. Entity: Visual sprite combined with PlayerData
+    let player = Sprite::solid(vec2(100.0, 100.0), vec2(32.0, 32.0), BLUE)
+        .with_data(PlayerData { speed: 220.0, hp: 100 })
         .update(|player, ctx| {
-            // Normalized WASD movement
-            let dir = ctx.input.wasd();
-            player.position += dir * player.data.speed * ctx.dt();
-
-            // Face cursor
+            // Smooth 2D WASD movement
+            player.position += ctx.input.wasd() * player.data.speed * ctx.dt();
             player.look_at(ctx.mouse_world());
 
-            // Dash on Space
-            if ctx.is_action_pressed("dash") {
-                player.position += player.center().dir_to(ctx.mouse_world()) * 120.0;
-                ctx.play_sound_varied("dash", 0.1, 0.1);
+            // Press K to test damage
+            if ctx.input.is_key_pressed(KeyCode::K) {
+                player.data.hp -= 50;
+                if player.data.hp <= 0 {
+                    player.destroy();
+                    ctx.emit(PlayerDied { reason: "Took lethal damage" });
+                }
             }
-
-            // Die when hp reaches zero → scene switch via trigger
         });
 
-    // Trigger: switch to GameOver when hp <= 0
-    let mut engine = Engine::new(vec![
-        Scene::new("Game", world! { objects: [player] }),
-        Scene::new_empty("GameOver"),
-    ]);
+    // 4. Controller: Headless Logic entity handling game rules
+    let game_controller = Logic::run(|ctx| {
+        for death in ctx.poll::<PlayerDied>() {
+            println!("Game Over: {}", death.reason);
+            ctx.switch_scene("GameOver");
+        }
+    });
 
-    engine.ctx.triggers.register(Trigger::new(
-        |ctx| ctx.state.get_int("hp") <= 0,
-        |ctx| { ctx.switch_scene("GameOver"); },
-    ));
+    // 5. Scene & Engine Setup
+    let game_scene = Scene::new("Game", world! {
+        objects: [player],
+        logic:   [game_controller],
+    });
+
+    let mut engine = Engine::new(vec![
+        game_scene,
+        Scene::new_empty("GameOver"),
+    ])
+    .with_background_color(DARKGRAY)
+    .with_virtual_resolution(640, 360);
 
     engine.run().await;
 }
@@ -143,23 +86,45 @@ async fn main() {
 
 ---
 
-## Architecture Overview
+## 🧭 Core Mental Model
 
 ```
 Engine
-├── Context         — dt, camera, input, audio, events, state, resources, triggers
 └── SceneManager
     └── Scene
         └── World
-            ├── objects[]      — world-space entities (Behavior<Sprite, Data>, etc.)
-            ├── ui_objects[]   — screen-space UI (Text, Button, Panel, ...)
-            └── logic[]        — headless controllers (Logic<Data>)
+            ├── objects[]   — World-space visual entities (Behavior<Sprite, Data>, Shapes)
+            ├── ui[]        — Screen-space UI (Buttons, Text, ProgressBars, Panels)
+            └── logic[]     — Headless controllers & rule systems (Logic<Data>)
 ```
 
-Every entity implements the `Object` trait. `Behavior<Inner, Data>` provides ergonomic wrapping with transparent `Deref` to `Inner`, custom `Data`, and an `update` closure called every frame.
+* **`Behavior<Inner, Data>`**: An entity with visuals (`Inner`) and private state (`Data`).
+* **`Logic<Data>`**: A controller without visuals that listens to events, controls game flow, or spawns enemies.
+* **`Context` (`ctx`)**: The single access point passed to update closures — gives you delta time, input, audio, camera, events, and scene switching.
+* **`ctx.resources`**: A typed singleton store for global game state (e.g. `GameState`, `Inventory`).
 
 ---
 
-## License
+## 📦 What's Included?
+
+* 🎮 **Entity & Scene Management**: Deferred spawning (`ctx.spawn`), auto-reaping of destroyed objects, `on_enter` / `on_exit` scene hooks.
+* 🎥 **2D Camera Suite**: Smooth lerp tracking, look-ahead leading, screen shake, and frustum culling.
+* 📐 **2D Geometry & Collision**: Circle, segment, and capsule primitives with fast intersection tests and radius queries.
+* 🧮 **Game Math & Physics**: Extension math (`Vec2Ext`), critically-damped spring smoothing (`smooth_damp`), and 12-curve animation tweens (`Tween`, `TweenVec2`).
+* 🖥️ **UI & Window Manager**: Flexbox-style layouts, BBCode rich text, typewriter effects, input fields, and draggable/resizable window panels (`PanelManager`).
+* 🎲 **RNG & Procedural Tools**: Seeded PCG32 generator, spatial geometric sampling, fair shuffle bags, and fractal Perlin noise.
+* 🎞️ **Scripted Sequences**: Multi-step narrative pipeline for cutscenes, tutorials, and branching dialogues.
+* 🔊 **Audio & Assets**: Pitch/volume randomized sound playback, throttled SFX, ambient sound pools, and bitmap font baking.
+* 💾 **State & Persistence**: Global key-value state store with JSON export and multi-slot save files with CRC32 integrity check.
+
+---
+
+## 📖 Documentation
+
+Comprehensive interactive documentation, tutorials, and component recipes are included in the repository under `/tools/docs`.
+
+---
+
+## 📜 License
 
 This project is licensed under the [MIT License](LICENSE).
