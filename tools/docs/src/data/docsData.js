@@ -7,6 +7,7 @@ import { sequenceDoc } from './sequenceDoc.js';
 import { assetsAudioDoc } from './assetsAudioDoc.js';
 import { renderingGraphicsDoc } from './renderingGraphicsDoc.js';
 import { mathGeometryRngDoc } from './mathGeometryRngDoc.js';
+import { examplesCookbookDoc } from './examplesCookbookDoc.js';
 
 export const allDocs = [
   gettingStartedDoc,
@@ -18,6 +19,7 @@ export const allDocs = [
   assetsAudioDoc,
   renderingGraphicsDoc,
   mathGeometryRngDoc,
+  examplesCookbookDoc,
 ];
 
 export function searchDocs(query) {

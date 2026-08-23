@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export function MarkdownRenderer({ content }) {
   if (!content) return null;
@@ -7,6 +8,7 @@ export function MarkdownRenderer({ content }) {
   return (
     <div className="markdown-content text-zinc-200">
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           h3: ({ children }) => (
             <h3 className="text-base sm:text-lg font-bold text-zinc-100 mt-7 mb-3 tracking-tight flex items-center gap-2 border-b border-zinc-800/60 pb-2">
