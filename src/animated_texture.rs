@@ -58,8 +58,8 @@ impl AnimatedSprite {
     }
 
     /// Builder pattern: Sets entity tag.
-    pub fn with_tag(mut self, tag: &str) -> Self {
-        self.tag = tag.to_string();
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
         self
     }
 

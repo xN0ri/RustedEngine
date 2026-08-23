@@ -64,6 +64,19 @@ impl Assets {
         Ok(texture)
     }
 
+    /// Asynchronously loads a list of textures `&[("name", "path"), ...]`.
+    pub async fn load_textures(
+        &mut self,
+        list: &[(&str, &str)],
+    ) -> Result<Vec<Texture2D>, macroquad::Error> {
+        let mut loaded = Vec::with_capacity(list.len());
+        for (name, path) in list {
+            let tex = self.load_texture(name, path).await?;
+            loaded.push(tex);
+        }
+        Ok(loaded)
+    }
+
     /// Manually inserts a pre-created [`Texture2D`] under `name`.
     pub fn insert_texture(&mut self, name: &str, texture: Texture2D) {
         self.textures.insert(name.to_string(), texture);
@@ -130,6 +143,19 @@ impl Assets {
         };
         self.sounds.insert(name.to_string(), sound.clone());
         Ok(sound)
+    }
+
+    /// Asynchronously loads a list of sound effects `&[("name", "path"), ...]`.
+    pub async fn load_sounds(
+        &mut self,
+        list: &[(&str, &str)],
+    ) -> Result<Vec<Sound>, macroquad::Error> {
+        let mut loaded = Vec::with_capacity(list.len());
+        for (name, path) in list {
+            let sound = self.load_sound(name, path).await?;
+            loaded.push(sound);
+        }
+        Ok(loaded)
     }
 
     /// Manually inserts a pre-loaded [`Sound`] handle under `name`.

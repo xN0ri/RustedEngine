@@ -1,4 +1,4 @@
-use macroquad::math::Rect;
+use macroquad::math::{Rect, Vec2, vec2};
 
 use crate::engine::Context;
 
@@ -56,6 +56,14 @@ pub trait Object: 'static {
 
     /// Sets whether this entity is active for logic updates and input interaction.
     fn set_active(&mut self, _active: bool) {}
+
+    /// Returns whether this entity has been destroyed and should be reaped from the world at the end of the frame update pass. Defaults to `false`.
+    fn is_destroyed(&self) -> bool {
+        false
+    }
+
+    /// Marks this entity as destroyed for automatic cleanup at the end of the frame update pass.
+    fn destroy(&mut self) {}
 
     /// Returns the screen-space bounding rectangle for hit-testing, or `None` if the entity
     /// has no interactive bounds (e.g. text-only labels, decorative shapes).
@@ -213,8 +221,12 @@ fn collect_by_tag<'a>(obj: &'a (dyn Object + 'static), tag: &str, results: &mut 
 
 fn collect_by_tag_mut<'a>(obj: &'a mut (dyn Object + 'static), tag: &str, results: &mut Vec<&'a mut (dyn Object + 'static)>) {
     if obj.has_tag(tag) {
+        // Parent matches tag: return mutable reference to parent.
+        // We MUST NOT recurse into children here because returning simultaneous
+        // `&mut Parent` and `&mut Child` would create aliased mutable references (UB).
         results.push(obj);
     } else {
+        // Parent does not match tag: recurse into children to find matching descendants.
         for child in obj.get_children_mut() {
             collect_by_tag_mut(child, tag, results);
         }
@@ -300,9 +312,17 @@ impl World {
     /// Adds a new object to the logic-only layer at runtime. Logic objects are
     /// updated every frame but never rendered — use for invisible system
     /// controllers (scene switching, global timers, cross-cutting checks) via
-    /// [`LogicObject`](crate::object::LogicObject).
+    /// [`Logic`](crate::object::Logic) / [`LogicObject`](crate::object::LogicObject).
     pub fn add_logic<O: Object + 'static>(&mut self, object: O) {
         self.logic.push(Box::new(object));
+    }
+
+    /// Adds a stateless logic closure directly to the logic-only layer.
+    pub fn add_logic_fn<F>(&mut self, func: F)
+    where
+        F: FnMut(&mut Context) + 'static,
+    {
+        self.add_logic(crate::object::Logic::run(func));
     }
 
     /// Adds a pre-boxed object to the logic-only layer (low-level escape hatch).
@@ -434,10 +454,30 @@ impl World {
         None
     }
 
+    /// Returns an immutable reference to the first UI-space object matching concrete type `T`, or `None`.
+    pub fn find_ui_typed<T: 'static>(&self) -> Option<&T> {
+        for obj in self.ui_objects.iter() {
+            if let Some(concrete) = obj.as_any().and_then(|any| any.downcast_ref::<T>()) {
+                return Some(concrete);
+            }
+        }
+        None
+    }
+
     /// Returns a mutable reference to the first world-space object matching concrete type `T`, or `None`.
     pub fn find_typed_mut<T: 'static>(&mut self) -> Option<&mut T> {
         for obj in self.objects.iter_mut() {
             if let Some(concrete) = obj.as_any_mut().and_then(|any| any.downcast_mut::<T>()) {
+                return Some(concrete);
+            }
+        }
+        None
+    }
+
+    /// Returns an immutable reference to the first world-space object matching concrete type `T`, or `None`.
+    pub fn find_typed<T: 'static>(&self) -> Option<&T> {
+        for obj in self.objects.iter() {
+            if let Some(concrete) = obj.as_any().and_then(|any| any.downcast_ref::<T>()) {
                 return Some(concrete);
             }
         }
@@ -449,6 +489,111 @@ impl World {
         for obj in self.logic.iter_mut() {
             if let Some(concrete) = obj.as_any_mut().and_then(|any| any.downcast_mut::<T>()) {
                 return Some(concrete);
+            }
+        }
+        None
+    }
+
+    /// Returns an immutable reference to the first logic-layer object matching concrete type `T`, or `None`.
+    pub fn find_logic_typed<T: 'static>(&self) -> Option<&T> {
+        for obj in self.logic.iter() {
+            if let Some(concrete) = obj.as_any().and_then(|any| any.downcast_ref::<T>()) {
+                return Some(concrete);
+            }
+        }
+        None
+    }
+
+    /// Returns a mutable reference to the **first** world-space object matching `tag` without
+    /// allocating a `Vec`. Prefer this over [`find_by_tag_mut`](World::find_by_tag_mut) in
+    /// hot update paths where only a single result is needed.
+    pub fn find_first_by_tag_mut(&mut self, tag: &str) -> Option<&mut dyn Object> {
+        for o in self.objects.iter_mut() {
+            if o.has_tag(tag) {
+                return Some(o.as_mut());
+            }
+            // check children
+            fn find_in_children<'a>(obj: &'a mut (dyn Object + 'static), tag: &str) -> Option<&'a mut (dyn Object + 'static)> {
+                for child in obj.get_children_mut() {
+                    if child.has_tag(tag) {
+                        return Some(child);
+                    }
+                    if let Some(found) = find_in_children(child, tag) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            if let Some(found) = find_in_children(o.as_mut(), tag) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Returns a mutable reference to the **first** UI-space object matching `tag` without
+    /// allocating a `Vec`. Prefer this over [`find_ui_by_tag_mut`](World::find_ui_by_tag_mut) in
+    /// hot update paths where only a single result is needed.
+    pub fn find_first_ui_by_tag_mut(&mut self, tag: &str) -> Option<&mut dyn Object> {
+        for o in self.ui_objects.iter_mut() {
+            if o.has_tag(tag) {
+                return Some(o.as_mut());
+            }
+            fn find_in_children<'a>(obj: &'a mut (dyn Object + 'static), tag: &str) -> Option<&'a mut (dyn Object + 'static)> {
+                for child in obj.get_children_mut() {
+                    if child.has_tag(tag) {
+                        return Some(child);
+                    }
+                    if let Some(found) = find_in_children(child, tag) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            if let Some(found) = (find_in_children)(o.as_mut(), tag) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Returns an immutable reference to the **first** world-space object matching `tag`.
+    pub fn find_first_by_tag(&self, tag: &str) -> Option<&dyn Object> {
+        fn find_rec<'a>(obj: &'a (dyn Object + 'static), tag: &str) -> Option<&'a (dyn Object + 'static)> {
+            if obj.has_tag(tag) {
+                return Some(obj);
+            }
+            for child in obj.get_children() {
+                if let Some(found) = find_rec(child, tag) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        for o in &self.objects {
+            if let Some(found) = find_rec(o.as_ref(), tag) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Returns an immutable reference to the **first** UI-space object matching `tag`.
+    pub fn find_first_ui_by_tag(&self, tag: &str) -> Option<&dyn Object> {
+        fn find_rec<'a>(obj: &'a (dyn Object + 'static), tag: &str) -> Option<&'a (dyn Object + 'static)> {
+            if obj.has_tag(tag) {
+                return Some(obj);
+            }
+            for child in obj.get_children() {
+                if let Some(found) = find_rec(child, tag) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        for o in &self.ui_objects {
+            if let Some(found) = find_rec(o.as_ref(), tag) {
+                return Some(found);
             }
         }
         None
@@ -469,13 +614,119 @@ impl World {
         self.logic.iter().filter(|o| o.has_tag(tag)).count()
     }
 
+    /// Removes all top-level world-space objects matching `tag`.
+    pub fn remove_by_tag(&mut self, tag: &str) {
+        self.objects.retain(|o| !o.has_tag(tag));
+    }
+
+    /// Removes all top-level screen-space UI objects matching `tag`.
+    pub fn remove_ui_by_tag(&mut self, tag: &str) {
+        self.ui_objects.retain(|o| !o.has_tag(tag));
+    }
+
+    /// Removes all top-level logic objects matching `tag`.
+    pub fn remove_logic_by_tag(&mut self, tag: &str) {
+        self.logic.retain(|o| !o.has_tag(tag));
+    }
+
+    /// Retains only world-space objects that satisfy the predicate `f`.
+    pub fn retain_objects<F: FnMut(&dyn Object) -> bool>(&mut self, mut f: F) {
+        self.objects.retain(|o| f(o.as_ref()));
+    }
+
+    /// Retains only screen-space UI objects that satisfy the predicate `f`.
+    pub fn retain_ui<F: FnMut(&dyn Object) -> bool>(&mut self, mut f: F) {
+        self.ui_objects.retain(|o| f(o.as_ref()));
+    }
+
+    /// Retains only logic objects that satisfy the predicate `f`.
+    pub fn retain_logic<F: FnMut(&dyn Object) -> bool>(&mut self, mut f: F) {
+        self.logic.retain(|o| f(o.as_ref()));
+    }
+
+    /// Clears all world-space objects.
+    pub fn clear_objects(&mut self) {
+        self.objects.clear();
+    }
+
+    /// Clears all screen-space UI objects.
+    pub fn clear_ui(&mut self) {
+        self.ui_objects.clear();
+    }
+
+    /// Clears all logic objects.
+    pub fn clear_logic(&mut self) {
+        self.logic.clear();
+    }
+
+    /// Clears all objects across world, UI, logic layers, and scripted sequences.
+    pub fn clear_all(&mut self) {
+        self.objects.clear();
+        self.ui_objects.clear();
+        self.logic.clear();
+        self.sequences.clear();
+    }
+
     /// Adds a scripted [`Sequence`](crate::sequence::Sequence) to be updated automatically on frame logic passes.
     pub fn add_sequence(&mut self, sequence: crate::sequence::Sequence) {
         self.sequences.push(sequence);
     }
 
+    /// Finds the nearest object matching `tag` to `pos` based on bounding box centers.
+    pub fn find_nearest(&self, pos: Vec2, tag: &str) -> Option<&dyn Object> {
+        self.find_by_tag(tag)
+            .into_iter()
+            .filter_map(|obj| {
+                let center = obj.bounds().map(|b| vec2(b.x + b.w * 0.5, b.y + b.h * 0.5))?;
+                Some((obj, center.distance_squared(pos)))
+            })
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(obj, _)| obj)
+    }
+
+    /// Finds the nearest mutable object matching `tag` to `pos` based on bounding box centers.
+    pub fn find_nearest_mut<'a>(
+        &'a mut self,
+        pos: Vec2,
+        tag: &str,
+    ) -> Option<&'a mut (dyn Object + 'static)> {
+        let matching = self.find_by_tag_mut(tag);
+        matching
+            .into_iter()
+            .filter_map(|obj| {
+                let center = obj.bounds().map(|b| vec2(b.x + b.w * 0.5, b.y + b.h * 0.5))?;
+                Some((obj, center.distance_squared(pos)))
+            })
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(obj, _)| obj)
+    }
+
+    /// Finds all world-space objects whose bounding box is within `radius` of `center`.
+    pub fn find_within_radius(&self, center: Vec2, radius: f32) -> Vec<&dyn Object> {
+        let r_sq = radius * radius;
+        self.objects
+            .iter()
+            .filter_map(|obj| {
+                let obj_center = obj.bounds().map(|b| vec2(b.x + b.w * 0.5, b.y + b.h * 0.5))?;
+                if obj_center.distance_squared(center) <= r_sq {
+                    Some(obj.as_ref())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     /// Updates all world, UI objects, logic objects, and scripted sequences.
+    /// Also automatically drains deferred spawn queues from `ctx`, reaps destroyed entities,
+    /// and drives [`TriggerSystem`](crate::trigger::TriggerSystem) each frame.
     pub fn update(&mut self, ctx: &mut Context) {
+        // Auto-drive trigger system — runs before entity updates so actions
+        // take effect in the same frame the condition becomes true.
+        let mut triggers = std::mem::take(&mut ctx.triggers);
+        crate::trigger::TriggerSystem::update_with_context(triggers.triggers_mut(), ctx);
+        ctx.triggers = triggers;
+
         let old_ptr = ctx.world_ptr;
         ctx.world_ptr = Some(self as *mut World);
 
@@ -496,6 +747,25 @@ impl World {
             seqs.retain(|seq| !seq.is_finished());
             self.sequences.extend(seqs);
         }
+
+        // Drain deferred spawn queues populated during entity updates
+        let pending_obj = std::mem::take(&mut ctx.pending_spawn);
+        for obj in pending_obj {
+            self.objects.push(obj);
+        }
+        let pending_ui = std::mem::take(&mut ctx.pending_spawn_ui);
+        for obj in pending_ui {
+            self.ui_objects.push(obj);
+        }
+        let pending_lg = std::mem::take(&mut ctx.pending_spawn_logic);
+        for obj in pending_lg {
+            self.logic.push(obj);
+        }
+
+        // Automatically reap destroyed objects across all layers
+        self.objects.retain(|o| !o.is_destroyed());
+        self.ui_objects.retain(|o| !o.is_destroyed());
+        self.logic.retain(|o| !o.is_destroyed());
 
         ctx.world_ptr = old_ptr;
     }
@@ -583,6 +853,12 @@ macro_rules! world {
     (objects: [$($obj:expr),* $(,)?] $(,)?) => {
         $crate::world::World::new_with_objects($crate::world_objects![$($obj),*])
     };
+    // Logic-only world (no renderable objects, no UI)
+    (logic: [$($lg:expr),* $(,)?] $(,)?) => {{
+        let mut w = $crate::world::World::new();
+        $(w.add_logic($lg);)*
+        w
+    }};
 }
 
 #[cfg(test)]

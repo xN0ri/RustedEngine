@@ -377,16 +377,3 @@ impl Object for Image {
 
 /// Type alias for an image component combined with game data and update closure.
 pub type ImageObject<Data> = Behavior<Image, Data>;
-
-impl<Data> std::ops::Deref for Behavior<Image, Data> {
-    type Target = Image;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<Data> std::ops::DerefMut for Behavior<Image, Data> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}

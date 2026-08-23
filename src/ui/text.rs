@@ -75,6 +75,11 @@ pub struct Text {
 }
 
 impl Text {
+    /// Creates a new [`Text`] component with default size 20.0 and WHITE color.
+    pub fn label(text: impl Into<String>, position: Vec2) -> Self {
+        Self::new(text, position, 20.0, WHITE)
+    }
+
     /// Creates a new [`Text`] component with instant reveal mode.
     pub fn new(text: impl Into<String>, position: Vec2, font_size: f32, color: Color) -> Self {
         let content = text.into();
@@ -658,19 +663,6 @@ impl Object for Text {
 /// Type alias for a text component combined with game data and update closure.
 pub type TextObject<Data> = Behavior<Text, Data>;
 
-impl<Data> std::ops::Deref for Behavior<Text, Data> {
-    type Target = Text;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<Data> std::ops::DerefMut for Behavior<Text, Data> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}
-
 /// A parsed span of text with an associated color.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextSpan {
@@ -1207,10 +1199,3 @@ impl Clickable for RichText {
 
 /// Type alias for a rich text component combined with game data and update closure.
 pub type RichTextObject<Data> = Behavior<RichText, Data>;
-
-impl<Data> std::ops::Deref for Behavior<RichText, Data> {
-    type Target = RichText;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}

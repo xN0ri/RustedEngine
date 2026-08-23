@@ -95,7 +95,7 @@ pub trait Clickable {
 
     /// Returns `true` while the specified mouse button is held down over the entity (**screen space**).
     ///
-    /// ⚠️ For world-space entities rendered with a 2D camera, use [`click_ctx`](Clickable::click_ctx) for pressed detection.
+    /// ⚠️ For world-space entities rendered with a 2D camera, use [`clicked_ctx`](Clickable::clicked_ctx).
     fn clicked(&self, btn: Side) -> bool {
         self.is_hovered()
             && (is_mouse_button_down(btn.to_macroquad())
@@ -103,6 +103,12 @@ pub trait Clickable {
     }
 
     /// Returns `true` while the specified mouse button is held down over the entity (**world space** using camera matrix transformation).
+    fn clicked_ctx(&self, ctx: &Context, btn: Side) -> bool {
+        self.is_hovered_ctx(ctx)
+            && (ctx.input.is_mouse_button_down(btn.to_macroquad())
+                || ctx.input.is_mouse_button_pressed(btn.to_macroquad()))
+    }
+
     /// Returns `true` during the single frame the left mouse button was pressed over the entity.
     fn is_clicked(&self) -> bool {
         self.click(Side::Left)
@@ -147,7 +153,13 @@ impl Sprite {
 
     /// Creates a solid colored 2D rectangle sprite without requiring a texture file.
     pub fn solid(position: Vec2, size: Vec2, color: Color) -> Self {
-        let texture = Texture2D::from_rgba8(1, 1, &[255, 255, 255, 255]);
+        let texture = if cfg!(test) {
+            Texture2D::from_miniquad_texture(macroquad::miniquad::TextureId::from_raw_id(
+                macroquad::miniquad::RawId::OpenGl(0),
+            ))
+        } else {
+            Texture2D::from_rgba8(1, 1, &[255, 255, 255, 255])
+        };
         Self::new(position, size, 0.0, texture).with_color(color)
     }
 
@@ -242,6 +254,47 @@ impl Sprite {
     /// Sets the position vector.
     pub fn set_position(&mut self, pos: Vec2) {
         self.position = pos;
+    }
+
+    /// Moves the sprite using WASD keyboard input scaled by `speed` and delta time.
+    pub fn move_wasd(&mut self, ctx: &Context, speed: f32) {
+        self.position += ctx.input.wasd() * speed * ctx.time.deltatime();
+    }
+
+    /// Moves the sprite using arrow key input scaled by `speed` and delta time.
+    pub fn move_arrow_keys(&mut self, ctx: &Context, speed: f32) {
+        self.position += ctx.input.arrow_keys() * speed * ctx.time.deltatime();
+    }
+
+    /// Translates the sprite position by `velocity * dt`.
+    pub fn move_by(&mut self, velocity: Vec2, dt: f32) {
+        self.position += velocity * dt;
+    }
+
+    /// Returns the center position of the sprite (`position + size * 0.5`).
+    pub fn center(&self) -> Vec2 {
+        self.position + self.size * 0.5
+    }
+
+    /// Sets the center position of the sprite (`position = center - size * 0.5`).
+    pub fn set_center(&mut self, center: Vec2) {
+        self.position = center - self.size * 0.5;
+    }
+
+    /// Rotates the sprite to face toward `target_pos`.
+    pub fn look_at(&mut self, target_pos: Vec2) {
+        let diff = target_pos - self.center();
+        self.rotation = diff.y.atan2(diff.x);
+    }
+
+    /// Returns a [`Circle`](crate::geometry::Circle) bounding approximation centered on the sprite.
+    pub fn circle(&self) -> crate::geometry::Circle {
+        crate::geometry::Circle::new(self.center(), self.size.x.min(self.size.y) * 0.5)
+    }
+
+    /// Fluent constructor: wraps this sprite in a [`Behavior`](crate::object::Behavior) with custom game `data`.
+    pub fn with_data<Data>(self, data: Data) -> Behavior<Self, Data> {
+        Behavior::new(self, data)
     }
 
     /// Sets the position vector.
@@ -380,6 +433,11 @@ impl Rectangle {
     pub fn is_active(&self) -> bool {
         self.active
     }
+
+    /// Fluent constructor: wraps this rectangle in a [`Behavior`](crate::object::Behavior) with custom game `data`.
+    pub fn with_data<Data>(self, data: Data) -> Behavior<Self, Data> {
+        Behavior::new(self, data)
+    }
 }
 
 impl Object for Rectangle {
@@ -456,6 +514,7 @@ pub struct Behavior<Inner, Data> {
     pub inner: Inner,
     pub data: Data,
     pub tag: String,
+    pub destroyed: bool,
     func: Option<BehaviorUpdateFn<Inner, Data>>,
 }
 
@@ -466,8 +525,19 @@ impl<Inner, Data> Behavior<Inner, Data> {
             inner,
             data,
             tag: String::new(),
+            destroyed: false,
             func: None,
         }
+    }
+
+    /// Marks this entity as destroyed for automatic cleanup at the end of the update pass.
+    pub fn destroy(&mut self) {
+        self.destroyed = true;
+    }
+
+    /// Returns whether this entity has been marked for destruction.
+    pub fn is_destroyed(&self) -> bool {
+        self.destroyed
     }
 
     /// Builder pattern: Sets the entity tag.
@@ -586,34 +656,242 @@ impl<Inner, Data> Behavior<Inner, Data> {
 
     /// Returns `true` while the mouse button is held down over the inner entity in world space.
     ///
-    /// Shorthand for `self.inner.click_ctx(ctx, btn)`.
+    /// Shorthand for `self.inner.clicked_ctx(ctx, btn)`.
     pub fn clicked(&self, ctx: &Context, btn: Side) -> bool
     where
         Inner: Clickable,
     {
-        self.inner.click_ctx(ctx, btn)
+        self.inner.clicked_ctx(ctx, btn)
     }
 }
 
 // ---------------------------------------------------------------------------
 // GameObject<Data> = Behavior<Sprite, Data>
-// LogicObject<Data> = Behavior<Rectangle, Data>
 // ---------------------------------------------------------------------------
 
 /// Type alias for a sprite object combined with game data and per-frame update closure.
 pub type GameObject<Data> = Behavior<Sprite, Data>;
 
-/// Type alias for an invisible logic-only behavior object designed for system updates and `ctx` access.
-pub type LogicObject<Data> = Behavior<Rectangle, Data>;
+// ---------------------------------------------------------------------------
+// Logic<Data> — Dedicated zero-cost logic controller entity
+// ---------------------------------------------------------------------------
 
-impl<Data> Behavior<Rectangle, Data> {
-    /// Creates an invisible logic-only [`Behavior`] object for system controllers with full `ctx` access.
+/// Type alias for per-frame update closure stored inside a [`Logic`].
+pub type LogicUpdateFn<Data> = Box<dyn FnMut(&mut Logic<Data>, &mut Context)>;
+
+/// Dedicated zero-cost logical entity wrapper combining custom state data (`Data`)
+/// and an optional per-frame update callback closure.
+///
+/// Unlike [`Behavior<Sprite, Data>`], [`Logic`] has zero graphical overhead:
+/// it is never rendered, has no dummy bounding box, and provides transparent
+/// direct access to `Data` via [`std::ops::Deref`] and [`std::ops::DerefMut`].
+pub struct Logic<Data> {
+    pub data: Data,
+    pub tag: String,
+    pub active: bool,
+    pub destroyed: bool,
+    func: Option<LogicUpdateFn<Data>>,
+}
+
+impl<Data> Logic<Data> {
+    /// Creates a new [`Logic`] controller wrapping custom `data`.
+    pub fn new(data: Data) -> Self {
+        Self {
+            data,
+            tag: String::new(),
+            active: true,
+            destroyed: false,
+            func: None,
+        }
+    }
+
+    /// Creates an invisible logic-only controller (alias for [`Logic::new`]).
     pub fn logic(data: Data) -> Self {
-        let mut rect = Rectangle::new(Vec2::ZERO, Vec2::ZERO, 0.0, Color::new(0.0, 0.0, 0.0, 0.0));
-        rect.visible = false;
-        Self::new(rect, data)
+        Self::new(data)
+    }
+
+    /// Builder pattern: Sets the entity tag.
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
+        self
+    }
+
+    /// Builder pattern: Sets the entity to deactivated (`active = false`).
+    pub fn deactivated(mut self) -> Self {
+        self.active = false;
+        self
+    }
+
+    /// Builder pattern: Sets active state.
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Marks this logic entity as destroyed for automatic cleanup at the end of the update pass.
+    pub fn destroy(&mut self) {
+        self.destroyed = true;
+    }
+
+    /// Returns whether this logic entity has been marked for destruction.
+    pub fn is_destroyed(&self) -> bool {
+        self.destroyed
+    }
+
+    /// Registers a closure to be executed on each frame update pass.
+    pub fn update<F>(mut self, func: F) -> Self
+    where
+        F: FnMut(&mut Logic<Data>, &mut Context) + 'static,
+    {
+        self.func = Some(Box::new(func));
+        self
+    }
+
+    /// Internal: Runs the update callback closure for this frame.
+    pub fn run_update(&mut self, ctx: &mut Context) {
+        if let Some(mut func) = self.func.take() {
+            func(self, ctx);
+            self.func = Some(func);
+        }
     }
 }
+
+impl<Data> std::ops::Deref for Logic<Data> {
+    type Target = Data;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<Data> std::ops::DerefMut for Logic<Data> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
+impl Logic<()> {
+    /// Creates a stateless logic controller from a simple `FnMut(&mut Context)` closure.
+    pub fn run<F>(mut func: F) -> Self
+    where
+        F: FnMut(&mut Context) + 'static,
+    {
+        Self::new(()).update(move |_obj, ctx| {
+            func(ctx);
+        })
+    }
+}
+
+impl Logic<f32> {
+    /// Creates a recurring timer logic controller that calls `func` every `interval_secs` seconds.
+    pub fn interval<F>(interval_secs: f32, mut func: F) -> Self
+    where
+        F: FnMut(&mut Context) + 'static,
+    {
+        let interval = interval_secs.max(0.0001);
+        Self::new(0.0).update(move |obj, ctx| {
+            obj.data += ctx.dt();
+            while obj.data >= interval {
+                obj.data -= interval;
+                func(ctx);
+            }
+        })
+    }
+
+    /// Creates a delayed one-shot logic action that executes `func` once after `delay_secs` seconds,
+    /// and then automatically destroys itself.
+    pub fn delayed<F>(delay_secs: f32, mut func: F) -> Self
+    where
+        F: FnMut(&mut Context) + 'static,
+    {
+        Self::new(delay_secs).update(move |obj, ctx| {
+            obj.data -= ctx.dt();
+            if obj.data <= 0.0 {
+                func(ctx);
+                obj.destroy();
+            }
+        })
+    }
+}
+
+/// Helper struct for condition-driven logic execution.
+pub struct UntilState<C, F> {
+    pub cond: C,
+    pub func: F,
+}
+
+impl<C, F> Logic<UntilState<C, F>>
+where
+    C: FnMut(&mut Context) -> bool + 'static,
+    F: FnMut(&mut Context) + 'static,
+{
+    /// Creates a logic controller that executes `func` each frame as long as `condition` returns `true`.
+    /// When `condition` returns `false`, it automatically calls `destroy()`.
+    pub fn until(condition: C, func: F) -> Self {
+        Self::new(UntilState {
+            cond: condition,
+            func,
+        })
+        .update(|obj, ctx| {
+            if (obj.data.cond)(ctx) {
+                (obj.data.func)(ctx);
+            } else {
+                obj.destroy();
+            }
+        })
+    }
+}
+
+impl<Data: 'static> Object for Logic<Data> {
+    fn update(&mut self, ctx: &mut Context) {
+        if self.active && !self.destroyed {
+            self.run_update(ctx);
+        }
+    }
+
+    fn draw(&self) {}
+
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    fn is_visible(&self) -> bool {
+        false
+    }
+
+    fn set_visible(&mut self, _visible: bool) {}
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
+
+    fn is_destroyed(&self) -> bool {
+        self.destroyed
+    }
+
+    fn destroy(&mut self) {
+        self.destroyed = true;
+    }
+
+    fn bounds(&self) -> Option<macroquad::math::Rect> {
+        None
+    }
+
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+}
+
+/// Type alias for backward compatibility: [`LogicObject<Data>`] is an alias for [`Logic<Data>`].
+pub type LogicObject<Data> = Logic<Data>;
 
 impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
     fn update(&mut self, ctx: &mut Context) {
@@ -661,6 +939,15 @@ impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
         self.inner.set_active(active);
     }
 
+    fn is_destroyed(&self) -> bool {
+        self.destroyed || self.inner.is_destroyed()
+    }
+
+    fn destroy(&mut self) {
+        self.destroyed = true;
+        self.inner.destroy();
+    }
+
     fn is_text_layer(&self) -> bool {
         self.inner.is_text_layer()
     }
@@ -686,15 +973,30 @@ impl<Inner: Object + 'static, Data: 'static> Object for Behavior<Inner, Data> {
     }
 }
 
-impl<Data> std::ops::Deref for Behavior<Sprite, Data> {
-    type Target = Sprite;
+// ---------------------------------------------------------------------------
+// Blanket Deref / DerefMut for Behavior<Inner, Data>
+// ---------------------------------------------------------------------------
+
+/// Blanket implementation enabling transparent field access on any `Inner` type
+/// wrapped by [`Behavior`]. Replaces the previous 7 concrete impls with a single
+/// generic rule — every current and future `Inner` automatically gets
+/// `obj.field` shorthand instead of `obj.inner.field`.
+impl<Inner, Data> std::ops::Deref for Behavior<Inner, Data> {
+    type Target = Inner;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-impl<Data> std::ops::DerefMut for Behavior<Sprite, Data> {
+impl<Inner, Data> std::ops::DerefMut for Behavior<Inner, Data> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
+    }
+}
+
+impl crate::animated_texture::AnimatedSprite {
+    /// Fluent constructor: wraps this animated sprite in a [`Behavior`](crate::object::Behavior) with custom game `data`.
+    pub fn with_data<Data>(self, data: Data) -> Behavior<Self, Data> {
+        Behavior::new(self, data)
     }
 }

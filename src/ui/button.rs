@@ -42,6 +42,11 @@ pub struct Button {
 }
 
 impl Button {
+    /// Creates a UI [`Button`] with default dimensions `(140.0, 40.0)`.
+    pub fn label(label: impl Into<String>, position: Vec2) -> Self {
+        Self::new(position, Vec2::new(140.0, 40.0), label)
+    }
+
     /// Creates a new UI [`Button`].
     pub fn new(position: Vec2, size: Vec2, label: impl Into<String>) -> Self {
         Self {

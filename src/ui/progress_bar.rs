@@ -35,6 +35,11 @@ pub struct ProgressBar {
 }
 
 impl ProgressBar {
+    /// Creates a new [`ProgressBar`] with default height 20.0.
+    pub fn simple(position: Vec2, width: f32, progress: f32) -> Self {
+        Self::new(position, Vec2::new(width, 20.0), progress)
+    }
+
     /// Creates a new [`ProgressBar`].
     pub fn new(position: Vec2, size: Vec2, progress: f32) -> Self {
         let p = progress.clamp(0.0, 1.0);

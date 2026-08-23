@@ -35,6 +35,11 @@ pub struct Slider {
 }
 
 impl Slider {
+    /// Creates a new [`Slider`] using a Rust [`std::ops::RangeInclusive<f32>`] (e.g. `0.0..=100.0`).
+    pub fn range(position: Vec2, size: Vec2, range: std::ops::RangeInclusive<f32>, value: f32) -> Self {
+        Self::new(position, size, *range.start(), *range.end(), value)
+    }
+
     /// Creates a new [`Slider`] bounded in range `[min, max]` initialized at `value`.
     pub fn new(position: Vec2, size: Vec2, min_val: f32, max_val: f32, value: f32) -> Self {
         Self {
@@ -166,6 +171,11 @@ pub struct Checkbox {
 }
 
 impl Checkbox {
+    /// Creates a [`Checkbox`] with default box size `(20.0, 20.0)` and initial `checked = false`.
+    pub fn label(label: impl Into<String>, position: Vec2) -> Self {
+        Self::new(position, Vec2::new(20.0, 20.0), label, false)
+    }
+
     /// Creates a new [`Checkbox`] with `label` and initial `checked` state.
     pub fn new(position: Vec2, size: Vec2, label: impl Into<String>, checked: bool) -> Self {
         Self {

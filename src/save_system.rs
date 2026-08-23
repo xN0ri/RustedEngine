@@ -37,6 +37,31 @@ impl From<serde_json::Error> for SaveError {
     }
 }
 
+impl std::fmt::Display for SaveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SaveError::IoError(e) => write!(f, "Save system I/O error: {}", e),
+            SaveError::JsonError(e) => write!(f, "Save system JSON error: {}", e),
+            SaveError::ChecksumMismatch { expected, found } => write!(
+                f,
+                "Save checksum mismatch: expected {:#010X}, found {:#010X} (file tampered or corrupted)",
+                expected, found
+            ),
+            SaveError::SlotNotFound(slot_id) => write!(f, "Save slot {} not found", slot_id),
+        }
+    }
+}
+
+impl std::error::Error for SaveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SaveError::IoError(e) => Some(e),
+            SaveError::JsonError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 /// Metadata stored alongside save slot state data.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SaveSlotMeta {
@@ -97,6 +122,61 @@ impl SaveSystem {
     /// Creates a [`SaveSystem`] targeting default directory `"saves"`.
     pub fn default_dir() -> Self {
         Self::new("saves")
+    }
+
+    /// Creates a [`SaveSystem`] targeting the OS platform standard data directory for `app_name`.
+    ///
+    /// - **Windows**: `%APPDATA%/<app_name>/saves`
+    /// - **macOS**: `~/Library/Application Support/<app_name>/saves`
+    /// - **Linux**: `$XDG_DATA_HOME/<app_name>/saves` or `~/.local/share/<app_name>/saves`
+    /// - **Fallback**: `"saves"` relative to current working directory.
+    pub fn platform_default(app_name: &str) -> Self {
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                return Self::new(PathBuf::from(appdata).join(app_name).join("saves"));
+            }
+            if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                return Self::new(
+                    PathBuf::from(userprofile)
+                        .join("AppData")
+                        .join("Roaming")
+                        .join(app_name)
+                        .join("saves"),
+                );
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(home) = std::env::var("HOME") {
+                return Self::new(
+                    PathBuf::from(home)
+                        .join("Library")
+                        .join("Application Support")
+                        .join(app_name)
+                        .join("saves"),
+                );
+            }
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+                return Self::new(PathBuf::from(xdg).join(app_name).join("saves"));
+            }
+            if let Ok(home) = std::env::var("HOME") {
+                return Self::new(
+                    PathBuf::from(home)
+                        .join(".local")
+                        .join("share")
+                        .join(app_name)
+                        .join("saves"),
+                );
+            }
+        }
+
+        Self::default_dir()
     }
 
     fn slot_path(&self, slot_id: u32) -> PathBuf {

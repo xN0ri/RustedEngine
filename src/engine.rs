@@ -73,6 +73,12 @@ pub struct Context {
     pub events: crate::events::EventBus,
     /// Slot-based save system with anti-tamper checksum validation.
     pub save_system: crate::save_system::SaveSystem,
+    /// Pending deferred spawn queue for world-space objects.
+    pub(crate) pending_spawn: Vec<Box<dyn crate::world::Object>>,
+    /// Pending deferred spawn queue for screen-space UI objects.
+    pub(crate) pending_spawn_ui: Vec<Box<dyn crate::world::Object>>,
+    /// Pending deferred spawn queue for logic-layer objects.
+    pub(crate) pending_spawn_logic: Vec<Box<dyn crate::world::Object>>,
     /// Internal active custom mouse cursor override.
     pub(crate) cursor: Option<CustomCursor>,
     /// Pending scene switch request name.
@@ -96,6 +102,9 @@ impl Context {
             triggers: TriggerSystem::new(),
             events: crate::events::EventBus::new(),
             save_system: crate::save_system::SaveSystem::default(),
+            pending_spawn: Vec::new(),
+            pending_spawn_ui: Vec::new(),
+            pending_spawn_logic: Vec::new(),
             cursor: None,
             pending_scene: None,
             world_ptr: None,
@@ -163,6 +172,30 @@ impl Context {
         self.audio.stop(&self.assets, name);
     }
 
+    /// Helper: Plays a background music track continuously by asset key.
+    pub fn play_bgm(&mut self, name: &str) {
+        let mut audio = self.audio.clone();
+        audio.play_bgm(&self.assets, name);
+        self.audio = audio;
+    }
+
+    /// Helper: Stops the currently playing background music track.
+    pub fn stop_bgm(&mut self) {
+        let mut audio = self.audio.clone();
+        audio.stop_bgm(&self.assets);
+        self.audio = audio;
+    }
+
+    /// Sets global sound effects volume multiplier (0.0 to 1.0).
+    pub fn set_sfx_volume(&mut self, volume: f32) {
+        self.audio.sfx_volume = volume.clamp(0.0, 1.0);
+    }
+
+    /// Sets global background music volume multiplier (0.0 to 1.0).
+    pub fn set_bgm_volume(&mut self, volume: f32) {
+        self.audio.bgm_volume = volume.clamp(0.0, 1.0);
+    }
+
     /// Sets or clears the active custom cursor.
     ///
     /// - Passing `Some(cursor)` hides the OS cursor (`show_mouse(false)`) and renders the custom sprite on top.
@@ -178,6 +211,193 @@ impl Context {
     /// Sets window fullscreen mode on or off at runtime.
     pub fn set_fullscreen(&mut self, enable: bool) {
         macroquad::window::set_fullscreen(enable);
+    }
+
+    /// Returns `true` if keyboard key is pressed this frame. Shorthand for `ctx.input.is_key_pressed(key)`.
+    pub fn is_key_pressed(&self, key: macroquad::input::KeyCode) -> bool {
+        self.input.is_key_pressed(key)
+    }
+
+    /// Returns `true` if keyboard key is held down. Shorthand for `ctx.input.is_key_down(key)`.
+    pub fn is_key_down(&self, key: macroquad::input::KeyCode) -> bool {
+        self.input.is_key_down(key)
+    }
+
+    /// Returns `true` if named action was pressed this frame. Shorthand for `ctx.actions.is_pressed(action)`.
+    pub fn is_action_pressed(&self, action: &str) -> bool {
+        self.actions.is_pressed(action)
+    }
+
+    /// Returns `true` if named action is held down. Shorthand for `ctx.actions.is_down(action)`.
+    pub fn is_action_down(&self, action: &str) -> bool {
+        self.actions.is_down(action)
+    }
+
+    /// Returns boolean flag value from state store. Shorthand for `ctx.state.get_bool(key)`.
+    pub fn flag(&self, key: &str) -> bool {
+        self.state.get_bool(key)
+    }
+
+    /// Sets boolean flag value in state store. Shorthand for `ctx.state.set_bool(key, v)`.
+    pub fn set_flag(&mut self, key: &str, v: bool) {
+        self.state.set_bool(key, v);
+    }
+
+    /// Returns 2D vector value from state store. Shorthand for `ctx.state.get_vec2(key)`.
+    pub fn get_vec2(&self, key: &str) -> Option<Vec2> {
+        self.state.get_vec2(key)
+    }
+
+    /// Returns 2D vector value from state store, or `default` if not set. Shorthand for `ctx.state.get_vec2_or(key, default)`.
+    pub fn get_vec2_or(&self, key: &str, default: Vec2) -> Vec2 {
+        self.state.get_vec2_or(key, default)
+    }
+
+    /// Sets 2D vector value in state store. Shorthand for `ctx.state.set_vec2(key, v)`.
+    pub fn set_vec2(&mut self, key: &str, v: impl Into<Vec2>) {
+        self.state.set_vec2(key, v);
+    }
+
+    /// Queues an entity to be spawned into the world-space layer at the end of the current update pass.
+    pub fn spawn<O: crate::world::Object + 'static>(&mut self, obj: O) {
+        self.pending_spawn.push(Box::new(obj));
+    }
+
+    /// Queues a UI component to be spawned into the screen-space UI layer at the end of the current update pass.
+    pub fn spawn_ui<O: crate::world::Object + 'static>(&mut self, obj: O) {
+        self.pending_spawn_ui.push(Box::new(obj));
+    }
+
+    /// Queues an object to be spawned into the logic layer at the end of the current update pass.
+    pub fn spawn_logic<O: crate::world::Object + 'static>(&mut self, obj: O) {
+        self.pending_spawn_logic.push(Box::new(obj));
+    }
+
+    /// Queues a stateless logic closure directly into the logic layer at the end of the current update pass.
+    pub fn spawn_logic_fn<F>(&mut self, func: F)
+    where
+        F: FnMut(&mut Context) + 'static,
+    {
+        self.spawn_logic(crate::object::Logic::run(func));
+    }
+
+    /// Returns the mouse cursor position converted into world-space coordinates via the active camera.
+    pub fn mouse_world(&self) -> Vec2 {
+        self.camera.screen_to_world(self.input.mouse_position())
+    }
+
+    /// Returns `true` if the specified mouse button was pressed during the current frame pass.
+    pub fn mouse_pressed(&self, btn: crate::object::Side) -> bool {
+        self.input.is_mouse_button_pressed(btn.to_macroquad())
+    }
+
+    /// Returns `true` while the specified mouse button is held down.
+    pub fn mouse_down(&self, btn: crate::object::Side) -> bool {
+        self.input.is_mouse_button_down(btn.to_macroquad())
+    }
+
+    /// Returns `true` if the specified mouse button was released during the current frame pass.
+    pub fn mouse_released(&self, btn: crate::object::Side) -> bool {
+        self.input.is_mouse_button_released(btn.to_macroquad())
+    }
+
+    /// Returns unscaled frame delta time in seconds (ignoring time scale and pause state).
+    pub fn raw_dt(&self) -> f32 {
+        self.time.raw_deltatime()
+    }
+
+    /// Emits a new event onto the event bus channel for type `E`.
+    pub fn emit<E: 'static + Send + Sync>(&mut self, event: E) {
+        self.events.emit(event);
+    }
+
+    /// Drains and returns all pending events of type `E`.
+    pub fn poll<E: 'static>(&mut self) -> Vec<E> {
+        self.events.poll::<E>()
+    }
+
+    /// Returns `true` if there are pending events of type `E`.
+    pub fn has_event<E: 'static>(&self) -> bool {
+        self.events.has_events::<E>()
+    }
+
+    /// Returns an integer value from the state store. Shorthand for `ctx.state.get_int(key)`.
+    pub fn get_int(&self, key: &str) -> i64 {
+        self.state.get_int(key)
+    }
+
+    /// Sets an integer value in the state store. Shorthand for `ctx.state.set_int(key, val)`.
+    pub fn set_int(&mut self, key: &str, val: i64) {
+        self.state.set_int(key, val);
+    }
+
+    /// Increments an integer value in the state store by `delta` and returns the updated value.
+    pub fn increment(&mut self, key: &str, delta: i64) -> i64 {
+        self.state.increment(key, delta)
+    }
+
+    /// Helper: Plays a sound effect with randomized volume variation.
+    pub fn play_sound_varied(&self, name: &str, pitch_variance: f32, volume_variance: f32) {
+        self.audio.play_varied(&self.assets, name, pitch_variance, volume_variance);
+    }
+
+    /// Helper: Plays a sound effect with rate limiting / throttling.
+    pub fn play_sound_throttled(&mut self, name: &str, min_interval_secs: f32) {
+        self.audio.play_throttled(&self.assets, name, min_interval_secs);
+    }
+
+    // --- Time shortcuts ---
+
+    /// Total elapsed application time in seconds since start. Shorthand for `ctx.time.elapsed_time()`.
+    pub fn elapsed(&self) -> f64 {
+        self.time.elapsed_time()
+    }
+
+    /// Current frames-per-second counter. Shorthand for `ctx.time.fps()`.
+    pub fn fps(&self) -> i32 {
+        self.time.fps()
+    }
+
+    /// Returns `true` if simulation time is currently paused. Shorthand for `ctx.time.is_paused()`.
+    pub fn is_paused(&self) -> bool {
+        self.time.is_paused()
+    }
+
+    /// Pauses game simulation (sets `deltatime()` to `0.0`). Shorthand for `ctx.time.set_paused(true)`.
+    pub fn pause(&mut self) {
+        self.time.set_paused(true);
+    }
+
+    /// Resumes game simulation. Shorthand for `ctx.time.set_paused(false)`.
+    pub fn unpause(&mut self) {
+        self.time.set_paused(false);
+    }
+
+    /// Toggles the pause state between paused and unpaused. Shorthand for `ctx.time.toggle_pause()`.
+    pub fn toggle_pause(&mut self) {
+        self.time.toggle_pause();
+    }
+
+    /// Sets the time scale multiplier (`< 1.0` = slow-motion, `> 1.0` = fast-forward). Shorthand for `ctx.time.set_time_scale(scale)`.
+    pub fn set_time_scale(&mut self, scale: f32) {
+        self.time.set_time_scale(scale);
+    }
+
+    // --- Signal shortcuts ---
+
+    /// Emits a named string signal without carrying any data. Shorthand for `ctx.events.emit_signal(name)`.
+    pub fn emit_signal(&mut self, signal_name: impl Into<String>) {
+        self.events.emit_signal(signal_name);
+    }
+
+    /// Returns `true` if `signal_name` was emitted and consumes it. Shorthand for `ctx.events.poll_signal(name)`.
+    pub fn poll_signal(&mut self, signal_name: &str) -> bool {
+        self.events.poll_signal(signal_name)
+    }
+
+    /// Returns `true` if `signal_name` is currently pending without consuming it. Shorthand for `ctx.events.has_signal(name)`.
+    pub fn has_signal(&self, signal_name: &str) -> bool {
+        self.events.has_signal(signal_name)
     }
 }
 
@@ -199,6 +419,8 @@ pub struct Engine {
     pub scene_manager: SceneManager,
     /// Screen background clear color.
     pub background_color: Color,
+    /// Screen letterbox/pillarbox border clear color. Defaults to `BLACK`.
+    pub letterbox_color: Color,
     /// Optional post-processing pipeline material.
     pub post_process: Option<crate::postprocess::PostProcess>,
     /// Internal scene render target cache (lazily allocated and resized on window resize events).
@@ -212,6 +434,11 @@ pub struct Engine {
     pub integer_scaling: bool,
     /// Internal fixed-size render target for the virtual resolution pipeline.
     virtual_render_target: Option<crate::postprocess::SceneRenderTarget>,
+    /// Optional key binding to toggle the debug overlay. Defaults to `Some(KeyCode::F3)`.
+    /// Set to `None` to disable key toggling.
+    pub debug_key: Option<macroquad::input::KeyCode>,
+    /// Whether the built-in debug overlay (FPS, frame time, entity counts) is rendered. Toggleable via `debug_key` (default `F3`).
+    pub debug_overlay: bool,
 }
 
 impl Engine {
@@ -223,12 +450,28 @@ impl Engine {
             ctx: Context::new(),
             scene_manager: scenes.into(),
             background_color: LIGHTGRAY,
+            letterbox_color: macroquad::color::BLACK,
             post_process: None,
             render_target: None,
             virtual_resolution: None,
             integer_scaling: true,
             virtual_render_target: None,
+            debug_key: Some(macroquad::input::KeyCode::F3),
+            debug_overlay: false,
         }
+    }
+
+    /// Builder pattern: Enables or disables the built-in debug overlay (FPS, entity counts, camera pos).
+    /// Can also be toggled at runtime using the key specified by [`Engine::with_debug_key`].
+    pub fn with_debug_overlay(mut self, enabled: bool) -> Self {
+        self.debug_overlay = enabled;
+        self
+    }
+
+    /// Builder pattern: Sets the keyboard key used to toggle the debug overlay at runtime, or `None` to disable the keyboard shortcut.
+    pub fn with_debug_key(mut self, key: Option<macroquad::input::KeyCode>) -> Self {
+        self.debug_key = key;
+        self
     }
 
     /// Creates a Macroquad [`macroquad::window::Conf`] with specified title, width, height, and resizable window enabled.
@@ -275,6 +518,12 @@ impl Engine {
         self
     }
 
+    /// Builder pattern: Sets the letterbox and pillarbox margin border clear color (defaults to `BLACK`).
+    pub fn with_letterbox_color(mut self, color: Color) -> Self {
+        self.letterbox_color = color;
+        self
+    }
+
     /// Builder pattern: Requests a new window screen size.
     pub fn with_window_size(self, width: f32, height: f32) -> Self {
         macroquad::window::request_new_screen_size(width, height);
@@ -291,7 +540,10 @@ impl Engine {
     /// Configure it at startup using [`Engine::conf`] or [`Engine::conf_custom`] instead.
     ///
     /// This method is kept as a no-op stub to avoid breaking API churn.
-    #[doc(hidden)]
+    #[deprecated(
+        since = "0.5.0",
+        note = "Window resizability cannot be changed at runtime via with_resizable. Configure it at startup using Engine::conf or Engine::conf_custom instead."
+    )]
     pub fn with_resizable(self, _enable: bool) -> Self {
         self
     }
@@ -387,7 +639,7 @@ impl Engine {
 
             // 3. Update active world logic
             let scene = self.scene_manager.get_current_scene();
-            scene.get_world().update(&mut self.ctx);
+            scene.world_mut().update(&mut self.ctx);
 
             // 4. Clear screen background
             clear_background(self.background_color);
@@ -411,7 +663,7 @@ impl Engine {
                 // 5v. Render WORLD to VRT
                 self.ctx.camera.begin_to_target(&vrt.target);
                 clear_background(self.background_color);
-                self.scene_manager.get_current_scene().get_world().draw();
+                self.scene_manager.get_current_scene().world_mut().draw();
                 self.ctx.camera.end();
 
                 // 6v. Render NON-TEXT UI to VRT using a flat virtual-coordinate camera.
@@ -422,12 +674,12 @@ impl Engine {
                     ..Default::default()
                 };
                 set_camera(&ui_to_vrt);
-                self.scene_manager.get_current_scene().get_world().draw_ui_non_text();
+                self.scene_manager.get_current_scene().world_mut().draw_ui_non_text();
                 set_default_camera();
 
                 // 7v. Composite VRT (world + non-text UI) to real screen with letterbox
                 let (scale, ox, oy) = self.letterbox_params(vw, vh);
-                clear_background(macroquad::color::BLACK);
+                clear_background(self.letterbox_color);
                 macroquad::texture::draw_texture_ex(
                     &vrt.target.texture,
                     ox,
@@ -442,7 +694,7 @@ impl Engine {
 
                 // 8v. Render TEXT UI directly to native screen resolution to prevent blurry upscaling.
                 crate::ui::set_ui_scale(scale, vec2(ox, oy));
-                self.scene_manager.get_current_scene().get_world().draw_ui_text_only();
+                self.scene_manager.get_current_scene().world_mut().draw_ui_text_only();
                 crate::ui::set_ui_scale(1.0, Vec2::ZERO);
             } else {
                 // ======================================================
@@ -463,7 +715,7 @@ impl Engine {
 
                     self.ctx.camera.begin_to_target(&rt.target);
                     clear_background(self.background_color);
-                    self.scene_manager.get_current_scene().get_world().draw();
+                    self.scene_manager.get_current_scene().world_mut().draw();
                     self.ctx.camera.end();
 
                     // Apply fullscreen shader material
@@ -471,12 +723,12 @@ impl Engine {
                 } else {
                     // 5b. Direct world rendering pass
                     self.ctx.camera.begin();
-                    self.scene_manager.get_current_scene().get_world().draw();
+                    self.scene_manager.get_current_scene().world_mut().draw();
                     self.ctx.camera.end();
                 }
 
                 // 6. Render UI layer in Screen Space (Top-Left origin at 0.0, 0.0)
-                self.scene_manager.get_current_scene().get_world().draw_ui();
+                self.scene_manager.get_current_scene().world_mut().draw_ui();
             }
 
             // 7. Render custom cursor overlay
@@ -493,6 +745,35 @@ impl Engine {
                         ..Default::default()
                     },
                 );
+            }
+
+            // 7.5 Render built-in debug overlay (toggleable via configured debug_key)
+            if let Some(key) = self.debug_key {
+                if self.ctx.input.is_key_pressed(key) {
+                    self.debug_overlay = !self.debug_overlay;
+                }
+            }
+            if self.debug_overlay {
+                let fps = self.ctx.time.fps();
+                let dt_ms = self.ctx.time.deltatime() * 1000.0;
+                let active_scene = self.scene_manager.get_current_scene().name().to_string();
+                let world_count = self.scene_manager.get_current_scene().world().objects().len();
+                let ui_count = self.scene_manager.get_current_scene().world().ui_objects().len();
+                let logic_count = self.scene_manager.get_current_scene().world().logic_objects().len();
+                let mouse = self.ctx.input.mouse_position();
+
+                macroquad::shapes::draw_rectangle(10.0, 10.0, 260.0, 110.0, Color::new(0.0, 0.0, 0.0, 0.75));
+                macroquad::shapes::draw_rectangle_lines(10.0, 10.0, 260.0, 110.0, 1.0, Color::new(0.3, 0.8, 1.0, 0.8));
+
+                let info = format!(
+                    "DEBUG OVERLAY (F3)\nFPS: {} ({:.1} ms)\nScene: {}\nEntities: W:{} UI:{} L:{}\nMouse: ({:.0}, {:.0})",
+                    fps, dt_ms, active_scene, world_count, ui_count, logic_count, mouse.x, mouse.y
+                );
+                let mut y = 25.0;
+                for line in info.lines() {
+                    macroquad::text::draw_text(line, 18.0, y, 14.0, WHITE);
+                    y += 16.0;
+                }
             }
 
             // 8. Wait for next frame

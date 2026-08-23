@@ -161,6 +161,58 @@ impl Tilemap {
         }
         false
     }
+
+    /// Returns tile ID at `world_pos` in world coordinates, or `None` if out of bounds.
+    pub fn tile_at_world_pos(&self, world_pos: Vec2) -> Option<u32> {
+        let local = world_pos - self.position;
+        if local.x < 0.0 || local.y < 0.0 {
+            return None;
+        }
+        let col = (local.x / self.tile_size.x) as usize;
+        let row = (local.y / self.tile_size.y) as usize;
+        self.get_tile(col, row)
+    }
+
+    /// Returns a list of all tile grid positions `(col, row, tile_id)` that overlap with `rect` in world space.
+    pub fn colliding_tiles(&self, rect: Rect) -> Vec<(usize, usize, u32)> {
+        let local_x = rect.x - self.position.x;
+        let local_y = rect.y - self.position.y;
+
+        let start_col = (local_x / self.tile_size.x).floor().max(0.0) as usize;
+        let end_col = ((local_x + rect.w) / self.tile_size.x).ceil().max(0.0) as usize;
+
+        let start_row = (local_y / self.tile_size.y).floor().max(0.0) as usize;
+        let end_row = ((local_y + rect.h) / self.tile_size.y).ceil().max(0.0) as usize;
+
+        let end_c = end_col.min(self.cols);
+        let end_r = end_row.min(self.rows);
+
+        let mut results = Vec::new();
+        for r in start_row..end_r {
+            for c in start_col..end_c {
+                if let Some(tile_id) = self.get_tile(c, r) {
+                    let tile_rect = Rect {
+                        x: self.position.x + (c as f32) * self.tile_size.x,
+                        y: self.position.y + (r as f32) * self.tile_size.y,
+                        w: self.tile_size.x,
+                        h: self.tile_size.y,
+                    };
+                    if tile_rect.overlaps(&rect) {
+                        results.push((c, r, tile_id));
+                    }
+                }
+            }
+        }
+        results
+    }
+
+    /// Returns a list of solid tile grid positions `(col, row, tile_id)` that overlap with `rect` in world space.
+    pub fn solid_colliding_tiles(&self, rect: Rect) -> Vec<(usize, usize, u32)> {
+        self.colliding_tiles(rect)
+            .into_iter()
+            .filter(|&(_, _, id)| self.solid_tile_ids.contains(&id))
+            .collect()
+    }
 }
 
 impl Object for Tilemap {

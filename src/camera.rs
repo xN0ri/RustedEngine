@@ -1,6 +1,6 @@
 use macroquad::{
     camera::{Camera2D, set_camera, set_default_camera},
-    math::{Vec2, vec2},
+    math::{Rect, Vec2, vec2},
     rand::gen_range,
     window::{screen_height, screen_width},
 };
@@ -17,6 +17,8 @@ pub struct Camera {
     pub zoom: f32,
     /// Camera rotation angle in radians.
     pub rotation: f32,
+    /// Optional world bounds constraint for camera target positioning.
+    pub bounds: Option<Rect>,
     shake_intensity: f32,
     shake_duration: f32,
     shake_timer: f32,
@@ -36,12 +38,24 @@ impl Camera {
             target: vec2(0.0, 0.0),
             zoom: 1.0,
             rotation: 0.0,
+            bounds: None,
             shake_intensity: 0.0,
             shake_duration: 0.0,
             shake_timer: 0.0,
             cached,
             virtual_size: None,
         }
+    }
+
+    /// Builder pattern: Sets world bounds clamping for camera target.
+    pub fn with_bounds(mut self, bounds: Rect) -> Self {
+        self.bounds = Some(bounds);
+        self
+    }
+
+    /// Sets or clears world bounds constraint.
+    pub fn set_bounds(&mut self, bounds: Option<Rect>) {
+        self.bounds = bounds;
     }
 
     /// Builds a Macroquad [`Camera2D`] instance from target, zoom, rotation, and shake offset.
@@ -80,6 +94,48 @@ impl Camera {
         self.target = self.target.lerp(target_pos, factor);
     }
 
+    /// Smoothly leads the camera ahead of `target_pos` in `direction` by `distance` units.
+    pub fn look_ahead(&mut self, target_pos: Vec2, direction: Vec2, distance: f32, lerp_speed: f32, dt: f32) {
+        let diff = if direction.length_squared() > 0.0 {
+            direction.normalize() * distance
+        } else {
+            Vec2::ZERO
+        };
+        self.follow(target_pos + diff, lerp_speed, dt);
+    }
+
+    /// Returns the world-space bounding rectangle ([`Rect`]) currently visible on screen.
+    pub fn visible_world_rect(&self) -> Rect {
+        let (sw, sh) = if cfg!(test) {
+            (800.0, 600.0)
+        } else {
+            (screen_width(), screen_height())
+        };
+        let top_left = self.screen_to_world(vec2(0.0, 0.0));
+        let bottom_right = self.screen_to_world(vec2(sw, sh));
+        let min_x = top_left.x.min(bottom_right.x);
+        let min_y = top_left.y.min(bottom_right.y);
+        let max_x = top_left.x.max(bottom_right.x);
+        let max_y = top_left.y.max(bottom_right.y);
+        Rect::new(min_x, min_y, max_x - min_x, max_y - min_y)
+    }
+
+    /// Returns `true` if the world-space point `pos` is visible on screen with an optional padding `margin`.
+    pub fn is_on_screen(&self, pos: Vec2, margin: f32) -> bool {
+        let r = self.visible_world_rect();
+        pos.x >= r.x - margin
+            && pos.x <= r.x + r.w + margin
+            && pos.y >= r.y - margin
+            && pos.y <= r.y + r.h + margin
+    }
+
+    /// Returns `true` if the world-space bounding box `rect` overlaps with the visible screen area.
+    pub fn is_rect_on_screen(&self, rect: Rect, margin: f32) -> bool {
+        let r = self.visible_world_rect();
+        let expanded = Rect::new(r.x - margin, r.y - margin, r.w + margin * 2.0, r.h + margin * 2.0);
+        expanded.overlaps(&rect)
+    }
+
     /// Triggers a screen shake effect with the specified intensity and duration in seconds.
     pub fn shake(&mut self, intensity: f32, duration: f32) {
         self.shake_intensity = intensity;
@@ -90,6 +146,11 @@ impl Camera {
     /// Updates camera timers, processes shake offsets, and caches the [`Camera2D`] matrix.
     /// Must be called once per frame prior to calling [`Camera::begin`] or coordinate transforms.
     pub fn update(&mut self, dt: f32) {
+        if let Some(b) = self.bounds {
+            self.target.x = self.target.x.clamp(b.x, b.x + b.w);
+            self.target.y = self.target.y.clamp(b.y, b.y + b.h);
+        }
+
         if self.shake_timer > 0.0 {
             self.shake_timer -= dt;
             if self.shake_timer <= 0.0 {
@@ -143,12 +204,28 @@ impl Camera {
 
     /// Converts screen-space pixel coordinates into camera-relative world coordinates.
     pub fn screen_to_world(&self, screen_pos: Vec2) -> Vec2 {
-        self.cached.screen_to_world(screen_pos)
+        if cfg!(test) {
+            let (sw, sh) = (800.0, 600.0);
+            let p = screen_pos - vec2(sw * 0.5, sh * 0.5);
+            let unzoomed = vec2(p.x / self.zoom, p.y / self.zoom);
+            let rotated = crate::math::Vec2Ext::rotated(unzoomed, self.rotation);
+            self.target + rotated
+        } else {
+            self.cached.screen_to_world(screen_pos)
+        }
     }
 
     /// Converts world-space coordinates into screen-space pixel coordinates.
     pub fn world_to_screen(&self, world_pos: Vec2) -> Vec2 {
-        self.cached.world_to_screen(world_pos)
+        if cfg!(test) {
+            let (sw, sh) = (800.0, 600.0);
+            let diff = world_pos - self.target;
+            let unrotated = crate::math::Vec2Ext::rotated(diff, -self.rotation);
+            let zoomed = vec2(unrotated.x * self.zoom, unrotated.y * self.zoom);
+            zoomed + vec2(sw * 0.5, sh * 0.5)
+        } else {
+            self.cached.world_to_screen(world_pos)
+        }
     }
 }
 

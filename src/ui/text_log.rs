@@ -503,16 +503,3 @@ impl Object for TextLog {
 
 /// Type alias for a text log component combined with game data and update closure.
 pub type TextLogObject<Data> = Behavior<TextLog, Data>;
-
-impl<Data> std::ops::Deref for Behavior<TextLog, Data> {
-    type Target = TextLog;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<Data> std::ops::DerefMut for Behavior<TextLog, Data> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}

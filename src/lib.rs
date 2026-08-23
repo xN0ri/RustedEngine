@@ -22,17 +22,21 @@ pub mod asset_manager;
 pub mod audio;
 pub mod bitmap_font;
 pub mod camera;
+pub mod colors;
 pub mod content;
 pub mod draggable;
 pub mod engine;
 pub mod events;
+pub mod geometry;
 pub mod input;
+pub mod math;
 pub mod object;
 pub mod panel_manager;
 pub mod particles;
 pub mod postprocess;
 pub mod prelude;
 pub mod resources;
+pub mod rng;
 pub mod save_system;
 pub mod scene;
 pub mod sequence;
@@ -40,6 +44,7 @@ pub mod state;
 pub mod tilemap;
 pub mod time;
 pub mod trigger;
+pub mod tween;
 pub mod ui;
 pub mod window;
 pub mod world;
@@ -48,11 +53,23 @@ pub use animated_texture::AnimatedSprite;
 pub use bitmap_font::{BitmapFont, GlyphInfo, register_font_id};
 pub use content::{ContentError, load_content, load_content_dir};
 pub use events::EventBus;
+pub use geometry::{Capsule, Circle, Segment};
+pub use math::{Vec2Ext, smooth_damp, smooth_damp_vec2};
 pub use panel_manager::{PanelId, PanelManager};
 pub use resources::Resources;
+pub use rng::{
+    Noise, Rng, ShuffleBag, WeightedList, random_angle, random_bool, random_choose,
+    random_choose_mut, random_color, random_in_annulus, random_in_circle, random_in_rect,
+    random_in_sector, random_in_triangle, random_normal, random_on_circle,
+    random_on_rect_perimeter, random_on_segment, random_range, random_range_i32,
+    random_range_usize, random_sample, random_shuffle, random_sign, random_spread,
+};
 pub use save_system::{SaveError, SaveSlotMeta, SaveSystem};
+pub use scene::{SceneChanged, SceneManager};
+pub use sequence::{SequenceBuilder, Step};
 pub use tilemap::Tilemap;
 pub use trigger::{Trigger, TriggerSystem};
+pub use tween::{Easing, Tween};
 pub use ui::{
     Button, Checkbox, Grid, HBox, Image, LayoutAlign, LayoutJustify, Margin, Padding,
     Panel as UiPanel, ProgressBar, RevealMode, RichText, RichTextObject, ScrollMode, Slider, Text, TextAlign, TextField,
@@ -62,7 +79,7 @@ pub use ui::{
 #[cfg(test)]
 mod tests {
     use super::prelude::*;
-    use macroquad::color::WHITE;
+    use macroquad::color::{RED, WHITE};
     use macroquad::input::KeyCode;
     use macroquad::math::vec2;
 
@@ -323,8 +340,8 @@ mod tests {
         scene.add_ui(obj_c);
 
         assert_eq!(scene.name(), "GameScene");
-        assert_eq!(scene.get_world().objects().len(), 1);
-        assert_eq!(scene.get_world().ui_objects().len(), 2);
+        assert_eq!(scene.world_mut().objects().len(), 1);
+        assert_eq!(scene.world_mut().ui_objects().len(), 2);
     }
 
     #[test]
@@ -355,7 +372,7 @@ mod tests {
         scene.add_sequence(seq);
 
         let mut ctx = Context::new();
-        scene.get_world().update(&mut ctx);
+        scene.world_mut().update(&mut ctx);
 
         assert!(ctx.state.get_bool("seq_done"));
     }
@@ -516,5 +533,236 @@ mod tests {
         assert_eq!(spans_nested[2].color, RED);
         assert_eq!(spans_nested[3].text, " White");
         assert_eq!(spans_nested[3].color, WHITE);
+    }
+
+    #[test]
+    fn test_deferred_spawn_and_destruction() {
+        let mut world = World::new();
+        let mut ctx = Context::new();
+
+        // Spawn a sprite and a logic object via Context
+        ctx.spawn(Sprite::solid(vec2(10.0, 10.0), vec2(32.0, 32.0), RED).with_tag("player"));
+        let mut logic_obj = LogicObject::logic(100).with_tag("spawner");
+        logic_obj.destroy(); // Mark logic object for immediate destruction
+        ctx.spawn_logic(logic_obj);
+
+        assert_eq!(world.objects().len(), 0);
+        assert_eq!(world.logic_objects().len(), 0);
+
+        world.update(&mut ctx);
+
+        // Player sprite was spawned and kept
+        assert_eq!(world.objects().len(), 1);
+        assert_eq!(world.count_by_tag("player"), 1);
+
+        // Logic object was spawned then immediately reaped because it was marked destroyed
+        assert_eq!(world.logic_objects().len(), 0);
+    }
+
+    #[test]
+    fn test_sprite_spatial_and_with_data() {
+        struct EnemyData {
+            hp: i32,
+        }
+
+        let mut enemy = Sprite::solid(vec2(0.0, 0.0), vec2(20.0, 20.0), RED)
+            .with_data(EnemyData { hp: 50 })
+            .update(|obj, _ctx| {
+                obj.data.hp -= 10;
+                if obj.data.hp <= 0 {
+                    obj.destroy();
+                }
+            });
+
+        assert_eq!(enemy.center(), vec2(10.0, 10.0));
+        enemy.set_center(vec2(50.0, 50.0));
+        assert_eq!(enemy.position, vec2(40.0, 40.0));
+
+        let circle = enemy.circle();
+        assert_eq!(circle.center, vec2(50.0, 50.0));
+        assert_eq!(circle.radius, 10.0);
+
+        enemy.look_at(vec2(50.0, 60.0)); // Facing straight down (y+)
+        assert!((enemy.rotation - std::f32::consts::FRAC_PI_2).abs() < 0.001);
+
+        let mut ctx = Context::new();
+        assert!(!enemy.is_destroyed());
+        enemy.run_update(&mut ctx); // hp: 40
+        assert!(!enemy.is_destroyed());
+        enemy.run_update(&mut ctx); // hp: 30
+        enemy.run_update(&mut ctx); // hp: 20
+        enemy.run_update(&mut ctx); // hp: 10
+        enemy.run_update(&mut ctx); // hp: 0 -> destroyed
+        assert!(enemy.is_destroyed());
+    }
+
+    #[test]
+    fn test_camera_visible_rect_and_culling() {
+        let mut cam = Camera::new();
+        cam.update(0.016);
+
+        let r = cam.visible_world_rect();
+        assert_eq!(r.x, -400.0);
+        assert_eq!(r.y, -300.0);
+        assert_eq!(r.w, 800.0);
+        assert_eq!(r.h, 600.0);
+
+        assert!(cam.is_on_screen(vec2(0.0, 0.0), 0.0));
+        assert!(cam.is_on_screen(vec2(350.0, 250.0), 0.0));
+        assert!(!cam.is_on_screen(vec2(500.0, 500.0), 0.0));
+        assert!(cam.is_on_screen(vec2(500.0, 500.0), 200.0));
+    }
+
+    #[test]
+    fn test_world_find_nearest_and_within_radius() {
+        let mut world = World::new();
+        world.add(Sprite::solid(vec2(0.0, 0.0), vec2(10.0, 10.0), RED).with_tag("enemy")); // center (5, 5)
+        world.add(Sprite::solid(vec2(100.0, 100.0), vec2(10.0, 10.0), RED).with_tag("enemy")); // center (105, 105)
+
+        let nearest = world.find_nearest(vec2(10.0, 10.0), "enemy");
+        assert!(nearest.is_some());
+        assert_eq!(nearest.unwrap().bounds().unwrap().x, 0.0);
+
+        let in_radius = world.find_within_radius(vec2(0.0, 0.0), 20.0);
+        assert_eq!(in_radius.len(), 1);
+
+        let in_wide_radius = world.find_within_radius(vec2(0.0, 0.0), 200.0);
+        assert_eq!(in_wide_radius.len(), 2);
+    }
+
+    #[test]
+    fn test_action_map_fluent_builder() {
+        let actions = ActionMap::new()
+            .with_key("dash", KeyCode::Space)
+            .with_mouse("dash", Side::Right);
+
+        assert!(actions.has_action("dash"));
+        assert_eq!(actions.keys_for("dash"), &[KeyCode::Space]);
+    }
+
+    #[test]
+    fn test_logic_run_and_direct_deref() {
+        struct WaveStats {
+            pub wave: u32,
+            pub score: i32,
+        }
+
+        let mut logic = Logic::new(WaveStats { wave: 1, score: 0 })
+            .with_tag("wave_logic")
+            .update(|obj, ctx| {
+                obj.wave += 1; // Direct DerefMut access to WaveStats!
+                obj.score += 50;
+                ctx.state.set_int("wave_count", obj.wave as i64);
+            });
+
+        let mut ctx = Context::new();
+        logic.run_update(&mut ctx);
+
+        assert_eq!(logic.wave, 2);
+        assert_eq!(logic.score, 50);
+        assert_eq!(ctx.state.get_int("wave_count"), 2);
+    }
+
+    #[test]
+    fn test_logic_interval_and_delayed() {
+        let mut interval_logic = Logic::interval(1.0, |ctx| {
+            ctx.state.increment("ticks", 1);
+        });
+
+        let mut delayed_logic = Logic::delayed(2.0, |ctx| {
+            ctx.state.set_bool("delayed_done", true);
+        });
+
+        let mut ctx = Context::new();
+        // 0.5s elapsed (dt = 0.016 * 31.25 = 0.5)
+        ctx.time.set_time_scale(31.25);
+        interval_logic.run_update(&mut ctx);
+        delayed_logic.run_update(&mut ctx);
+
+        assert_eq!(ctx.state.get_int("ticks"), 0);
+        assert!(!ctx.state.get_bool("delayed_done"));
+        assert!(!delayed_logic.is_destroyed());
+
+        // 0.6s elapsed (dt = 0.016 * 37.5 = 0.6, total 1.1s)
+        ctx.time.set_time_scale(37.5);
+        interval_logic.run_update(&mut ctx);
+        delayed_logic.run_update(&mut ctx);
+
+        assert_eq!(ctx.state.get_int("ticks"), 1);
+        assert!(!ctx.state.get_bool("delayed_done"));
+
+        // 1.0s elapsed (dt = 0.016 * 62.5 = 1.0, total 2.1s)
+        ctx.time.set_time_scale(62.5);
+        interval_logic.run_update(&mut ctx);
+        delayed_logic.run_update(&mut ctx);
+
+        assert_eq!(ctx.state.get_int("ticks"), 2);
+        assert!(ctx.state.get_bool("delayed_done"));
+        assert!(delayed_logic.is_destroyed());
+    }
+
+    #[test]
+    fn test_logic_until() {
+        let mut until_logic = Logic::until(
+            |ctx| ctx.state.get_bool("active_flag"),
+            |ctx| {
+                ctx.state.increment("counter", 1);
+            },
+        );
+
+        let mut ctx = Context::new();
+        ctx.state.set_bool("active_flag", true);
+
+        until_logic.run_update(&mut ctx);
+        assert_eq!(ctx.state.get_int("counter"), 1);
+        assert!(!until_logic.is_destroyed());
+
+        ctx.state.set_bool("active_flag", false);
+        until_logic.run_update(&mut ctx);
+        assert!(until_logic.is_destroyed());
+    }
+
+    #[test]
+    fn test_world_add_logic_fn_and_context_spawn_logic_fn() {
+        let mut world = World::new();
+        world.add_logic_fn(|ctx| {
+            ctx.state.increment("fn_runs", 1);
+        });
+
+        let mut ctx = Context::new();
+        world.update(&mut ctx);
+        assert_eq!(ctx.state.get_int("fn_runs"), 1);
+
+        // Test deferred spawn_logic_fn from within an entity update pass
+        world.add_logic_fn(|ctx| {
+            ctx.spawn_logic_fn(|ctx| {
+                ctx.state.set_bool("spawned_logic_fired", true);
+            });
+        });
+
+        world.update(&mut ctx);
+        // During this frame, spawn_logic_fn was queued and drained at the end
+        assert!(!ctx.state.get_bool("spawned_logic_fired"));
+
+        // Next frame, the spawned logic runs
+        world.update(&mut ctx);
+        assert!(ctx.state.get_bool("spawned_logic_fired"));
+    }
+
+    #[test]
+    fn test_context_vec2_operations() {
+        let mut ctx = Context::new();
+        ctx.set_vec2("checkpoint", vec2(320.0, 180.0));
+
+        assert_eq!(ctx.get_vec2("checkpoint"), Some(vec2(320.0, 180.0)));
+        assert_eq!(ctx.get_vec2_or("missing", vec2(0.0, 0.0)), vec2(0.0, 0.0));
+    }
+
+    #[test]
+    fn test_engine_letterbox_color() {
+        let engine = Engine::new(Scene::new_empty("Main"))
+            .with_letterbox_color(macroquad::color::DARKGRAY);
+
+        assert_eq!(engine.letterbox_color, macroquad::color::DARKGRAY);
     }
 }

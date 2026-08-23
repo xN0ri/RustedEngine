@@ -1,4 +1,4 @@
-//! Example: Trigger System — condition→action rules operating on Resources.
+//! Example: Trigger System — condition→action rules with full Context access.
 //!
 //! Demonstrates a one-shot and a repeating trigger.
 //! Uses a generic `Counter` resource — the engine knows nothing about it.
@@ -15,7 +15,7 @@ struct Counter {
 #[macroquad::main("RustedEngine - Trigger System Demo")]
 async fn main() {
     // -----------------------------------------------------------------------
-    // Behavior: increments Counter every frame and runs trigger checks
+    // Behavior: increments Counter every frame
     // -----------------------------------------------------------------------
     let ticker = Behavior::new(
         Rectangle::new(vec2(0.0, 0.0), vec2(0.0, 0.0), 0.0, BLACK),
@@ -23,12 +23,11 @@ async fn main() {
     )
     .with_tag("ticker")
     .update(|_obj, ctx| {
-        // Increment counter
+        // Increment counter stored in resources
         if let Some(c) = ctx.resources.get_mut::<Counter>() {
             c.value += 1;
         }
-        // Let trigger system evaluate all registered rules
-        ctx.triggers.update(&mut ctx.resources);
+        // Trigger system is driven automatically by World::update — no manual call needed.
     });
 
     // -----------------------------------------------------------------------
@@ -76,15 +75,15 @@ async fn main() {
     });
 
     // -----------------------------------------------------------------------
-    // Register triggers
+    // Register triggers — closures now receive &mut Context directly
     // -----------------------------------------------------------------------
 
     // REPEATING: reset counter every time it exceeds 120
     engine.ctx.triggers.register(
         Trigger::new(
-            |r| r.get::<Counter>().is_some_and(|c| c.value > 120),
-            |r| {
-                if let Some(c) = r.get_mut::<Counter>() {
+            |ctx| ctx.resources.get::<Counter>().is_some_and(|c| c.value > 120),
+            |ctx| {
+                if let Some(c) = ctx.resources.get_mut::<Counter>() {
                     c.value = 0;
                     c.resets += 1;
                 }
@@ -95,8 +94,8 @@ async fn main() {
 
     // ONE-SHOT: print to console once when resets reaches 3
     engine.ctx.triggers.register(Trigger::new(
-        |r| r.get::<Counter>().is_some_and(|c| c.resets >= 3),
-        |_r| {
+        |ctx| ctx.resources.get::<Counter>().is_some_and(|c| c.resets >= 3),
+        |_ctx| {
             println!("[one-shot trigger] Counter has been reset 3 times!");
         },
     ));

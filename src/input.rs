@@ -66,20 +66,41 @@ impl Input {
         is_mouse_button_released(button)
     }
 
+    /// Returns mouse wheel scroll offset `Vec2(x, y)` for the current frame.
+    pub fn mouse_scroll(&self) -> Vec2 {
+        let (x, y) = macroquad::input::mouse_wheel();
+        vec2(x, y)
+    }
+
+    /// Returns the character typed during the current frame, if any.
+    pub fn pressed_char(&self) -> Option<char> {
+        macroquad::input::get_char_pressed()
+    }
+
     /// Returns a normalized 2D movement direction vector derived from WASD keyboard keys.
     pub fn wasd(&self) -> Vec2 {
+        self.axis_2d(KeyCode::A, KeyCode::D, KeyCode::W, KeyCode::S)
+    }
+
+    /// Returns a normalized 2D movement direction vector derived from arrow keyboard keys.
+    pub fn arrow_keys(&self) -> Vec2 {
+        self.axis_2d(KeyCode::Left, KeyCode::Right, KeyCode::Up, KeyCode::Down)
+    }
+
+    /// Constructs a normalized 2D vector from 4 discrete keyboard keys (Left, Right, Up, Down).
+    pub fn axis_2d(&self, left: KeyCode, right: KeyCode, up: KeyCode, down: KeyCode) -> Vec2 {
         let mut dir = Vec2::ZERO;
-        if is_key_down(KeyCode::W) {
-            dir.y -= 1.0;
-        }
-        if is_key_down(KeyCode::S) {
-            dir.y += 1.0;
-        }
-        if is_key_down(KeyCode::A) {
+        if is_key_down(left) {
             dir.x -= 1.0;
         }
-        if is_key_down(KeyCode::D) {
+        if is_key_down(right) {
             dir.x += 1.0;
+        }
+        if is_key_down(up) {
+            dir.y -= 1.0;
+        }
+        if is_key_down(down) {
+            dir.y += 1.0;
         }
         if dir.length_squared() > 0.0 {
             dir.normalize()
@@ -88,26 +109,16 @@ impl Input {
         }
     }
 
-    /// Returns a normalized 2D movement direction vector derived from arrow keyboard keys.
-    pub fn arrow_keys(&self) -> Vec2 {
-        let mut dir = Vec2::ZERO;
-        if is_key_down(KeyCode::Up) {
-            dir.y -= 1.0;
+    /// Returns an axis value between `-1.0` and `1.0` based on negative and positive keys.
+    pub fn axis_1d(&self, negative: KeyCode, positive: KeyCode) -> f32 {
+        let mut val = 0.0;
+        if is_key_down(negative) {
+            val -= 1.0;
         }
-        if is_key_down(KeyCode::Down) {
-            dir.y += 1.0;
+        if is_key_down(positive) {
+            val += 1.0;
         }
-        if is_key_down(KeyCode::Left) {
-            dir.x -= 1.0;
-        }
-        if is_key_down(KeyCode::Right) {
-            dir.x += 1.0;
-        }
-        if dir.length_squared() > 0.0 {
-            dir.normalize()
-        } else {
-            Vec2::ZERO
-        }
+        val
     }
 }
 

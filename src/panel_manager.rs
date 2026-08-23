@@ -3,7 +3,7 @@
 //! # Responsibilities
 //!
 //! [`PanelManager`] is the **sole** system for top-level, independently moveable/resizable
-//! UI windows (e.g. OS desktop windows in Last Online). It manages:
+//! UI windows (e.g. movable in-game OS desktop windows, inventory panels, dialog windows). It manages:
 //!
 //! - **Z-order / focus** — click brings a window to the front.
 //! - **Hit-testing** — which panel is under the cursor.

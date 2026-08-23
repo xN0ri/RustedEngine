@@ -12,6 +12,7 @@ pub enum StateValue {
     Int(i64),
     Float(f64),
     Text(String),
+    Vec2(f32, f32),
 }
 
 impl From<bool> for StateValue {
@@ -53,6 +54,18 @@ impl From<String> for StateValue {
 impl From<&str> for StateValue {
     fn from(v: &str) -> Self {
         StateValue::Text(v.to_string())
+    }
+}
+
+impl From<macroquad::math::Vec2> for StateValue {
+    fn from(v: macroquad::math::Vec2) -> Self {
+        StateValue::Vec2(v.x, v.y)
+    }
+}
+
+impl From<(f32, f32)> for StateValue {
+    fn from(v: (f32, f32)) -> Self {
+        StateValue::Vec2(v.0, v.1)
     }
 }
 
@@ -104,13 +117,19 @@ impl StateStore {
     }
 
     /// Stores an integer entry.
-    pub fn set_int(&mut self, key: &str, v: i64) {
-        self.set(key, StateValue::Int(v));
+    pub fn set_int(&mut self, key: &str, v: impl Into<i64>) {
+        self.set(key, StateValue::Int(v.into()));
     }
 
     /// Stores a floating point entry.
-    pub fn set_float(&mut self, key: &str, v: f64) {
-        self.set(key, StateValue::Float(v));
+    pub fn set_float(&mut self, key: &str, v: impl Into<f64>) {
+        self.set(key, StateValue::Float(v.into()));
+    }
+
+    /// Stores a 2D vector coordinate entry.
+    pub fn set_vec2(&mut self, key: &str, v: impl Into<macroquad::math::Vec2>) {
+        let v = v.into();
+        self.set(key, StateValue::Vec2(v.x, v.y));
     }
 
     /// Stores a string text entry.
@@ -180,6 +199,19 @@ impl StateStore {
         }
     }
 
+    /// Returns the 2D vector coordinate value for `key`, or `None` if not set or mismatched.
+    pub fn get_vec2(&self, key: &str) -> Option<macroquad::math::Vec2> {
+        match self.values.get(key) {
+            Some(StateValue::Vec2(x, y)) => Some(macroquad::math::vec2(*x, *y)),
+            _ => None,
+        }
+    }
+
+    /// Returns the 2D vector coordinate value for `key`, or `default` if not set.
+    pub fn get_vec2_or(&self, key: &str, default: macroquad::math::Vec2) -> macroquad::math::Vec2 {
+        self.get_vec2(key).unwrap_or(default)
+    }
+
     /// Returns the string text value for `key`, or `""` if not set or mismatched.
     pub fn get_text(&self, key: &str) -> &str {
         match self.values.get(key) {
@@ -218,9 +250,11 @@ impl StateStore {
     }
 
     /// Increments an integer entry by `delta` (defaults from `0` if non-existent).
-    pub fn increment(&mut self, key: &str, delta: i64) {
-        let current = self.get_int(key);
-        self.set_int(key, current + delta);
+    /// Returns the updated value.
+    pub fn increment(&mut self, key: &str, delta: impl Into<i64>) -> i64 {
+        let updated = self.get_int(key) + delta.into();
+        self.set_int(key, updated);
+        updated
     }
 
     /// Toggles a boolean flag value.
@@ -267,5 +301,14 @@ mod tests {
         state.set_struct("user", &creds).unwrap();
         let loaded: Option<UserCredentials> = state.get_struct("user");
         assert_eq!(loaded, Some(creds));
+    }
+
+    #[test]
+    fn test_state_vec2_operations() {
+        let mut state = StateStore::new();
+        state.set_vec2("player_pos", macroquad::math::vec2(150.0, 250.0));
+
+        assert_eq!(state.get_vec2("player_pos"), Some(macroquad::math::vec2(150.0, 250.0)));
+        assert_eq!(state.get_vec2_or("missing_pos", macroquad::math::vec2(10.0, 10.0)), macroquad::math::vec2(10.0, 10.0));
     }
 }

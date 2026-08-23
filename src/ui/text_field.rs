@@ -637,16 +637,3 @@ impl Object for TextField {
 
 /// Type alias for a text field combined with game data and update closure.
 pub type TextFieldObject<Data> = Behavior<TextField, Data>;
-
-impl<Data> std::ops::Deref for Behavior<TextField, Data> {
-    type Target = TextField;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<Data> std::ops::DerefMut for Behavior<TextField, Data> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}

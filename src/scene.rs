@@ -13,6 +13,7 @@ pub struct Scene {
     name: String,
     world: World,
     on_enter: Option<Box<dyn FnMut(&mut Context) + 'static>>,
+    on_exit: Option<Box<dyn FnMut(&mut Context) + 'static>>,
 }
 
 impl Scene {
@@ -22,6 +23,7 @@ impl Scene {
             world,
             name: name.into(),
             on_enter: None,
+            on_exit: None,
         }
     }
 
@@ -31,6 +33,7 @@ impl Scene {
             name: name.into(),
             world: World::new(),
             on_enter: None,
+            on_exit: None,
         }
     }
 
@@ -40,9 +43,23 @@ impl Scene {
         self
     }
 
+    /// Attaches an `on_exit` callback triggered just before this scene is deactivated
+    /// and another scene takes over. Useful for stopping BGM, clearing UI state, etc.
+    pub fn on_exit_hook<F: FnMut(&mut Context) + 'static>(mut self, callback: F) -> Self {
+        self.on_exit = Some(Box::new(callback));
+        self
+    }
+
     /// Internal: Triggers the `on_enter` callback if set.
     pub fn trigger_on_enter(&mut self, ctx: &mut Context) {
         if let Some(ref mut cb) = self.on_enter {
+            (cb)(ctx);
+        }
+    }
+
+    /// Internal: Triggers the `on_exit` callback if set.
+    pub fn trigger_on_exit(&mut self, ctx: &mut Context) {
+        if let Some(ref mut cb) = self.on_exit {
             (cb)(ctx);
         }
     }
@@ -67,7 +84,18 @@ impl Scene {
         &self.name
     }
 
+    /// Returns a read-only reference to the scene's [`World`].
+    pub fn world(&self) -> &World {
+        &self.world
+    }
+
     /// Returns a mutable reference to the scene's [`World`].
+    pub fn world_mut(&mut self) -> &mut World {
+        &mut self.world
+    }
+
+    /// Returns a mutable reference to the scene's [`World`] (alias for [`world_mut`](Scene::world_mut)).
+    #[deprecated(since = "0.5.0", note = "Use `world_mut()` instead")]
     pub fn get_world(&mut self) -> &mut World {
         &mut self.world
     }
@@ -136,6 +164,9 @@ impl SceneManager {
                 .map(|s| s.name().to_string())
                 .unwrap_or_default();
 
+            // Fire on_exit on the scene we are leaving.
+            self.scenes[self.current_scene].trigger_on_exit(ctx);
+
             self.current_scene = next;
             let new_name = self.scenes[self.current_scene].name().to_string();
 
@@ -180,6 +211,77 @@ impl From<Vec<Scene>> for SceneManager {
     fn from(scenes: Vec<Scene>) -> Self {
         Self::new(scenes)
     }
+}
+
+/// Declarative `Scene` constructor macro building world-space, UI-space, and optional logic-space entity layers.
+///
+/// # Example
+/// ```ignore
+/// let s = scene! {
+///     name: "Game",
+///     objects: [player, enemy],
+///     ui: [score_text],
+/// };
+/// ```
+#[macro_export]
+macro_rules! scene {
+    (name: $name:expr, on_enter: $cb:expr, objects: [$($obj:expr),* $(,)?], ui: [$($ui:expr),* $(,)?], logic: [$($lg:expr),* $(,)?] $(,)?) => {{
+        let w = $crate::world! {
+            objects: [$($obj),*],
+            ui: [$($ui),*],
+            logic: [$($lg),*],
+        };
+        $crate::scene::Scene::new($name, w).on_enter($cb)
+    }};
+    (name: $name:expr, objects: [$($obj:expr),* $(,)?], ui: [$($ui:expr),* $(,)?], logic: [$($lg:expr),* $(,)?] $(,)?) => {{
+        let w = $crate::world! {
+            objects: [$($obj),*],
+            ui: [$($ui),*],
+            logic: [$($lg),*],
+        };
+        $crate::scene::Scene::new($name, w)
+    }};
+    (name: $name:expr, on_enter: $cb:expr, objects: [$($obj:expr),* $(,)?], ui: [$($ui:expr),* $(,)?] $(,)?) => {{
+        let w = $crate::world! {
+            objects: [$($obj),*],
+            ui: [$($ui),*],
+        };
+        $crate::scene::Scene::new($name, w).on_enter($cb)
+    }};
+    (name: $name:expr, objects: [$($obj:expr),* $(,)?], ui: [$($ui:expr),* $(,)?] $(,)?) => {{
+        let w = $crate::world! {
+            objects: [$($obj),*],
+            ui: [$($ui),*],
+        };
+        $crate::scene::Scene::new($name, w)
+    }};
+    (name: $name:expr, on_enter: $cb:expr, objects: [$($obj:expr),* $(,)?] $(,)?) => {{
+        let w = $crate::world! {
+            objects: [$($obj),*],
+        };
+        $crate::scene::Scene::new($name, w).on_enter($cb)
+    }};
+    (name: $name:expr, objects: [$($obj:expr),* $(,)?] $(,)?) => {{
+        let w = $crate::world! {
+            objects: [$($obj),*],
+        };
+        $crate::scene::Scene::new($name, w)
+    }};
+    (name: $name:expr, on_enter: $cb:expr, ui: [$($ui:expr),* $(,)?] $(,)?) => {{
+        let w = $crate::world! {
+            ui: [$($ui),*],
+        };
+        $crate::scene::Scene::new($name, w).on_enter($cb)
+    }};
+    (name: $name:expr, ui: [$($ui:expr),* $(,)?] $(,)?) => {{
+        let w = $crate::world! {
+            ui: [$($ui),*],
+        };
+        $crate::scene::Scene::new($name, w)
+    }};
+    (name: $name:expr $(,)?) => {{
+        $crate::scene::Scene::new_empty($name)
+    }};
 }
 
 #[cfg(test)]

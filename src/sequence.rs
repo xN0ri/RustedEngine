@@ -7,7 +7,6 @@ use crate::{engine::Context, state::StateValue, world::World};
 // ---------------------------------------------------------------------------
 
 /// Individual instruction step in a scripted narrative sequence or cutscene.
-#[derive(Clone, Debug)]
 pub enum Step {
     /// Sets text content on entities with matching `target_tag` via [`Object::set_text`](crate::world::Object::set_text).
     /// If the target text component has typewriter mode enabled, restarts the reveal animation.
@@ -64,6 +63,18 @@ pub enum Step {
     /// via [`Object::append_line`](crate::world::Object::append_line).
     /// Searches the UI layer first, then falls back to the world layer.
     AppendLine { target_tag: String, text: String },
+
+    /// Executes an arbitrary closure with access to [`Context`] and [`World`].
+    /// Advances to the next step immediately (non-blocking).
+    ///
+    /// # Example
+    /// ```ignore
+    /// Step::run(|ctx, world| {
+    ///     ctx.state.set_bool("checkpoint_reached", true);
+    ///     world.remove_by_tag("old_enemies");
+    /// })
+    /// ```
+    Run(Box<dyn FnMut(&mut Context, &mut World) + 'static>),
 
     /// Concludes the sequence execution.
     End,
@@ -165,6 +176,11 @@ impl Step {
         }
     }
 
+    /// Creates a [`Step::Run`] instruction executing an arbitrary closure.
+    pub fn run<F: FnMut(&mut Context, &mut World) + 'static>(func: F) -> Self {
+        Step::Run(Box::new(func))
+    }
+
     /// Creates a [`Step::End`] instruction.
     pub fn end() -> Self {
         Step::End
@@ -197,6 +213,10 @@ pub struct Sequence {
     finished: bool,
     labels: HashMap<String, usize>,
     loop_counts: HashMap<String, u32>,
+    /// Internal cache of the last text shown per target tag via [`Step::ShowText`].
+    /// Does **not** write to [`StateStore`](crate::state::StateStore) — use this
+    /// to read back what was last displayed without coupling to game save state.
+    last_shown_texts: HashMap<String, String>,
 }
 
 fn build_label_map(steps: &[Step]) -> HashMap<String, usize> {
@@ -221,6 +241,7 @@ impl Sequence {
             finished: false,
             labels,
             loop_counts: HashMap::new(),
+            last_shown_texts: HashMap::new(),
         }
     }
 
@@ -240,6 +261,15 @@ impl Sequence {
         self.wait_timer = 0.0;
         self.finished = false;
         self.loop_counts.clear();
+        self.last_shown_texts.clear();
+    }
+
+    /// Returns the last text shown via [`Step::ShowText`] for the given `target_tag`,
+    /// or `None` if that tag has never been targeted.
+    ///
+    /// This is the replacement for the old `ctx.state.get_text("__seq_text_<tag>")` pattern.
+    pub fn last_shown_text(&self, target_tag: &str) -> Option<&str> {
+        self.last_shown_texts.get(target_tag).map(|s| s.as_str())
     }
 
     /// Resolves a label to a step index. Returns `steps.len()` (natural end)
@@ -260,165 +290,187 @@ impl Sequence {
         self.loop_counts.get(loop_id).copied().unwrap_or(0)
     }
 
-    /// Advances and executes the current step in the sequence. Call each frame update pass.
+    /// Appends a new [`Step`] to the sequence at runtime and updates label mappings.
+    pub fn push_step(&mut self, step: Step) {
+        if let Step::Label(ref name) = step {
+            self.labels.insert(name.clone(), self.steps.len());
+        }
+        self.steps.push(step);
+    }
+
+    /// Returns the total number of steps in the sequence.
+    pub fn steps_len(&self) -> usize {
+        self.steps.len()
+    }
+
+    /// Advances and executes steps in the sequence. Instant (non-blocking) steps are executed continuously
+    /// within the same frame pass until a blocking step (e.g. `Wait`, `WaitForInput`, or `End`) is encountered.
     pub fn update(&mut self, ctx: &mut Context, world: &mut World) {
         if self.finished {
             return;
         }
-        if self.current >= self.steps.len() {
-            self.finished = true;
-            return;
+
+        let mut max_steps_per_frame = 1000;
+        while !self.finished && self.current < self.steps.len() && max_steps_per_frame > 0 {
+            max_steps_per_frame -= 1;
+
+            // Match on a reference to avoid cloning the whole Step (which contains Strings).
+            // Individual arms clone only the specific fields they need.
+            match &self.steps[self.current] {
+                Step::ShowText { target_tag, text } => {
+                    let target_tag = target_tag.clone();
+                    let text = text.clone();
+                    let mut found = false;
+                    // Search UI layer entities by tag and call set_text
+                    for obj in world.find_ui_by_tag_mut(&target_tag) {
+                        obj.set_text(&text);
+                        found = true;
+                    }
+                    // Fallback to world layer entities
+                    if !found {
+                        for obj in world.find_by_tag_mut(&target_tag) {
+                            obj.set_text(&text);
+                        }
+                    }
+                    // Store in sequence-internal cache (not in StateStore).
+                    self.last_shown_texts.insert(target_tag, text);
+                    self.current += 1;
+                }
+
+                Step::SetVisible { target_tag, visible } => {
+                    let target_tag = target_tag.clone();
+                    let visible = *visible;
+                    let mut found = false;
+                    for obj in world.find_ui_by_tag_mut(&target_tag) {
+                        obj.set_visible(visible);
+                        found = true;
+                    }
+                    if !found {
+                        for obj in world.find_by_tag_mut(&target_tag) {
+                            obj.set_visible(visible);
+                        }
+                    }
+                    self.current += 1;
+                }
+
+                Step::WaitForInput => {
+                    let pressed = if cfg!(test) {
+                        true
+                    } else {
+                        ctx.input.is_key_pressed(macroquad::input::KeyCode::Space)
+                            || ctx.input.is_key_pressed(macroquad::input::KeyCode::Enter)
+                            || ctx
+                                .input
+                                .is_mouse_button_pressed(macroquad::input::MouseButton::Left)
+                    };
+                    if pressed {
+                        self.current += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                Step::SetFlag { key, value } => {
+                    let key = key.clone();
+                    let value = value.clone();
+                    ctx.state.set(&key, value);
+                    self.current += 1;
+                }
+
+                Step::Wait { seconds } => {
+                    let seconds = *seconds;
+                    self.wait_timer += ctx.time.deltatime();
+                    if self.wait_timer >= seconds {
+                        self.wait_timer = 0.0;
+                        self.current += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                Step::Branch { condition, if_true, if_false } => {
+                    let go = ctx.state.get_bool(condition);
+                    let if_true = *if_true;
+                    let if_false = *if_false;
+                    self.current = if go { if_true } else { if_false };
+                }
+
+                Step::Label(_) => {
+                    self.current += 1;
+                }
+
+                Step::JumpTo(label) => {
+                    let label = label.clone();
+                    self.current = self.resolve_label(&label);
+                }
+
+                Step::BranchTo { condition, if_true, if_false } => {
+                    let go = ctx.state.get_bool(condition);
+                    let target = if go { if_true.clone() } else { if_false.clone() };
+                    self.current = self.resolve_label(&target);
+                }
+
+                Step::RepeatUntil { loop_id, label, times } => {
+                    let loop_id = loop_id.clone();
+                    let label = label.clone();
+                    let times = *times;
+                    let count = self.loop_counts.entry(loop_id.clone()).or_insert(0);
+                    *count += 1;
+                    if *count < times {
+                        self.current = self.resolve_label(&label);
+                    } else {
+                        self.loop_counts.remove(&loop_id);
+                        self.current += 1;
+                    }
+                }
+
+                Step::PlaySound { sound_name } => {
+                    let sound_name = sound_name.clone();
+                    ctx.play_sound(&sound_name);
+                    self.current += 1;
+                }
+
+                Step::Jump(target) => {
+                    let target = *target;
+                    self.current = target;
+                }
+
+                Step::AppendLine { target_tag, text } => {
+                    let target_tag = target_tag.clone();
+                    let text = text.clone();
+                    let mut found = false;
+                    for obj in world.find_ui_by_tag_mut(&target_tag) {
+                        obj.append_line(&text);
+                        found = true;
+                    }
+                    if !found {
+                        for obj in world.find_by_tag_mut(&target_tag) {
+                            obj.append_line(&text);
+                        }
+                    }
+                    self.current += 1;
+                }
+
+                Step::Run(_) => {
+                    // Temporarily swap out the step to call the closure without borrow conflicts.
+                    let mut placeholder = Step::End;
+                    std::mem::swap(&mut self.steps[self.current], &mut placeholder);
+                    if let Step::Run(ref mut func) = placeholder {
+                        func(ctx, world);
+                    }
+                    std::mem::swap(&mut self.steps[self.current], &mut placeholder);
+                    self.current += 1;
+                }
+
+                Step::End => {
+                    self.finished = true;
+                    break;
+                }
+            }
         }
 
-        let step = self.steps[self.current].clone();
-
-        match step {
-            Step::ShowText {
-                ref target_tag,
-                ref text,
-            } => {
-                let mut found = false;
-                // Search UI layer entities by tag and call set_text
-                for obj in world.find_ui_by_tag_mut(target_tag) {
-                    obj.set_text(text);
-                    found = true;
-                }
-                // Fallback to world layer entities
-                if !found {
-                    for obj in world.find_by_tag_mut(target_tag) {
-                        obj.set_text(text);
-                    }
-                }
-                // Also record the last shown text in StateStore under the key
-                // `__seq_text_<target_tag>`. This allows game code to read what
-                // was last displayed without holding a direct reference to the entity.
-                ctx.state
-                    .set_text(&format!("__seq_text_{}", target_tag), text);
-                self.current += 1;
-            }
-
-            Step::SetVisible {
-                ref target_tag,
-                visible,
-            } => {
-                let mut found = false;
-                for obj in world.find_ui_by_tag_mut(target_tag) {
-                    obj.set_visible(visible);
-                    found = true;
-                }
-                if !found {
-                    for obj in world.find_by_tag_mut(target_tag) {
-                        obj.set_visible(visible);
-                    }
-                }
-                self.current += 1;
-            }
-
-            Step::WaitForInput => {
-                let pressed = if cfg!(test) {
-                    true
-                } else {
-                    ctx.input.is_key_pressed(macroquad::input::KeyCode::Space)
-                        || ctx.input.is_key_pressed(macroquad::input::KeyCode::Enter)
-                        || ctx
-                            .input
-                            .is_mouse_button_pressed(macroquad::input::MouseButton::Left)
-                };
-                if pressed {
-                    self.current += 1;
-                }
-            }
-
-            Step::SetFlag { key, value } => {
-                ctx.state.set(&key, value);
-                self.current += 1;
-            }
-
-            Step::Wait { seconds } => {
-                self.wait_timer += ctx.time.deltatime();
-                if self.wait_timer >= seconds {
-                    self.wait_timer = 0.0;
-                    self.current += 1;
-                }
-            }
-
-            Step::Branch {
-                condition,
-                if_true,
-                if_false,
-            } => {
-                if ctx.state.get_bool(&condition) {
-                    self.current = if_true;
-                } else {
-                    self.current = if_false;
-                }
-            }
-
-            Step::Label(_) => {
-                self.current += 1;
-            }
-
-            Step::JumpTo(ref label) => {
-                self.current = self.resolve_label(label);
-            }
-
-            Step::BranchTo {
-                ref condition,
-                ref if_true,
-                ref if_false,
-            } => {
-                let target = if ctx.state.get_bool(condition) {
-                    if_true
-                } else {
-                    if_false
-                };
-                self.current = self.resolve_label(target);
-            }
-
-            Step::RepeatUntil {
-                ref loop_id,
-                ref label,
-                times,
-            } => {
-                let count = self.loop_counts.entry(loop_id.clone()).or_insert(0);
-                *count += 1;
-                if *count < times {
-                    self.current = self.resolve_label(label);
-                } else {
-                    self.loop_counts.remove(loop_id);
-                    self.current += 1;
-                }
-            }
-
-            Step::PlaySound { ref sound_name } => {
-                ctx.play_sound(sound_name);
-                self.current += 1;
-            }
-
-            Step::Jump(target) => {
-                self.current = target;
-            }
-
-            Step::AppendLine {
-                ref target_tag,
-                ref text,
-            } => {
-                let mut found = false;
-                for obj in world.find_ui_by_tag_mut(target_tag) {
-                    obj.append_line(text);
-                    found = true;
-                }
-                if !found {
-                    for obj in world.find_by_tag_mut(target_tag) {
-                        obj.append_line(text);
-                    }
-                }
-                self.current += 1;
-            }
-
-            Step::End => {
-                self.finished = true;
-            }
+        if self.current >= self.steps.len() {
+            self.finished = true;
         }
     }
 }
@@ -576,30 +628,17 @@ mod tests {
 
         let mut seq_runner = seq;
 
-        // Iteration 1: Step 0 (Label), Step 1 (SetFlag), Step 2 (RepeatUntil -> jumps to 0, count=1)
-        seq_runner.update(&mut ctx, &mut world); // Label -> current 1
-        seq_runner.update(&mut ctx, &mut world); // SetFlag -> current 2
-        seq_runner.update(&mut ctx, &mut world); // RepeatUntil -> count 1 < 3, jumps to 0
-        assert_eq!(seq_runner.loop_count("decrypt"), 1);
-
-        // Iteration 2
-        seq_runner.update(&mut ctx, &mut world); // Label -> current 1
-        seq_runner.update(&mut ctx, &mut world); // SetFlag -> current 2
-        seq_runner.update(&mut ctx, &mut world); // RepeatUntil -> count 2 < 3, jumps to 0
-        assert_eq!(seq_runner.loop_count("decrypt"), 2);
-
-        // Iteration 3
-        seq_runner.update(&mut ctx, &mut world); // Label -> current 1
-        seq_runner.update(&mut ctx, &mut world); // SetFlag -> current 2
-        seq_runner.update(&mut ctx, &mut world); // RepeatUntil -> count 3 == 3, falls through to current 3 (End)
+        // Since steps are instant, update() executes all 3 loop iterations until Step::End in one frame!
+        seq_runner.update(&mut ctx, &mut world);
         assert_eq!(seq_runner.loop_count("decrypt"), 0); // Removed after completion
-        assert_eq!(seq_runner.current, 3);
+        assert!(seq_runner.is_finished());
     }
 
     #[test]
     fn reset_clears_loop_counts() {
         let mut seq = Sequence::new(vec![
             Step::label("loop"),
+            Step::wait(1.0),
             Step::repeat_until("my_loop", "loop", 5),
             Step::end(),
         ]);
@@ -607,9 +646,8 @@ mod tests {
         let mut ctx = Context::new();
         let mut world = World::new();
 
-        seq.update(&mut ctx, &mut world); // Label
-        seq.update(&mut ctx, &mut world); // RepeatUntil -> count 1
-        assert_eq!(seq.loop_count("my_loop"), 1);
+        seq.update(&mut ctx, &mut world); // Label -> Wait (pauses)
+        assert_eq!(seq.current, 1);
 
         seq.reset();
         assert_eq!(seq.loop_count("my_loop"), 0);

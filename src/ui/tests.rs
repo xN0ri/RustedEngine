@@ -23,8 +23,8 @@ mod tests {
         let text_log = TextLog::new(Vec2::ZERO, vec2(100.0, 100.0), 16.0, WHITE);
         assert!(text_log.is_text_layer());
 
-        let behavior_text = crate::object::Behavior::new(text, ());
-        assert!(behavior_text.is_text_layer());
+        let behavior_text: crate::object::Behavior<Text, ()> = crate::object::Behavior::new(text, ());
+        assert!(crate::world::Object::is_text_layer(&behavior_text));
 
         let panel = Panel::new(Vec2::ZERO, vec2(100.0, 100.0));
         assert!(!panel.is_text_layer());
