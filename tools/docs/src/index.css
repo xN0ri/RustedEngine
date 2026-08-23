@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: #09090b;
+    color: #e4e4e7;
+    letter-spacing: -0.012em;
+    line-height: 1.6;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+}
+
+/* Minimalist Smooth Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Touch friendly scrolling */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* Card & Glass styles */
+.shadcn-card {
+  background-color: #0c0c0e;
+  border: 1px solid #27272a;
+  border-radius: 0.75rem;
+  transition: all 0.2s ease-in-out;
+}
+
+.shadcn-card:hover {
+  border-color: #3f3f46;
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.5);
+}
+
+.shadcn-callout-emerald {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.03) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  border-radius: 0.75rem;
+}
+
+.shadcn-callout-amber {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.03) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 0.75rem;
+}
+
+/* Prism Syntax Highlighting - Vivid Studio Dark Theme */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #6a737d;
+  font-style: italic;
+}
+
+.token.punctuation {
+  color: #9da5b4;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #ff9e64;
+  font-weight: 500;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #9ece6a;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #7dcfff;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #bb9af7;
+  font-weight: 600;
+}
+
+.token.function,
+.token.class-name {
+  color: #7aa2f7;
+  font-weight: 500;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: #f7768e;
+}
+
+.token.macro,
+.token.type-definition {
+  color: #e0af68;
+  font-weight: 500;
+}
+
+.token.lifetime {
+  color: #f7768e;
+  font-style: italic;
+}

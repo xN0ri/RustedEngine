@@ -1,3 +1,9 @@
-/target
-/tools
+target/
+**/target/
+tools/gui-designer
+tools/gui-designer-app
+**/node_modules/
+**/dist/
+**/build/
+**/.vite/
 *.zip
