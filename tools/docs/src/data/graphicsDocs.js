@@ -16,16 +16,22 @@ export const cameraDoc = {
 - **\`ctx.camera.follow(target, speed, dt)\`**: Płynne podążanie za graczem z wygładzaniem liniowym (\`lerp\`).
 - **\`ctx.camera.look_ahead(pos, vel, dist, speed, dt)\`**: Wyprzedzanie kamery w kierunku biegu postaci.
 - **\`ctx.camera.shake(duration, intensity)\`**: Dynamiczny wstrząs ekranu przy wybuchach i uderzeniach.
-- **\`ctx.camera.is_on_screen(pos, margin)\`**: Sprawdza, czy punkt znajduje się w kadrze kamery (Frustum Culling).`,
+- **\`ctx.camera.is_on_screen(pos, margin)\`**: Sprawdza, czy dany punkt znajduje się w kadrze monitora (*Frustum Culling*).`,
       codeExamples: [
         {
-          title: "Wyprzedzanie Ruchu Gracza i Wstrząs Kamery",
-          code: `// 1. Kamera wyprzedza gracza o 80px w stronę ruchu:
-ctx.camera.look_ahead(player.position, player.velocity, 80.0, 4.0, ctx.dt());
+          title: "Kompletny Kontroler Kamery z Wyprzedzaniem i Wstrząsami",
+          code: `// 1. Płynne wyprzedzanie ruchu gracza o 75px:
+ctx.camera.look_ahead(player.position, player.velocity, 75.0, 4.5, ctx.dt());
 
 // 2. Wstrząs kamery po otrzymaniu obrażeń:
 if player.data.took_damage {
-    ctx.camera.shake(0.2, 6.0);
+    ctx.camera.shake(0.25, 6.0);
+    player.data.took_damage = false;
+}
+
+// 3. Optymalizacja culling: nie aktualizuj AI wrogów poza ekranem:
+if !ctx.camera.is_on_screen(enemy.position, 100.0) {
+    return; // Pomiń logikę gdy wróg jest daleko poza kadrem
 }`,
           collapsible: false
         }
@@ -45,15 +51,15 @@ export const virtualResolutionDoc = {
       content: `Włączenie **\`Engine::with_virtual_resolution(vw, vh)\`** pozwala renderować grę w stałej rozdzielczości pikselowej (np. \`480 × 270\` lub \`320 × 180\`) z automatycznym dopasowaniem do dowolnego monitora:
 
 1. **Bufor Wirtualny (\`SceneRenderTarget\`)**: Świat gry jest rysowany w rozdzielczości retro z filtrowaniem \`Nearest\`.
-2. **Letterboxing**: Obraz jest skalowany na środek okna z zachowaniem proporcji aspect ratio.
+2. **Letterboxing**: Obraz jest skalowany na środek okna z zachowaniem proporcji *aspect ratio*.
 3. **Natywne Fonty**: Teksty interfejsu mogą być rysowane w pełnej rozdzielczości monitora dla idealnej ostrości.`,
       codeExamples: [
         {
           title: "Konfiguracja Rozdzielczości Wirtualnej i Skalowania Całkowitoliczbowego",
           code: `Engine::new(scenes)
     .with_virtual_resolution(480.0, 270.0) // 16:9 Pixel-Art
-    .with_integer_scaling(true)           // Idealnie ostre, jednolite piksele
-    .with_letterbox_color(DARKGRAY)       // Kolor pasów po bokach
+    .with_integer_scaling(true)           // Idealnie ostre, jednolite piksele bez zniekształceń
+    .with_letterbox_color(DARKGRAY)       // Kolor pasów po bokach okna
     .run()
     .await;`,
           collapsible: false
@@ -78,19 +84,34 @@ export const tilemapsDoc = {
 - **\`TileCollision::OneWay\`**: Platforma jednokierunkowa (przenikalna od dołu, solidna od góry).
 - **\`TileCollision::HalfBottom\`**: Półpłytka (*half-slab*).
 - **\`map.get_slope_surface_y(pos) -> Option<f32>\`**: Oblicza dokładną wysokość powierzchni rampy w świecie (do biegania po zboczach bez drgań).
-- **\`map.collides_oneway_landing(rect, prev_y) -> Option<f32>\`**: Wykrywa lądowanie stóp postaci na platformie OneWay.`,
+- **\`map.collides_oneway_landing(rect, prev_y) -> Option<f32>\`**: Wykrywa lądowanie stóp postaci na platformie OneWay.
+
+> [!TIP]
+> Zobacz kompletny kod fizyki postaci na rampach w dziale: [32. 🏃 Platformówka 2D](#doc:game-platformer)`,
+      related: [
+        {
+          docId: "game-platformer",
+          title: "32. 🏃 Platformówka 2D",
+          description: "Zobacz pełny kod kontrolera gracza ze wspinaniem się po rampach 45°."
+        },
+        {
+          docId: "camera",
+          title: "18. 📹 Kamera 2D, Śledzenie & Shake",
+          description: "Dowiedz się jak skonfigurować kamerę śledzącą gracza na tilemapie."
+        }
+      ],
       codeExamples: [
         {
-          title: "Wczytywanie Mapy ASCII z Rampami i Platformami",
+          title: "Wczytywanie Mapy ASCII i Fizyka Postaci na Rampach",
           code: `let mut map = Tilemap::new(sheet, vec2(16.0, 16.0), 32, 18)
     .with_solid_tiles([1])                               // Pełna ściana '#'
-    .with_tile_collision(2, TileCollision::SlopeUpRight) // Rampa '/'
-    .with_tile_collision(3, TileCollision::SlopeUpLeft)  // Rampa '\\'
-    .with_tile_collision(4, TileCollision::OneWay);      // Platforma '='
+    .with_tile_collision(2, TileCollision::SlopeUpRight) // Rampa wznosząca '/'
+    .with_tile_collision(3, TileCollision::SlopeUpLeft)  // Rampa opadająca '\\'
+    .with_tile_collision(4, TileCollision::OneWay);      // Platforma jednokierunkowa '='
 
 map.load_from_ascii("
 ####################
-#    ==            #
+#    ===           #
 #         /\\       #
 ####################
 ", |c| match c {
@@ -101,9 +122,13 @@ map.load_from_ascii("
     _ => None,
 });
 
-// W update postaci: przyklejenie stóp do powierzchni rampy:
-if let Some(ground_y) = map.get_slope_surface_y(player.position + vec2(8.0, 16.0)) {
-    player.position.y = ground_y - 16.0;
+// W update postaci:
+// 1. Sprawdzenie rampy i przyklejenie stóp do powierzchni:
+let foot_pos = player.position + vec2(8.0, 16.0);
+if let Some(surface_y) = map.get_slope_surface_y(foot_pos) {
+    player.position.y = surface_y - 16.0;
+    player.data.velocity.y = 0.0;
+    player.data.is_grounded = true;
 }`,
           collapsible: false
         }
@@ -124,18 +149,24 @@ export const particlesDoc = {
 
 - **\`with_auto_destroy()\`**: Po wygaśnięciu wszystkich cząsteczek emiter sam usuwa się ze świata gry!
 - **\`emit_burst(pos, count, color, speed_range, size, lifetime)\`**: Jednorazowy wybuch cząstek.
-- **\`with_gravity(vec2)\`**: Grawitacja działająca na cząsteczki.`,
+- **\`with_gravity(vec2)\`**: Grawitacja działająca na cząsteczki (np. opadający pył).`,
       codeExamples: [
         {
-          title: "Wybuch Iskrzenia z Auto-Destroy",
-          code: `let mut burst = ParticleEmitter::new()
-    .with_gravity(vec2(0.0, 160.0))
+          title: "Efekt Wybuchu Iskrzenia i Ślad Pocisku",
+          code: `// 1. Wybuch iskier z punktu trafienia:
+let mut spark_burst = ParticleEmitter::new()
+    .with_gravity(vec2(0.0, 200.0))
     .with_auto_destroy();
 
-// Wyemitowanie 30 pomarańczowych iskier z punktu trafienia:
-burst.emit_burst(hit_pos, 30, ORANGE, (80.0, 220.0), 3.5, 0.45);
+spark_burst.emit_burst(hit_pos, 25, ORANGE, (90.0, 240.0), 3.0, 0.4);
+ctx.spawn(spark_burst);
 
-ctx.spawn(burst);`,
+// 2. Ciągły ślad dymu za rakietą w update pocisku:
+if rocket.data.timer.tick(ctx.dt()) {
+    let mut smoke = ParticleEmitter::new().with_auto_destroy();
+    smoke.emit_burst(rocket.position, 3, DARKGRAY, (10.0, 30.0), 4.0, 0.6);
+    ctx.spawn(smoke);
+}`,
           collapsible: false
         }
       ]
@@ -146,30 +177,119 @@ ctx.spawn(burst);`,
 export const uiWidgetsDoc = {
   id: "ui-widgets",
   title: "22. 🖥️ Katalog Widgetów UI & BBCode",
-  description: "Biblioteka gotowych elementów interfejsu: Button, ProgressBar, RichText z tagami BBCode, Slider i Panel.",
+  description: "Kompletna architektura interfejsu użytkownika: dualny system współrzędnych, bogaty katalog widgetów, BBCode oraz Desktop Window Manager (PanelManager).",
   sections: [
     {
-      id: "ui-widgets-main",
-      title: "Komponenty Interfejsu Użytkownika",
-      content: `- **\`Button\`**: Przycisk z obsługą najechania myszą i callbacku \`.on_click(|ctx| ...)\`.
-- **\`ProgressBar\`**: Pasek postępu/zdrowia z płynnym wypełnieniem i kolorem.
-- **\`RichText\`**: Tekst z obsługą formatowania BBCode (np. \`[color=gold]Złoto[/color]\`, \`[color=red]Krew[/color]\`).
-- **\`Slider\`**: Suwak do regulacji głośności lub czułości.
-- **\`TextField\`**: Pole do wprowadzania tekstu przez gracza.`,
+      id: "ui-architecture",
+      title: "Architektura Interfejsu & Dualny System Współrzędnych",
+      content: `System UI w RustedEngine został zaprojektowany z myślą o bezproblemowej integracji z grami pikselowymi oraz aplikacjami narzędziowymi (edytory, debuggery).
+
+### ui::Panel vs panel_manager::PanelManager
+W silniku istnieją dwa moduły o nazwie Panel, które pełnią zupełnie inne role:
+
+| Cecha | \`ui::Panel\` | \`panel_manager::PanelManager\` |
+| :--- | :--- | :--- |
+| **Rola** | Statyczny kontener grupujący widgety w layoucie | Menedżer ruchomych okien pulpitu (*Desktop Window Manager*) |
+| **Z-order** | Stały (według kolejności w drzewie UI) | Dynamiczny (kliknięcie wynosi okno na wierzch stosu) |
+| **Przesuwanie (Drag)** | Statyczny kontener | Pełne wsparcie przesuwania nagłówkiem myszy |
+| **Zmiana Rozmiaru** | Stały lub ustalany przez zawartość | Opcjonalny uchwyt zmiany rozmiaru w narożniku |
+| **Zastosowanie** | Układanie przycisków i pól wewnątrz pojedynczego panelu | Wielo-okienkowy interfejs narzędziowy lub okna ekwipunku |
+
+> [!TIP]
+> **Złota zasada**: Używaj \`ui::Panel\` wewnątrz layoutów flexbox. Używaj \`PanelManager\` (dodawanego do świata przez \`world.add_ui\`) jako nadrzędnego zarządcy okien!`,
+    },
+    {
+      id: "dual-coordinates",
+      title: "Dualny System Współrzędnych & Zero-Blur Text Rendering",
+      content: `Gdy włączona jest wirtualna rozdzielczość (\`Engine::with_virtual_resolution(vw, vh)\`), obiekty UI dzielą się na dwie grupy:
+
+1. **Przestrzeń Wirtualna (\`is_text_layer() == false\`)**:
+   - Dotyczy: \`Panel\`, \`Image\`, \`Button\`, \`ProgressBar\`, \`TextField\`, \`Slider\`, \`Checkbox\`.
+   - Renderowane do bufora \`SceneRenderTarget\` (\`vrt.target\`) z filtrowaniem \`Nearest\`.
+   - Hit-testing myszy automatycznie przelicza współrzędne ekranu na wirtualne przez \`ctx.input.mouse_position()\`.
+2. **Natywna Przestrzeń Ekranu (\`is_text_layer() == true\`)**:
+   - Dotyczy: \`Text\`, \`TextLog\`, \`RichText\`.
+   - Renderowane bezpośrednio na ramce okna systemu po przeskalowaniu świata. Daje to **100% ostrości czcionek TTF bez pikselowego rozmycia**!`,
+    },
+    {
+      id: "widgets-overview",
+      title: "Katalog Widgetów UI",
+      content: `Kompletny zestaw gotowych do użycia komponentów interfejsu graficznego:
+
+### Tekst, BBCode RichText & Maszyna do Pisania
+1. **Podstawowy \`Text\`**: Wspiera automatyczne zawijanie wierszy (\`with_max_width\`), cienie tekstu, wyrównanie (\`TextAlign::Left, Center, Right\`) oraz animację maszyny do pisania (\`with_typewriter(speed)\`).
+2. **BBCode \`RichText\`**: Parser znaczników kolorów w tekście. Wspiera kolory nazwane oraz kody szesnastkowe:
+   \`"Zdobyłeś [color=gold]100 złota[/color] i [color=#00FF00]Legendarny Miecz[/color]!"\`.
+
+### Kontrolki Interaktywne (Button, Slider, Checkbox, TextField, ProgressBar)
+- **\`Button\`**: Obsługuje stany normal, hover, pressed, disabled, dźwięki kliknięcia oraz 9-slice tła.
+- **\`Slider\`**: Suwak wartości float w zadanym zakresie (np. \`0.0..=100.0\`) z opcjonalnym krokiem \`step\`.
+- **\`Checkbox\`**: Przełącznik logiczny prawda/fałsz z konfigurowalnym rozmiarem i kolorami zaznaczenia.
+- **\`TextField\`**: Pole wprowadzania tekstu z obsługą klawiatury, backspace, kursora, focusu i tekstu zastępczego (*placeholder*).
+- **\`ProgressBar\`**: Pasek postępu z płynną animacją lerp wypełnienia oraz trybami odsłaniania (\`RevealMode::LeftToRight, TopToBottom, Radial\`).
+
+### Konsola Zdarzeń TextLog
+Komponent \`TextLog\` służy jako czat gry, log walki lub konsola deweloperska. Automatycznie buforuje linie tekstu, usuwa najstarsze po przekroczeniu limitu (\`with_max_lines(100)\`) i obsługuje przewijanie kółkiem myszy (\`with_scrollable(true)\`).`,
       codeExamples: [
         {
-          title: "Przycisk z Callbackiem i Pasek Zdrowia",
-          code: `// 1. Przycisk interaktywny:
-let btn = Button::new("Zagraj Ponownie", vec2(100.0, 200.0), vec2(180.0, 40.0))
-    .on_click(|ctx| ctx.switch_scene("Game"));
-
-// 2. Pasek zdrowia gracza:
-let hp_bar = ProgressBar::new(vec2(20.0, 20.0), vec2(200.0, 16.0))
-    .with_value(0.75)
-    .with_color(RED);`,
+          title: "Tekst z Maszyną do Pisania i BBCode",
+          code: `let intro_dialog = Text::new(
+    "Zdobyłeś [color=gold]500 Punktów[/color]! Uważaj na [color=red]Bossa[/color]!",
+    vec2(20.0, 40.0),
+    22.0,
+    WHITE
+)
+.with_typewriter(0.04) // prędkość 0.04s na znak
+.with_max_width(400.0);`,
           collapsible: false
         }
       ]
+    },
+    {
+      id: "panel-manager",
+      title: "Menedżer Okien Pulpitu (PanelManager)",
+      content: `Struktura \`PanelManager\` dostarcza pełnoprawny menedżer okien pulpitu (*Desktop Windowing System*):
+
+- **Dynamiczny Stos Z-Order**: Kliknięcie dowolnego miejsca w oknie natychmiast przenosi je na sam wierzch.
+- **Pasek Tytułowy & Przeciąganie**: Okna z nagłówkiem można płynnie przeciągać myszą po całym ekranie.
+- **Uchwyt Zmiany Rozmiaru**: Przeciąganie prawego dolnego narożnika pozwala na dynamiczną zmianę wymiarów okna.
+- **Przyciski Minimalizacji i Zamknięcia**: Wbudowane przyciski sterujące stanem okna.`,
+      codeExamples: [
+        {
+          title: "Tworzenie Okna Ekwipunku w PanelManager",
+          code: `use rusted_engine::prelude::*;
+
+let mut pm = PanelManager::new();
+
+// Dodanie ruchomego okna ekwipunku
+pm.add_panel(
+    Panel::new("Ekwipunek", vec2(100.0, 100.0), vec2(300.0, 400.0))
+        .with_draggable(true)
+        .with_resizable(true)
+        .with_content(column![
+            Text::new("Twoje Przedmioty:", vec2(0.0, 0.0), 16.0, WHITE),
+            Button::new(vec2(0.0, 0.0), vec2(260.0, 32.0), "Mikstura Zdrowia")
+        ])
+);
+
+world.add_ui(pm);`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "ui-api-table",
+      title: "API Reference: System UI",
+      content: `| Komponent | Kluczowe Metody | Opis |
+| :--- | :--- | :--- |
+| \`UiPanel\` | \`new, with_padding, with_child, anchor\` | Statyczny kontener grupujący layout flexbox. |
+| \`Column / Row\` | \`new, with_alignment, fill_parent\` | Pionowy i poziomy kontener flexbox. |
+| \`Button\` | \`new, with_color, with_hover_color, click_ctx\` | Przycisk z obsługą stanów interakcji. |
+| \`TextField\` | \`new, with_placeholder, get_text, set_text\` | Pole edycji tekstu z obsługą klawiatury. |
+| \`Slider\` | \`new, with_range, value, set_value\` | Pasek suwaka wartości float. |
+| \`Checkbox\` | \`new, is_checked, set_checked\` | Przełącznik logiczny boolean. |
+| \`ProgressBar\` | \`new, set_progress, with_reveal_mode\` | Animowany pasek postępu / zdrowia. |
+| \`PanelManager\` | \`new, add_panel, bring_to_front, get_panel\` | Nadrzędny menedżer ruchomych okien pulpitu. |`,
     }
   ]
 };
@@ -177,33 +297,55 @@ let hp_bar = ProgressBar::new(vec2(20.0, 20.0), vec2(200.0, 16.0))
 export const uiLayoutDoc = {
   id: "ui-layout",
   title: "23. 📐 Silnik Layoutu Flexbox (Column, Row, Grid)",
-  description: "Automatyczne pozycjonowanie widgetów w kolumnach, wierszach i siatkach za pomocą makr deklaratywnych.",
+  description: "Deklaratywny silnik layoutu Flexbox inspirowany frameworkiem Flutter, kontenery Column, Row, Grid, marginesy, padding i osie.",
   sections: [
     {
-      id: "ui-layout-main",
-      title: "Deklaratywne Układy Kolumnowe i Wierszowe",
-      content: `Zamiast ręcznie liczyć współrzędne każdego przycisku, użyj silnika layoutu:
+      id: "flexbox-layout",
+      title: "Deklaratywny Silnik Layoutu (Flexbox)",
+      content: `System layoutu RustedEngine czerpie inspirację z frameworka Flutter, oferując elastyczne układanie elementów w pionie, poziomie i siatkach:
 
-- **\`column![]\`**: Układa widgety pionowo jeden pod drugim.
-- **\`row![]\`**: Układa widgety poziomo obok siebie.
-- **\`Gap::new(pixels)\`**: Dyskretny odstęp pomiędzy elementami w układzie.
-- **\`Grid::new(cols, rows)\`**: Siatka komórek (np. sloty ekwipunku).`,
+### Główne Kontenery:
+- **\`Column\`** (alias \`VBox\`): Układa elementy pionowo (jeden pod drugim).
+- **\`Row\`** (alias \`HBox\`): Układa elementy poziomo (obok siebie).
+- **\`Grid\`**: Układa elementy w siatce o podanej liczbie kolumn (\`Grid::new(cols)\`).
+- **\`Container\`**: Pojedynczy kontener opakowujący z marginesami, paddingiem i wyrównaniem.
+
+### Makra Pomocnicze:
+- \`column![widget1, widget2]\`: Błyskawiczny skrót do utworzenia \`Column\`.
+- \`row![widget1, widget2]\`: Błyskawiczny skrót do utworzenia \`Row\`.
+- \`ui_vec![widget1, widget2]\`: Konwertuje widgety na \`Vec<Box<dyn Object>>\`.`,
       codeExamples: [
         {
-          title: "Menu Główne z Makrem column!",
-          code: `let main_menu = column![
-    Text::new("Moja Wspaniała Gra", vec2(0.0, 0.0), 22.0, GOLD),
-    Gap::new(20.0),
-    Button::new("Nowa Gra", vec2(0.0, 0.0), vec2(200.0, 38.0))
-        .on_click(|ctx| ctx.switch_scene("Game")),
-    Gap::new(10.0),
-    Button::new("Opcje", vec2(0.0, 0.0), vec2(200.0, 38.0)),
-    Gap::new(10.0),
-    Button::new("Wyjście", vec2(0.0, 0.0), vec2(200.0, 38.0)),
-];`,
+          title: "Menu Ustawień w Układzie Flexbox",
+          code: `let menu_panel = UiPanel::new(vec2(0.0, 0.0), vec2(320.0, 260.0))
+    .anchor(UIAnchor::Center)
+    .with_padding(Padding::all(16.0))
+    .with_child(column![
+        Text::new("USTAWIENIA GRY", vec2(0.0, 0.0), 20.0, GOLD),
+        Gap::height(12.0),
+        row![
+            Text::new("Głośność SFX:", vec2(0.0, 0.0), 16.0, WHITE),
+            Slider::new(vec2(0.0, 0.0), vec2(140.0, 20.0), 0.0..=1.0, 0.8)
+                .with_tag("slider_sfx")
+        ],
+        Gap::height(10.0),
+        Button::new(vec2(0.0, 0.0), vec2(288.0, 36.0), "ZAPISZ I WYJDŹ")
+            .with_tag("btn_save")
+    ]);`,
           collapsible: false
         }
       ]
+    },
+    {
+      id: "layout-alignment",
+      title: "Wyrównania, Osiowość & Model Pudełkowy",
+      content: `- **Wyrównanie Osi Głównej (\`MainAxisAlignment\`)**: \`Start\`, \`Center\`, \`End\`, \`SpaceBetween\`, \`SpaceAround\`, \`SpaceEvenly\`.
+- **Wyrównanie Osi Poprzecznej (\`CrossAxisAlignment\`)**: \`Start\`, \`Center\`, \`End\`, \`Stretch\`.
+- **Wypełnianie Rodzica (\`fill_parent\`)**: \`widget.set_fill_parent(true)\` powoduje automatyczne rozciągnięcie elementu do pełnej szerokości lub wysokości kontenera nadrzędnego.
+- **Model Pudełkowy**:
+  - \`Padding::all(val)\` / \`Padding::symmetric(h, v)\`: Wewnętrzny odstęp kontenera.
+  - \`Margin::all(val)\` / \`Margin::new(top, right, bottom, left)\`: Zewnętrzny margines widgetu.
+  - \`Gap::width(px)\` / \`Gap::height(px)\`: Przezroczysty separator przestrzenny między elementami.`,
     }
   ]
 };
@@ -221,12 +363,19 @@ export const audioSfxDoc = {
 - **\`ctx.play_sound_throttled("nazwa", min_interval)\`**: Zabezpiecza przed jednoczesnym odtworzeniem wielu tych samych dźwięków (np. zbieranie 20 monet naraz).`,
       codeExamples: [
         {
-          title: "Wariacja Dźwięku i Ochrona Throttlera",
-          code: `// Kroki postaci z subtelną wariacją:
+          title: "Wariacja Dźwięku i Przestrzenne Tłumienie Odległości",
+          code: `// 1. Dźwięk kroków z subtelną wariacją:
 ctx.play_sound_varied("step_sfx", 0.08, 0.1);
 
-// Zbieranie monet (dźwięk może zagrać maksymalnie co 40ms):
-ctx.play_sound_throttled("coin_pickup", 0.04);`,
+// 2. Zbieranie monet (dźwięk może zagrać maksymalnie co 40ms):
+ctx.play_sound_throttled("coin_pickup", 0.04);
+
+// 3. Przestrzenne tłumienie głośności wybuchu od gracza:
+let dist = enemy.position.distance(ctx.camera.target);
+if dist < 600.0 {
+    let vol = (1.0 - dist / 600.0).clamp(0.1, 1.0);
+    ctx.play_sound_with_volume("explosion", vol);
+}`,
           collapsible: false
         }
       ]

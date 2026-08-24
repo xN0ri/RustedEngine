@@ -5,40 +5,31 @@
 export const entityDataDoc = {
   id: "entity-data",
   title: "6. 🔒 Prywatny Stan Encji (obj.data)",
-  description: "Lokalny stan przypisany do pojedynczej instancji obiektu — hermetyzacja danych potworów, pocisków i gracza.",
+  description: "Każda encja oparta o Behavior przechowuje swoje silnie typowane dane, dostępne przez obj.data lub blanket Deref.",
   sections: [
     {
       id: "entity-data-main",
-      title: "Hermetyzacja Stanu w Obiektach",
-      content: `Prywatne dane (\`obj.data\`) to struktura danych przypisana do konkretnej instancji obiektu.
-
-### ✅ Kiedy używać:
-- Liczniki punktów życia i prędkości konkretnego potwora (\`hp\`, \`speed\`).
-- Timery cooldownów i wektory kierunkowe pocisku (\`velocity\`, \`lifetime\`).
-- Flagi stanu postaci (*is_jumping, is_dashing*).
-
-### ❌ Czego unikać:
-Nie zanieczyszczaj globalnego stanu gry zmiennymi typu \`ctx.state["goblin_12_hp"]\`. Każdy potwór powinien posiadać własną strukturę \`GoblinData\`.`,
+      title: "Silnie Typowany Prywatny Stan",
+      content: `W RustedEngine encje nie są sztywnymi klasami ani czystym ECS. Używają struktury \`Behavior<Inner, Data>\` (lub \`GameObject<Data>\`), w której każde pole \`Data\` jest w 100% bezpieczne dla pamięci i prywatne dla danej encji:`,
       codeExamples: [
         {
-          title: "Struktura Danych Pocisku",
-          code: `struct BulletData {
-    pub velocity: Vec2,
-    pub lifetime: f32,
-    pub damage: i32,
+          title: "Definiowanie Prywatnego Stanu Encji",
+          code: `struct PlayerData {
+    pub hp: i32,
+    pub speed: f32,
+    pub is_invulnerable: bool,
 }
 
-let bullet = Sprite::solid(start_pos, vec2(6.0, 6.0), YELLOW)
-    .with_data(BulletData {
-        velocity: shoot_dir * 500.0,
-        lifetime: 1.5,
-        damage: 25,
+let player = Sprite::solid(vec2(100.0, 100.0), vec2(32.0, 32.0), BLUE)
+    .with_data(PlayerData {
+        hp: 100,
+        speed: 220.0,
+        is_invulnerable: false,
     })
-    .update(|b, ctx| {
-        b.position += b.data.velocity * ctx.dt();
-        b.data.lifetime -= ctx.dt();
-        if b.data.lifetime <= 0.0 {
-            b.destroy();
+    .update(|p, ctx| {
+        // Dostęp do pól Data:
+        if p.data.hp <= 0 {
+            p.destroy();
         }
     });`,
           collapsible: false
@@ -51,35 +42,29 @@ let bullet = Sprite::solid(start_pos, vec2(6.0, 6.0), YELLOW)
 export const resourcesDoc = {
   id: "resources",
   title: "7. 🗄️ Współdzielone Zasoby (ctx.resources)",
-  description: "Silnie typowany magazyn pojedynczych instancji (Type-Map) oparty o TypeId bez narzutu na stringi.",
+  description: "Typowany kontener zasobów uniwersalnych (TypeId) na żywy stan rozgrywki dostępny globalnie w Context.",
   sections: [
     {
       id: "resources-main",
-      title: "Magazyn Singletonów Type-Map",
-      content: `\`Resources\` (\`ctx.resources\`) przechowuje dokładnie jedną instancję danego typu Rust w pamięci gry:
-
-### 🚀 Główne Cechy:
-- **100% Bezpieczeństwo typów**: Kluczem jest \`TypeId\` w czasie kompilacji — brak błędów literówek w stringach.
-- **Zero narzutu**: Błyskawiczny dostęp bez haszowania ciągów znaków.
-- **Dostęp globalny**: Dostępny w każdym obiekcie, UI, kontrolerze logiki i wyzwalaczu.`,
+      title: "Współdzielone Zasoby Globalne",
+      content: `\`ctx.resources\` (\`Resources\`) to uniwersalna tablica asocjacyjna oparta o \`TypeId\`. Służy do przechowywania dowolnych struktur Rust współdzielonych przez wiele systemów w danej sesji:`,
       codeExamples: [
         {
-          title: "Rejestracja i Odczyt Ekwipunku w Resources",
-          code: `pub struct Inventory {
-    pub gold: u32,
-    pub items: Vec<String>,
+          title: "Wstawianie i Odczyt Zasobów Globalnych",
+          code: `pub struct GameEconomy {
+    pub base_tax: f32,
+    pub merchant_discount: f32,
 }
 
-// 1. Rejestracja zasobu na starcie gry:
-engine.ctx.resources.insert(Inventory {
-    gold: 150,
-    items: vec!["Mikstura HP".into(), "Klucz do Lochu".into()],
+// 1. Wstawienie zasobu:
+ctx.resources.insert(GameEconomy {
+    base_tax: 0.15,
+    merchant_discount: 0.05,
 });
 
-// 2. Bezpieczny odczyt i mutacja w dowolnym obiekcie:
-if let Some(inv) = ctx.resources.get_mut::<Inventory>() {
-    inv.gold += 50;
-    println!("Złoto w plecaku: {}", inv.gold);
+// 2. Odczyt lub mutacja w dowolnym obiekcie:
+if let Some(economy) = ctx.resources.get::<GameEconomy>() {
+    println!("Podatek bazowy: {:.0}%", economy.base_tax * 100.0);
 }`,
           collapsible: false
         }
@@ -91,30 +76,64 @@ if let Some(inv) = ctx.resources.get_mut::<Inventory>() {
 export const stateStoreDoc = {
   id: "state-store",
   title: "8. 💾 Zmienne & Flagi Stanu (ctx.state)",
-  description: "Dynamiczny magazyn Key-Value do flag fabularnych, liczników, koordynatów i automatycznej serializacji do JSON.",
+  description: "Centralny magazyn stanu StateStore (ctx.state), operacje na typach prymitywnych, inkrementacja oraz serializacja struktur Serde.",
   sections: [
     {
       id: "state-store-main",
-      title: "Operacje na Zmiennych i Flagi",
-      content: `\`StateStore\` (\`ctx.state\`) to magazyn zmiennych stworzony pod kątem zapisu stanu gry i wyzwalaczy fabularnych:
+      title: "Magazyn Stanu Gry (StateStore)",
+      content: `\`StateStore\` (\`ctx.state\`) stanowi centralne repozytorium zmiennych, flag i struktur stanu rozgrywki dostępne w całym cyklu życia gry, serializowane do zapisu stanu rozgrywki (*savegame*).
 
-- **Liczby całkowite**: \`ctx.set_int("score", 100)\`, \`ctx.get_int("score")\`.
-- **Inkrementacja**: \`ctx.increment("score", 25) -> i64\` (zwraca nową wartość w jednej operacji!).
-- **Flagi logiczne**: \`ctx.set_flag("boss_defeated", true)\`, \`ctx.flag("boss_defeated")\`.
-- **Wektory**: \`ctx.state.set_vec2("checkpoint", pos)\`, \`ctx.state.get_vec2("checkpoint")\`.
-- **Struktury Serde**: \`ctx.state.set_struct("eq", &data)\`, \`ctx.state.get_struct::<Eq>("eq")\`.`,
+### Obsługa Typów Prymitywnych & Inkrementacja
+Magazyn operuje na silnie typowanych kluczach:
+
+- **\`Bool(bool)\`**: Flagi logiczne (\`set_bool\`, \`get_bool\`, \`toggle\`, \`ctx.flag\`, \`ctx.set_flag\`).
+- **\`Int(i64)\`**: Liczniki całkowite (\`set_int\`, \`get_int\`, \`increment -> i64\` — **zwraca zaktualizowaną wartość w jednej linijce!**).
+- **\`Float(f64)\`**: Wartości zmiennoprzecinkowe (\`set_float\`, \`get_float\`).
+- **\`Text(String)\`**: Ciągi znakowe (\`set_string\`, \`get_string\`).
+- **\`Vec2(f32, f32)\`**: Wektory 2D (\`set_vec2\`, \`get_vec2\`).`,
       codeExamples: [
         {
-          title: "Inkrementacja Punktów i Flagi Fabularne",
-          code: `// Zwiększenie wyniku o 100 i natychmiastowe zaktualizowanie UI:
-let score = ctx.increment("score", 100);
-ctx.set_ui_text("score_label", &format!("Wynik: {}", score));
+          title: "Inkrementacja i Zmienne w StateStore",
+          code: `ctx.state.set_int("score", 0);
 
-// Flaga odblokowania przejścia:
-ctx.set_flag("dungeon_gate_open", true);
+// increment zwraca zaktualizowaną wartość w jednej linijce:
+let new_score = ctx.state.increment("score", 50); // new_score == 50
+println!("Nowy wynik: {}", new_score);
 
-if ctx.flag("dungeon_gate_open") {
-    println!("Brama do lochów jest otwarta!");
+ctx.state.set_bool("tutorial_completed", true);
+ctx.state.set_vec2("checkpoint_pos", vec2(450.0, 320.0));`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "state-serde",
+      title: "Serializacja Struktur Serde (set_struct / get_struct)",
+      content: `Dowolną strukturę implementującą \`serde::Serialize\` i \`DeserializeOwned\` można bezpośrednio zapisać i odczytać z magazynu:`,
+      codeExamples: [
+        {
+          title: "Zapis i Odczyt Struktur w StateStore",
+          code: `use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+struct PlayerEquipment {
+    weapon_id: String,
+    durability: u32,
+    inventory: Vec<String>,
+}
+
+let eq = PlayerEquipment {
+    weapon_id: "sword_excalibur".into(),
+    durability: 100,
+    inventory: vec!["potion_hp".into(), "key_gold".into()],
+};
+
+// 1. Zapis struktury do formatu JSON w StateStore
+ctx.state.set_struct("equipment", &eq).unwrap();
+
+// 2. Bezpieczny odczyt
+if let Some(loaded_eq) = ctx.state.get_struct::<PlayerEquipment>("equipment") {
+    println!("Broń gracza: {}, stan: {}%", loaded_eq.weapon_id, loaded_eq.durability);
 }`,
           collapsible: false
         }
@@ -123,37 +142,30 @@ if ctx.flag("dungeon_gate_open") {
   ]
 };
 
-export const contentPipelineDoc = {
-  id: "content-pipeline",
+export const datasetsPipelineDoc = {
+  id: "datasets-pipeline",
   title: "9. 📥 Datasety JSON (Content Pipeline)",
-  description: "Wczytywanie i automatyczna deserializacja zewnętrznych plików oraz katalogów JSON bezpośrednio do struktur Rust.",
+  description: "Content Pipeline — automatyczne, generyczne ładowanie plików JSON z dysku i deserializacja do struktur Rust bez ręcznego parsowania.",
   sections: [
     {
-      id: "content-main",
-      title: "Oddzielenie Danych Gry od Kodu Źródłowego",
-      content: `Moduł \`content\` pozwala trzymać statystyki wrogów, przedmiotów i broni w czytelnych plikach JSON:
-
-- **\`load_content<T>("sciezka.json") -> Result<T, ContentError>\`**: Wczytuje pojedynczy plik JSON.
-- **\`load_content_dir<T>("katalog/") -> Result<Vec<T>, ContentError>\`**: Wczytuje wszystkie pliki JSON z folderu.`,
+      id: "pipeline-main",
+      title: "Content Pipeline — Generyczne Ładowanie JSON",
+      content: `Funkcje \`load_content<T>\` oraz \`load_content_dir<T>\` umożliwiają automatyczne wczytywanie plików JSON z dysku i deserializację do struktur Rust bez manualnego parsowania:`,
       codeExamples: [
         {
-          title: "Wczytywanie Bazy Potworów z Pliku JSON",
-          code: `use serde::Deserialize;
-use rusted_engine::prelude::*;
-
-#[derive(Clone, Debug, Deserialize)]
+          title: "Ładowanie Konfiguracji Potwora z JSON",
+          code: `#[derive(serde::Deserialize, Debug)]
 pub struct MonsterConfig {
     pub name: String,
-    pub hp: i32,
-    pub speed: f32,
-    pub attack: i32,
+    pub base_hp: i32,
+    pub attack_power: f32,
 }
 
-// Wczytanie pliku assets/data/goblin.json:
-let goblin: MonsterConfig = load_content("assets/data/goblin.json")
-    .expect("Błąd wczytywania potwora");
+// Bezpośrednie załadowanie pliku do typu MonsterConfig:
+let config: MonsterConfig = load_content("assets/data/monsters/goblin.json")
+    .expect("Nie znaleziono konfiguracji potwora");
 
-println!("Potwór: {} (HP: {}, DMG: {})", goblin.name, goblin.hp, goblin.attack);`,
+println!("Potwór: {}, HP: {}", config.name, config.base_hp);`,
           collapsible: false
         }
       ]
@@ -164,43 +176,58 @@ println!("Potwór: {} (HP: {}, DMG: {})", goblin.name, goblin.hp, goblin.attack)
 export const saveSystemDoc = {
   id: "save-system",
   title: "10. 🛡️ Zapis Gry & Suma CRC32 (SaveSystem)",
-  description: "Trwały zapis slotów na dysku z metadanymi oraz weryfikacją sumy kontrolnej CRC32 przeciw uszkodzeniom i modyfikacjom.",
+  description: "Slotowy system zapisów gry (ctx.save_system), metadane SaveSlotMeta oraz ochrona przed modyfikacją pliku sumą kontrolną CRC32.",
   sections: [
     {
       id: "save-system-main",
-      title: "Bezpieczny Zapis i Wczytywanie Slotów",
-      content: `\`SaveSystem\` (\`ctx.save_system\`) zarządza plikami zapisu gry (np. \`saves/save_slot_1.json\`).
+      title: "Slotowy System Zapisów & Ochrona CRC32",
+      content: `Komponent \`SaveSystem\` (\`ctx.save_system\`) zarządza trwałym zapisem na dysku twardym z zabezpieczeniem integralności danych:
 
-### 🛡️ Ochrona Integralności CRC32:
-Podczas zapisu liczona jest 32-bitowa suma kontrolna z bufora stanu. Przy wczytywaniu następuje weryfikacja. Ręczna modyfikacja pliku przez gracza zostanie zasygnalizowana błędem **\`SaveError::ChecksumMismatch\`**!`,
+### 1. Struktura Slotów i Metadanych (\`SaveSlotMeta\`)
+Każdy zapis to niezależny plik dyskowy (np. \`saves/save_slot_1.json\`). Metadane zawierają identyfikator slotu, etykietę użytkownika, timestamp zapisu oraz sumę kontrolną.
+
+### 2. Zabezpieczenie Anti-Tamper z Sumą Kontrolną CRC32
+Podczas zapisu silnik liczy sumę CRC32 z bufora stanu. Przy wczytywaniu następuje weryfikacja. Wszelkie ręczne modyfikacje pliku JSON zostaną wykryte i zasygnalizowane błędem \`SaveError::ChecksumMismatch\`!`,
       codeExamples: [
         {
-          title: "Zapis i Wczytanie Slotu ze Sprawdzeniem CRC32",
+          title: "Zapis i Bezpieczne Wczytanie z CRC32",
           code: `use rusted_engine::prelude::*;
 
-// 1. Zapis do slotu 1 z metadanymi:
+// 1. Zapis do slotu 1
 let meta = SaveSlotMeta {
     slot_id: 1,
-    title: "Rozdział 2 - Mroczny Las".into(),
-    playtime_seconds: ctx.time.total_time(),
+    title: "Poziom 3 - Komnata Bossa".into(),
+    playtime_seconds: 1450.0,
     timestamp: 0,
 };
-ctx.save_system.save_slot(1, &ctx.state, meta).unwrap();
+ctx.save_system.save_slot(1, &ctx.state, meta).expect("Błąd zapisu");
 
-// 2. Bezpieczne wczytanie:
+// 2. Bezpieczne wczytanie ze sprawdzeniem CRC32
 match ctx.save_system.load_slot(1) {
-    Ok((loaded_state, loaded_meta)) => {
+    Ok((loaded_state, meta)) => {
         ctx.state = loaded_state;
-        println!("Wczytano zapis: '{}' (Czas: {:.0}s)", loaded_meta.title, loaded_meta.playtime_seconds);
+        println!("Wczytano zapis: {}", meta.title);
     }
     Err(SaveError::ChecksumMismatch) => {
-        eprintln!("BŁĄD: Plik zapisu został zmodyfikowany lub uszkodzony!");
+        eprintln!("Plik zapisu został zmodyfikowany lub uszkodzony!");
     }
-    Err(e) => eprintln!("Błąd odczytu: {:?}", e),
+    Err(e) => eprintln!("Inny błąd: {:?}", e),
 }`,
           collapsible: false
         }
       ]
+    },
+    {
+      id: "save-api-table",
+      title: "API Reference: State & Save",
+      content: `| Metoda / Funkcja | Parametry | Zwraca | Opis |
+| :--- | :--- | :--- | :--- |
+| \`ctx.state.increment(key, delta)\` | \`&str, impl Into<i64>\` | \`i64\` | Zwiększa wartość całkowitą o delta i zwraca nowy wynik. |
+| \`ctx.state.set_struct(key, &struct)\` | \`&str, &T\` | \`Result<(), ...>\` | Serializuje strukturę Rust do formatu JSON w StateStore. |
+| \`ctx.state.get_struct::<T>(key)\` | \`&str\` | \`Option<T>\` | Deserializuje strukturę Rust z formatu JSON. |
+| \`ctx.save_system.save_slot(slot, state, meta)\` | \`u32, &StateStore, SaveSlotMeta\` | \`Result<(), SaveError>\` | Zapisuje stan gry do pliku z sumą CRC32. |
+| \`ctx.save_system.load_slot(slot)\` | \`u32\` | \`Result<(StateStore, SaveSlotMeta), SaveError>\` | Wczytuje stan gry z weryfikacją sumy kontrolnej CRC32. |
+| \`load_content::<T>(path)\` | \`impl AsRef<Path>\` | \`Result<T, ContentError>\` | Wczytuje i deserializuje plik JSON do typu T. |`,
     }
   ]
 };

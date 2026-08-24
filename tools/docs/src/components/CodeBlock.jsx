@@ -3,6 +3,8 @@ import { Check, Copy, Code, ChevronDown, ChevronRight } from 'lucide-react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-rust';
 import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-toml';
+import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-javascript';
 
 export function CodeBlock({ title, code, language = 'rust', collapsible = false, defaultCollapsed = true }) {

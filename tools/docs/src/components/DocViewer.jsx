@@ -10,7 +10,7 @@ import { ContextFieldsGrid } from "./ContextFieldsGrid";
 import { RichTextPlayground } from "./Playgrounds/RichTextPlayground";
 import { SequencePlayground } from "./Playgrounds/SequencePlayground";
 import { LayoutPlayground } from "./Playgrounds/LayoutPlayground";
-import { ArrowLeft, ArrowRight, Copy, Check, ArrowUp } from "lucide-react";
+import { ArrowLeft, ArrowRight, Copy, Check, ArrowUp, Link2, ArrowUpRight } from "lucide-react";
 
 const ENGINE_LIFECYCLE_STEPS = [
   {
@@ -114,11 +114,14 @@ export function DocViewer({
   doc,
   allDocs,
   onNavigateDoc,
+  onNavigateTo,
   activeSectionId,
   onSelectSection,
 }) {
   const [copiedPage, setCopiedPage] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const navigateFn = onNavigateTo || onNavigateDoc;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -142,41 +145,50 @@ export function DocViewer({
   };
 
   return (
-    <div className="flex-1 flex justify-between max-w-7xl mx-auto w-full min-w-0">
+    <div className="flex-1 flex min-w-0 bg-[#09090b]">
       {/* Main Content Area */}
-      <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-4xl overflow-y-auto w-full min-w-0">
-        {/* Breadcrumb & Header */}
-        <div className="mb-8 pb-6 border-b border-zinc-800/80">
-          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-            <div className="flex items-center gap-2 text-xs font-medium text-zinc-400 min-w-0">
-              <span>Docs</span>
-              <span>/</span>
-              <span className="text-zinc-200 truncate">{doc.title}</span>
-            </div>
-
-            <button
-              onClick={handleCopyPageLink}
-              className="flex items-center gap-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-xs text-zinc-300 transition-colors cursor-pointer shrink-0"
-            >
-              {copiedPage ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400 font-medium">
-                    Skopiowano link
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>Kopiuj link</span>
-                </>
-              )}
-            </button>
+      <main className="flex-1 min-w-0 max-w-4xl px-4 sm:px-8 py-8 mx-auto">
+        {/* Breadcrumb & Quick Actions */}
+        <div className="flex items-center justify-between gap-4 mb-6 text-xs text-zinc-400">
+          <div className="flex items-center gap-1.5 overflow-hidden">
+            <span className="text-zinc-500">Docs</span>
+            <span>/</span>
+            <span className="text-zinc-200 font-semibold truncate">
+              {doc.title}
+            </span>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-100 tracking-tight mb-2.5">
-            {doc.title}
-          </h1>
+          <button
+            onClick={handleCopyPageLink}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer shrink-0"
+            title="Kopiuj link do strony"
+          >
+            {copiedPage ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400 font-medium">Skopiowano link</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Kopiuj link</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Document Header */}
+        <div className="mb-10 pb-6 border-b border-zinc-800/80">
+          <div className="flex items-center gap-3 mb-3">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-100 tracking-tight">
+              {doc.title}
+            </h1>
+            {doc.badge && (
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 shrink-0">
+                {doc.badge}
+              </span>
+            )}
+          </div>
           <p className="text-[14px] sm:text-[15px] text-zinc-300 leading-relaxed font-normal">
             {doc.description}
           </p>
@@ -191,25 +203,27 @@ export function DocViewer({
               </h2>
 
               <div className="my-3">
-                <MarkdownRenderer content={section.content} />
+                <MarkdownRenderer content={section.content} onNavigate={navigateFn} />
               </div>
 
               {/* Custom Visual Cards & Flow Component Extensions */}
-              {doc.id === "getting-started" &&
-                section.id === "engine-lifecycle" && (
+              {(doc.id === "getting-started" || doc.id === "lifecycle" || doc.id === "quickstart") &&
+                (section.id === "engine-lifecycle" || section.id === "lifecycle-order" || section.id === "lifecycle-main") && (
                   <PipelineFlow steps={ENGINE_LIFECYCLE_STEPS} />
                 )}
 
-              {doc.id === "getting-started" &&
-                section.id === "context-struct" && <ContextFieldsGrid />}
+              {(doc.id === "getting-started" || doc.id === "context") &&
+                (section.id === "context-struct" || section.id === "context-main" || section.id === "context-shortcuts") && (
+                  <ContextFieldsGrid />
+                )}
 
-              {doc.id === "world-objects" &&
-                section.id === "world-structure" && (
+              {(doc.id === "world-objects" || doc.id === "world-layers") &&
+                (section.id === "world-structure" || section.id === "world-layers-main" || section.id === "layers-overview") && (
                   <FeatureGrid items={WORLD_LAYERS_CARDS} />
                 )}
 
-              {doc.id === "world-objects" &&
-                section.id === "behavior-and-wrappers" && (
+              {(doc.id === "world-objects" || doc.id === "behavior") &&
+                (section.id === "behavior-and-wrappers" || section.id === "behavior-main") && (
                   <FeatureGrid items={BEHAVIOR_WRAPPER_CARDS} />
                 )}
 
@@ -246,6 +260,37 @@ export function DocViewer({
                   />
                 ))}
 
+              {/* Related Topics / Cross-Links */}
+              {section.related && section.related.length > 0 && (
+                <div className="my-6 p-4 rounded-xl bg-zinc-900/60 border border-zinc-800/80 shadow-xs">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-400 mb-3">
+                    <Link2 className="w-3.5 h-3.5" />
+                    <span>Powiązane Rozdziały & Szczegółowe Informacje</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {section.related.map((rel, rIdx) => (
+                      <button
+                        key={rIdx}
+                        onClick={() => navigateFn(rel.docId, rel.sectionId)}
+                        className="flex items-start gap-2.5 p-3 rounded-lg bg-zinc-950/80 hover:bg-zinc-800/90 border border-zinc-800/90 hover:border-amber-500/40 text-left transition-all cursor-pointer group"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-semibold text-zinc-200 group-hover:text-amber-400 flex items-center justify-between">
+                            <span className="truncate">{rel.title}</span>
+                            <ArrowUpRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-amber-400 transition-transform group-hover:translate-x-0.5 shrink-0" />
+                          </div>
+                          {rel.description && (
+                            <p className="text-[11.5px] text-zinc-400 line-clamp-1 mt-0.5">
+                              {rel.description}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* API Table */}
               {section.apiTable && (
                 <ApiTable
@@ -255,15 +300,18 @@ export function DocViewer({
               )}
 
               {/* Interactive Playgrounds */}
-              {doc.id === "ui-system" && section.id === "widgets-overview" && (
-                <RichTextPlayground />
-              )}
-              {doc.id === "ui-system" && section.id === "flexbox-layout" && (
-                <LayoutPlayground />
-              )}
-              {doc.id === "sequence" && section.id === "sequence-overview" && (
-                <SequencePlayground />
-              )}
+              {(doc.id === "ui-system" || doc.id === "ui-widgets") &&
+                (section.id === "widgets-overview" || section.id === "ui-widgets-main" || section.id === "rich-text-bbcode") && (
+                  <RichTextPlayground />
+                )}
+              {(doc.id === "ui-system" || doc.id === "ui-layout") &&
+                (section.id === "flexbox-layout" || section.id === "ui-layout-main") && (
+                  <LayoutPlayground />
+                )}
+              {(doc.id === "sequence" || doc.id === "sequences") &&
+                (section.id === "sequence-overview" || section.id === "sequences-main") && (
+                  <SequencePlayground />
+                )}
 
               {/* Subsections */}
               {section.subsections && section.subsections.length > 0 && (

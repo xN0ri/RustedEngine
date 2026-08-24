@@ -11,13 +11,13 @@ export const allDocs = [
   Core.lifecycleDoc,
   Core.contextDoc,
   Core.worldLayersDoc,
-  Core.behaviorsDoc,
+  Core.behaviorDoc,
 
   // 2. Stan, Dane & Zapis
   Data.entityDataDoc,
   Data.resourcesDoc,
   Data.stateStoreDoc,
-  Data.contentPipelineDoc,
+  Data.datasetsPipelineDoc,
   Data.saveSystemDoc,
 
   // 3. Logika, Zdarzenia & Wejście

@@ -107,6 +107,7 @@ export function App() {
           doc={activeDoc}
           allDocs={allDocs}
           onNavigateDoc={handleSelectDoc}
+          onNavigateTo={handleSelectResult}
           activeSectionId={activeSectionId}
           onSelectSection={handleSelectSection}
         />
