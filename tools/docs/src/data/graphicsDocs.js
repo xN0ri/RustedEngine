@@ -71,7 +71,7 @@ export const virtualResolutionDoc = {
 
 export const tilemapsDoc = {
   id: "tilemaps",
-  title: "20. 🧱 Siatki Kafelkowe & Rampy 45° (Tilemap)",
+  title: "23. 🧱 Siatki Kafelkowe & Rampy 45° (Tilemap)",
   description: "Wczytywanie poziomów z ASCII, kształty kolizji TileCollision (rampy 45°, platformy OneWay, półpłytki) i przyklejanie do zboczy.",
   sections: [
     {
@@ -139,44 +139,111 @@ if let Some(surface_y) = map.get_slope_surface_y(foot_pos) {
 
 export const particlesDoc = {
   id: "particles",
-  title: "21. ✨ Emiter Cząsteczek & VFX (Particles)",
-  description: "Fizyczny system cząsteczek 2D z grawitacją, wybuchami burst, ciągłym śladem i auto-usuwaniem ze świata.",
+  title: "21. ✨ System Cząsteczek 2D (ParticleEmitter)",
+  badge: "Visual Effects",
+  description: "Zaawansowany emiter cząsteczek 2D z integracją grawitacji, stopniowym wygasaniem alfy i rozmiaru, fizyką prędkości, emisją ciągłą i wybuchową oraz auto-destrukcją.",
   sections: [
     {
-      id: "particles-main",
-      title: "Wybuchy, Ślady i Automatyczne Sprzątanie Pamięci",
-      content: `\`ParticleEmitter\` generuje efekty cząsteczkowe ze wsparciem grawitacji i cyklu życia:
+      id: "particles-overview",
+      title: "Architektura i Fizyka Cząsteczek",
+      content: `System cząsteczek w RustedEngine opiera się na strukturach **\`ParticleEmitter\`** oraz **\`Particle\`**.
 
-- **\`with_auto_destroy()\`**: Po wygaśnięciu wszystkich cząsteczek emiter sam usuwa się ze świata gry!
-- **\`emit_burst(pos, count, color, speed_range, size, lifetime)\`**: Jednorazowy wybuch cząstek.
-- **\`with_gravity(vec2)\`**: Grawitacja działająca na cząsteczki (np. opadający pył).`,
+### Fizyka i Cykl Życia Cząsteczki:
+Każda pojedyncza cząsteczka w buforze posiada:
+- **\`position: Vec2\`** — aktualną pozycję w świecie 2D.
+- **\`velocity: Vec2\`** — wektor prędkości (aktualizowany co klatkę o \`gravity * dt\`).
+- **\`lifetime / max_lifetime: f32\`** — czas pozostały do wygasznięcia.
+- **Wygaszanie promienia (Size Ratio)** — promień cząsteczki rysowany jest jako \`size * (lifetime / max_lifetime)\` — zmniejsza się płynnie do zera.
+- **Zzanikanie przezroczystości (Alpha Fade)** — przezroczystość koloru skaluje się z pozostałym czasem: \`color.a *= ratio\`.
+
+### 2 Tryby Emisji:
+1. **Emisja Wybuchowa (\`emit_burst\`)** — natychmiastowe wystrzelenie $N$ cząsteczek we wszystkich kierunkach (np. eksplozje, trafienia mieczem, iskry).
+2. **Emisja Ciągła (\`emit_continuous\`)** — akumulator emitujący $N$ cząsteczek na sekundę (np. dym z komina, ogień silnika, deszcz, pył).
+
+### Automatyczne Sprzątanie Pamięci (Auto-Destroy):
+Flaga **\`with_auto_destroy()\`** instruuje silnik, że emiter ma zostać automatycznie usunięty ze świata gry po wygaszeniu wszystkich wyemitowanych cząsteczek (\`is_destroyed() == true\`). Eliminuje to potrzebę ręcznego usuwania obiektów efektów!`,
       codeExamples: [
         {
-          title: "Efekt Wybuchu Iskrzenia i Ślad Pocisku",
-          code: `// 1. Wybuch iskier z punktu trafienia:
-let mut spark_burst = ParticleEmitter::new()
-    .with_gravity(vec2(0.0, 200.0))
+          title: "1. Wybuch Iskrzenia po Trafieniu (Radial Burst)",
+          code: `use rusted_engine::prelude::*;
+use macroquad::prelude::*;
+
+// Tworzymy jednorazowy emiter iskier opadających z grawitacją:
+let mut sparks = ParticleEmitter::new()
+    .with_gravity(vec2(0.0, 250.0)) // Grawitacja ciągnie iskry w dół
+    .with_auto_destroy();           // Auto-delete po zgaśnięciu iskier
+
+// Wystrzel 30 cząsteczek o prędkości 80..220 px/s, promieniu 3.5px i czasie życia 0.45s:
+sparks.emit_burst(hit_position, 30, YELLOW, (80.0, 220.0), 3.5, 0.45);
+
+// Spawnowanie w świecie — emiter usunie się sam po 0.45s:
+ctx.spawn(sparks);`,
+          collapsible: false
+        },
+        {
+          title: "2. Ciągły Ślad Dymu i Ognia za Rakietą (Continuous Emission)",
+          code: `// Emiter ciągły podpięty pod pocisk rakietowy:
+pub struct RocketData {
+    pub emitter: ParticleEmitter,
+}
+
+// W update() rakiety:
+let smoke_color = Color::new(0.6, 0.6, 0.6, 0.8);
+
+// Emituj 40 cząsteczek na sekundę z tyłu rakiety:
+rocket.data.emitter.emit_continuous(
+    rocket.position - rocket.facing * 12.0, // Pozycja wylotu silnika
+    40.0,                                   // Rate: 40 cząsteczek/s
+    ctx.dt(),
+    smoke_color,
+    (15.0, 40.0),                           // Wolny dym
+    4.0,                                    // Promień 4px
+    0.8                                     // Czas trwania 0.8s
+);
+
+// Aktualizacja emitera zachodzi automatycznie jeśli dodasz go do świata,
+// lub ręcznie wywołując emitter.update(ctx) wewnątrz encji rakiety.`,
+          collapsible: false
+        },
+        {
+          title: "3. Magiczny Pył i Efekt Level-Up",
+          code: `// Pierścień złotych gwiazdek wznoszących się w górę:
+let mut level_up_fx = ParticleEmitter::new()
+    .with_gravity(vec2(0.0, -90.0)) // Ujemna grawitacja = cząsteczki lecą w górę!
     .with_auto_destroy();
 
-spark_burst.emit_burst(hit_pos, 25, ORANGE, (90.0, 240.0), 3.0, 0.4);
-ctx.spawn(spark_burst);
-
-// 2. Ciągły ślad dymu za rakietą w update pocisku:
-if rocket.data.timer.tick(ctx.dt()) {
-    let mut smoke = ParticleEmitter::new().with_auto_destroy();
-    smoke.emit_burst(rocket.position, 3, DARKGRAY, (10.0, 30.0), 4.0, 0.6);
-    ctx.spawn(smoke);
-}`,
-          collapsible: false
+level_up_fx.emit_burst(player.position, 60, GOLD, (40.0, 120.0), 5.0, 1.2);
+ctx.play_sound("level_up_fanfare");
+ctx.spawn(level_up_fx);`,
+          collapsible: true,
+          defaultCollapsed: true
         }
       ]
+    },
+    {
+      id: "particles-api",
+      title: "API Reference: ParticleEmitter",
+      apiTable: {
+        headers: ["Metoda / Konstruktor", "Parametry", "Zwraca", "Opis"],
+        rows: [
+          ["ParticleEmitter::new()", "brak", "ParticleEmitter", "Tworzy pusty emiter cząsteczek z zerową grawitacją."],
+          [".with_gravity(vec2)", "Vec2", "Self", "Ustawia wektor grawitacji (np. vec2(0.0, 200.0))."],
+          [".with_auto_destroy()", "brak", "Self", "Włącza automatyczne niszczenie obiektu gdy brak cząstek."],
+          [".set_auto_destroy(bool)", "bool", "()", "Przełącza tryb auto-destroy."],
+          [".emit_burst(pos, count, color, speed_range, size, lifetime)", "Vec2, usize, Color, (f32,f32), f32, f32", "()", "Emituje radjalny wybuch N cząsteczek z podanymi parametrami."],
+          [".emit_continuous(pos, rate_per_sec, dt, color, ...)", "Vec2, f32, f32, Color, ...", "()", "Emituje ciągły strumień cząsteczek z zadana częstotliwością per sekunda."],
+          [".active_particles_count()", "brak", "usize", "Zwraca liczbę aktualnie żywych cząsteczek w emiterze."],
+          [".is_destroyed()", "brak", "bool", "Zwraca true gdy auto_destroy=true i wszystkie cząstki wygasły."],
+        ]
+      }
     }
   ]
 };
 
 export const uiWidgetsDoc = {
   id: "ui-widgets",
-  title: "22. 🖥️ Katalog Widgetów UI & BBCode",
+  title: "25. 🖥️ Katalog Widgetów UI & BBCode",
+  badge: "UI System",
   description: "Kompletna architektura interfejsu użytkownika: dualny system współrzędnych, bogaty katalog widgetów, BBCode oraz Desktop Window Manager (PanelManager).",
   sections: [
     {
@@ -296,7 +363,7 @@ world.add_ui(pm);`,
 
 export const uiLayoutDoc = {
   id: "ui-layout",
-  title: "23. 📐 Silnik Layoutu Flexbox (Column, Row, Grid)",
+  title: "26. 📐 Silnik Layoutu Flexbox (Column, Row, Grid)",
   description: "Deklaratywny silnik layoutu Flexbox inspirowany frameworkiem Flutter, kontenery Column, Row, Grid, marginesy, padding i osie.",
   sections: [
     {
@@ -352,7 +419,7 @@ export const uiLayoutDoc = {
 
 export const audioSfxDoc = {
   id: "audio-sfx",
-  title: "24. 🎵 Audio, SFX & Zasoby (Sound)",
+  title: "28. 🎵 Audio, SFX & Zasoby (Sound)",
   description: "Odtwarzanie dźwięków z losową wariacją tonu, ochrona przed przesterowaniem (throttler) oraz muzyka w tle.",
   sections: [
     {

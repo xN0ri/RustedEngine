@@ -18,6 +18,7 @@ const CATEGORIES = [
     title: "Architektura & Rdzeń",
     icon: BookOpen,
     accent: "text-sky-400",
+    dotColor: "#38bdf8",
     docIds: ["quickstart", "lifecycle", "context", "world-layers", "behaviors"],
   },
   {
@@ -25,6 +26,7 @@ const CATEGORIES = [
     title: "Stan, Dane & Zapis",
     icon: Database,
     accent: "text-amber-400",
+    dotColor: "#f59e0b",
     docIds: [
       "entity-data",
       "resources",
@@ -38,6 +40,7 @@ const CATEGORIES = [
     title: "Logika, Zdarzenia & Wejście",
     icon: Zap,
     accent: "text-yellow-400",
+    dotColor: "#facc15",
     docIds: [
       "event-bus",
       "input-actions",
@@ -53,13 +56,18 @@ const CATEGORIES = [
     title: "Grafika, UI & Audio",
     icon: Layers,
     accent: "text-emerald-400",
+    dotColor: "#34d399",
     docIds: [
       "camera",
       "virtual-resolution",
+      "postprocess",
+      "animated-sprite",
+      "bitmap-font",
       "tilemaps",
       "particles",
       "ui-widgets",
       "ui-layout",
+      "panel-manager",
       "audio-sfx",
     ],
   },
@@ -68,6 +76,7 @@ const CATEGORIES = [
     title: "Gotowe Mechaniki Gry",
     icon: Crosshair,
     accent: "text-rose-400",
+    dotColor: "#fb7185",
     docIds: [
       "melee-combat",
       "shooting-weapons",
@@ -81,6 +90,7 @@ const CATEGORIES = [
     title: "Kompletne Gry",
     icon: Gamepad2,
     accent: "text-purple-400",
+    dotColor: "#c084fc",
     docIds: ["game-survivor", "game-rpg-quest", "game-platformer"],
   },
 ];
@@ -96,7 +106,6 @@ export function Sidebar({
 }) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Szybkie filtrowanie tematów
   const filteredDocs = useMemo(() => {
     if (!searchQuery.trim()) return docs;
     const q = searchQuery.toLowerCase().trim();
@@ -127,7 +136,7 @@ export function Sidebar({
             : "fixed -translate-x-full md:translate-x-0 md:sticky md:top-14"
         }`}
       >
-        {/* Instant Clean Filter */}
+        {/* Search */}
         <div className="mb-4">
           <div className="relative flex items-center">
             <Search className="w-3.5 h-3.5 absolute left-3 text-zinc-500 pointer-events-none" />
@@ -149,7 +158,7 @@ export function Sidebar({
           </div>
         </div>
 
-        {/* Categorized List with Distinct Sections */}
+        {/* Categorized List */}
         <div className="space-y-4 flex-1">
           {CATEGORIES.map((cat, idx) => {
             const categoryDocs = filteredDocs.filter((d) =>
@@ -158,22 +167,30 @@ export function Sidebar({
             if (categoryDocs.length === 0) return null;
 
             const Icon = cat.icon;
+            const hasActiveCat = categoryDocs.some((d) => d.id === activeDocId);
 
             return (
               <div
                 key={cat.id}
-                className={`space-y-1.5 ${
-                  idx > 0 ? "pt-3.5 border-t border-zinc-800/80" : ""
-                }`}
+                className={`space-y-1 ${idx > 0 ? "pt-3.5 border-t border-zinc-800/80" : ""}`}
               >
-                {/* Clean Typographic Category Header */}
-                <div className="flex items-center justify-between px-2 pt-2 pb-1">
+                {/* Category Header */}
+                <div className="flex items-center justify-between px-2 pt-1.5 pb-1">
                   <div className="flex items-center gap-2">
                     <Icon className={`w-3.5 h-3.5 ${cat.accent}`} />
                     <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300/95">
                       {cat.title}
                     </span>
                   </div>
+                  <span
+                    className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md border ${
+                      hasActiveCat
+                        ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
+                        : "text-zinc-600 bg-zinc-900/60 border-zinc-800/60"
+                    }`}
+                  >
+                    {categoryDocs.length}
+                  </span>
                 </div>
 
                 {/* Docs in Category */}
@@ -188,29 +205,43 @@ export function Sidebar({
                             onSelectDoc(doc.id);
                             if (onClose) onClose();
                           }}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-between cursor-pointer group ${
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-2 cursor-pointer group ${
                             isActive
                               ? "bg-zinc-800/90 text-zinc-100 font-semibold shadow-xs border border-zinc-700/70"
                               : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
                           }`}
                         >
-                          <span className="truncate pr-1">{doc.title}</span>
+                          {/* Active indicator dot */}
+                          {isActive ? (
+                            <span
+                              className="sidebar-active-dot shrink-0"
+                              style={{
+                                background: `radial-gradient(circle, ${cat.dotColor}, #f59e0b)`,
+                                boxShadow: `0 0 6px ${cat.dotColor}99`,
+                              }}
+                            />
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-800 group-hover:bg-zinc-600 transition-colors shrink-0" />
+                          )}
+
+                          <span className="truncate flex-1 pr-1">{doc.title}</span>
+
                           {isActive &&
                           doc.sections &&
                           doc.sections.length > 1 ? (
                             <ChevronDown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          ) : isActive ? (
-                            <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                           ) : (
-                            <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 shrink-0" />
+                            <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-colors ${isActive ? "text-amber-400" : "text-zinc-700 group-hover:text-zinc-500"}`} />
                           )}
                         </button>
 
-                        {/* Active Document Sections (if multiple) */}
+                        {/* Active Document Sections */}
                         {isActive &&
                           doc.sections &&
                           doc.sections.length > 1 && (
-                            <div className="pl-2.5 py-1 space-y-0.5 border-l border-zinc-800/90 ml-3.5 my-1">
+                            <div className="pl-2.5 py-1 space-y-0.5 border-l-2 border-zinc-800/90 ml-3.5 my-1"
+                              style={{ borderColor: `${cat.dotColor}33` }}
+                            >
                               {doc.sections.map((sec, secIdx) => (
                                 <button
                                   key={sec.id}
@@ -219,14 +250,14 @@ export function Sidebar({
                                       onSelectSection(sec.id);
                                     if (onClose) onClose();
                                   }}
-                                  className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11.5px] transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11.5px] transition-all flex items-center gap-2 cursor-pointer ${
                                     activeSectionId === sec.id
                                       ? "text-amber-400 font-semibold bg-amber-500/10"
-                                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+                                      : "text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900/40"
                                   }`}
                                 >
-                                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">
-                                    §{secIdx + 1}
+                                  <span className="text-[10px] font-mono text-zinc-700 shrink-0 w-4 text-right">
+                                    {secIdx + 1}
                                   </span>
                                   <span className="truncate">{sec.title}</span>
                                 </button>
@@ -245,7 +276,7 @@ export function Sidebar({
         {/* Footer Meta */}
         <div className="pt-3 mt-4 border-t border-zinc-800/80">
           <div className="flex items-center justify-between text-xs text-zinc-400 px-2">
-            <span>RustedEngine</span>
+            <span className="text-zinc-500">RustedEngine</span>
             <span className="font-mono text-amber-400 font-semibold bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800 text-[11px]">
               v1.0.0
             </span>

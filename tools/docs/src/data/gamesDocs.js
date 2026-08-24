@@ -1,10 +1,11 @@
 // ============================================================================
-// 6. KOMPLETNE PROJEKTY GIER
+// 6. KOMPLETNE PROJEKTY GIER — ROZBUDOWANE
 // ============================================================================
 
 export const gameSurvivorDoc = {
   id: "game-survivor",
-  title: "30. 🏹 Arena Survivor (Top-Down)",
+  title: "34. 🏹 Arena Survivor (Top-Down)",
+  badge: "Complete Game",
   description: "Kompletna, modularna architektura gry typu Vampire Survivors zrealizowana w 100% z wykorzystaniem wzorców RustedEngine.",
   sections: [
     {
@@ -61,155 +62,97 @@ struct PlayerData {
     pub shoot_cooldown: f32,
 }
 
-struct BulletData {
-    pub velocity: Vec2,
-    pub lifetime: f32,
-}
-
 struct EnemyData {
-    pub speed: f32,
     pub hp: i32,
-}
-
-struct DamagePopupData {
-    pub lifetime: f32,
+    pub speed: f32,
 }
 
 // =======================================================================
-// 3. FABRYKI ENCJI
+// 3. ENCJE I LOGIKA
 // =======================================================================
+fn build_player() -> impl Object {
+    Sprite::solid(vec2(320.0, 180.0), vec2(18.0, 18.0), SKYBLUE)
+        .with_data(PlayerData { speed: 200.0, hp: 100, shoot_cooldown: 0.0 })
+        .update(|p, ctx| {
+            // Ruch WASD:
+            p.position += ctx.input.wasd() * p.data.speed * ctx.dt();
 
-/// Tworzy postać gracza z logiką sterowania i strzelania
-fn create_player() -> impl Object {
-    Sprite::solid(vec2(320.0, 180.0), vec2(24.0, 24.0), BLUE)
-        .with_data(PlayerData {
-            speed: 200.0,
-            hp: 100,
-            shoot_cooldown: 0.0,
-        })
-        .with_tag("player")
-        .update(|player, ctx| {
-            // Ruch wektorowy WASD
-            let dir = ctx.input.wasd();
-            player.position += dir * player.data.speed * ctx.dt();
+            // Obrót w stronę kursora:
+            p.look_at(ctx.mouse_world());
 
-            // Płynny obrót w stronę kursora myszy
-            let mouse_pos = ctx.mouse_world();
-            player.look_at(mouse_pos);
-
-            // Cooldown strzelania
-            if player.data.shoot_cooldown > 0.0 {
-                player.data.shoot_cooldown -= ctx.dt();
+            // Strzelanie z cooldownem:
+            p.data.shoot_cooldown -= ctx.dt();
+            if ctx.mouse_down(Side::Left) && p.data.shoot_cooldown <= 0.0 {
+                p.data.shoot_cooldown = 0.18;
+                let dir = (ctx.mouse_world() - p.position).normalize_or_zero();
+                ctx.spawn(build_bullet(p.position, dir));
+                ctx.play_sound_varied("shoot", 0.05, 0.08);
             }
 
-            // Strzał na lewy przycisk myszy
-            if ctx.mouse_down(Side::Left) && player.data.shoot_cooldown <= 0.0 {
-                player.data.shoot_cooldown = 0.15; // 6 strzałów/sekundę
+            // Kamera śledzi gracza:
+            ctx.camera.follow(p.position, 6.0, ctx.dt());
 
-                let bullet_dir = player.center().dir_to(mouse_pos);
-                let bullet = Sprite::solid(player.center() - vec2(4.0, 4.0), vec2(8.0, 8.0), YELLOW)
-                    .with_data(BulletData {
-                        velocity: bullet_dir * 450.0,
-                        lifetime: 1.5,
-                    })
-                    .with_tag("bullet")
-                    .update(|bullet, ctx| {
-                        bullet.position += bullet.data.velocity * ctx.dt();
-                        bullet.data.lifetime -= ctx.dt();
-
-                        if bullet.data.lifetime <= 0.0 {
-                            bullet.destroy();
-                        }
-                    });
-
-                ctx.spawn(bullet);
-                ctx.play_sound_varied("laser_shoot", 0.1, 0.1);
-            }
-
-            // Zapis pozycji do stanu gry (by wrogowie wiedzieli gdzie iść)
-            ctx.state.set_vec2("player_pos", player.center());
-        })
-}
-
-/// Tworzy przeciwnika śledzącego gracza
-fn create_enemy(spawn_pos: Vec2) -> impl Object {
-    Sprite::solid(spawn_pos, vec2(20.0, 20.0), RED)
-        .with_data(EnemyData {
-            speed: random_range(90.0, 130.0),
-            hp: 30,
-        })
-        .with_tag("enemy")
-        .update(|enemy, ctx| {
-            let player_pos = ctx.state.get_vec2("player_pos").unwrap_or(vec2(320.0, 180.0));
-            enemy.look_at(player_pos);
-            enemy.move_towards(player_pos, enemy.data.speed * ctx.dt());
-
-            // Kolizja wroga z pociskami
-            if enemy.data.hp <= 0 {
-                enemy.destroy();
-                ctx.emit(EnemyKilled {
-                    score: 100,
-                    pos: enemy.center(),
-                });
+            // Śmierć:
+            if p.data.hp <= 0 {
+                ctx.emit(PlayerDied { reason: "Defeated by enemies" });
+                p.destroy();
             }
         })
 }
 
-// =======================================================================
-// 4. KONTROLERY LOGIKI (SYSTEMS)
-// =======================================================================
-
-/// Spawner fal generujący wrogów w pierścieniu wokół gracza
-fn create_wave_spawner() -> impl Object {
-    Logic::interval(1.2, |ctx| {
-        let player_pos = ctx.state.get_vec2("player_pos").unwrap_or(vec2(320.0, 180.0));
-        // Losowanie pozycji w pierścieniu 300-450px od gracza
-        let spawn_offset = random_in_annulus(300.0, 450.0);
-        ctx.spawn(create_enemy(player_pos + spawn_offset));
-    })
+fn build_bullet(origin: Vec2, dir: Vec2) -> impl Object {
+    Sprite::solid(origin, vec2(6.0, 6.0), YELLOW)
+        .with_data((dir * 480.0, 0.0_f32)) // (velocity, lifetime)
+        .update(|b, ctx| {
+            b.position += b.data.0 * ctx.dt();
+            b.data.1 += ctx.dt();
+            if b.data.1 > 2.5 { b.destroy(); }
+        })
 }
 
-/// Kontroler reguł gry (zbiera zdarzenia i nalicza punkty)
-fn create_game_rules() -> impl Object {
-    Logic::run(|ctx| {
-        // Obsługa zniszczenia wrogów
-        for killed in ctx.poll::<EnemyKilled>() {
-            let new_score = ctx.increment("score", killed.score as i64);
-            ctx.set_ui_text("score_label", &format!("Wynik: {}", new_score));
+fn build_enemy(pos: Vec2) -> impl Object {
+    Sprite::solid(pos, vec2(16.0, 16.0), DARKGRAY)
+        .with_data(EnemyData { hp: 40, speed: 75.0 })
+        .update(|e, ctx| {
+            let player_pos = ctx.resources.get::<Vec2>().copied().unwrap_or(Vec2::ZERO);
+            let dir = (player_pos - e.position).normalize_or_zero();
+            e.position += dir * e.data.speed * ctx.dt();
+            if e.data.hp <= 0 {
+                ctx.emit(EnemyKilled { score: 100, pos: e.position });
+                e.destroy();
+            }
+        })
+}
 
-            // Spawnowanie pływającego tekstu z punktami w przestrzeni UI
-            let popup = Text::new(&format!("+{}", killed.score), killed.pos, 14.0, GOLD)
-                .with_data(DamagePopupData { lifetime: 0.6 })
-                .update(|p, ctx| {
-                    p.position.y -= 30.0 * ctx.dt();
-                    p.data.lifetime -= ctx.dt();
-                    if p.data.lifetime <= 0.0 {
-                        p.destroy();
-                    }
-                });
-            ctx.spawn_ui(popup);
+#[macroquad::main(Engine::conf("Arena Survivor", 1280, 720))]
+async fn main() {
+    // Wave spawner — Logic controller:
+    let wave_spawner = Logic::run(|ctx| {
+        // Co 2.5s spawnuj wrogów w pierścieniu 300-450px od gracza:
+        if ctx.every(2.5) {
+            let player_pos = ctx.resources.get::<Vec2>().copied().unwrap_or(Vec2::ZERO);
+            for _ in 0..3 {
+                let pos = player_pos + random_in_annulus(300.0, 450.0);
+                ctx.spawn(build_enemy(pos));
+            }
         }
+    });
 
-        // Obsługa zgonu gracza
-        for death in ctx.poll::<PlayerDied>() {
-            println!("Gracz zginął: {}", death.reason);
+    // Game rules controller — odbiera zdarzenia:
+    let rules_ctrl = Logic::run(|ctx| {
+        for _death in ctx.poll::<PlayerDied>() {
             ctx.switch_scene("GameOver");
         }
-    })
-}
-
-// =======================================================================
-// 5. GŁÓWNY PUNKT WEJŚCIA APLIKACJI
-// =======================================================================
-#[macroquad::main(Engine::conf("Arena Survivor v1.0", 1280, 720))]
-async fn main() {
-    let hud_score = Text::new("Wynik: 0", vec2(20.0, 20.0), 22.0, WHITE)
-        .with_tag("score_label");
+        for kill in ctx.poll::<EnemyKilled>() {
+            let new_score = ctx.increment("score", kill.score as i64);
+            ctx.set_ui_text("score_label", &format!("Score: {}", new_score));
+        }
+    });
 
     let game_scene = Scene::new("Game", world! {
-        objects: [create_player()],
-        ui:      [hud_score],
-        logic:   [create_wave_spawner(), create_game_rules()],
+        objects:  [build_player()],
+        ui_objects: [],
+        logic:    [wave_spawner, rules_ctrl],
     });
 
     let mut engine = Engine::new(vec![
@@ -230,16 +173,29 @@ async fn main() {
 
 export const gameRpgQuestDoc = {
   id: "game-rpg-quest",
-  title: "31. 📜 RPG Quest & Dialogi NPC",
-  description: "Złożony system dialogów z NPC, branchingiem fabularnym, questami oraz zapisem postępu w SaveSystem.",
+  title: "35. 📜 RPG Quest & Dialogi NPC",
+  badge: "Complete Game",
+  description: "Złożony system dialogów z NPC, branchingiem fabularnym, questami, zapisem postępu oraz logiką warunkową Trigger opartą na flagach.",
   sections: [
     {
-      id: "rpg-main",
-      title: "Kompletny Kod Gry: RPG Quest",
-      content: `Poniższy kod prezentuje interakcję z NPC, sekwencję dialogową i przyznanie nagrody:`,
+      id: "rpg-architecture",
+      title: "Architektura Gry RPG Quest",
+      content: `Ten przykład demonstruje kluczowe wzorce budowania gier fabularnych w RustedEngine:
+
+### Kluczowe Systemy:
+- **Dialogi NPC z Sequencami** — \`Sequence\` jako linearna narracja kroków: pokaż tekst → czekaj na Enter → uruchom akcję Rust → kontynuuj.
+- **System Questów przez \`StateStore\`** — każdy quest to flaga bool (\`ctx.set_flag("quest_started", true)\`) i licznik postępu (\`ctx.increment("kills", 1)\`).
+- **Warunkowy Branching przez \`Trigger\`** — \`Trigger::when_flag_true("quest_done", act)\` automatycznie otwiera skrzynię nagrody gdy warunek spełniony.
+- **Zapis Postępu przez \`SaveSystem\`** — cały stan \`StateStore\` (questy, złoto, pozycja) serializowany do slotu zapisu z sumą CRC32.
+
+> [!TIP]
+> Dialogi NPC jako \`Sequence\` zamiast twardego kodu w \`update()\` dają ogromną elastyczność — łatwo dodać rozgałęzienia, animacje, fade-iny bez modyfikacji encji NPC. Każdy dialog to osobny \`Sequence\` spawnowany przez \`ctx.spawn_logic()\`.
+
+> [!NOTE]
+> Zadbaj o flagę \`ctx.has_flag("dialog_active")\` przed spawnowaniem dialogu — bez tego wciśnięcie E wielokrotnie spawna wiele równoległych sekwencji.`,
       codeExamples: [
         {
-          title: "src/main.rs (RPG Quest)",
+          title: "Kompletny Setup Sceny RPG z NPC i Dialogiem",
           code: `use rusted_engine::prelude::*;
 use macroquad::prelude::*;
 
@@ -254,16 +210,21 @@ async fn main() {
     let npc = Sprite::solid(vec2(320.0, 200.0), vec2(28.0, 28.0), GOLD)
         .update(|npc, ctx| {
             let dist = npc.position.distance(ctx.camera.target);
-            if ctx.input.is_key_pressed(KeyCode::E) && dist < 65.0 {
+            let already_talking = ctx.has_flag("dialog_active");
+
+            if ctx.input.is_key_pressed(KeyCode::E) && dist < 65.0 && !already_talking {
+                ctx.set_flag("dialog_active", true);
+
                 let dialog = Sequence::new(vec![
-                    Step::show_text("dialog_box", "Mędrcze: Witaj wędrowcze! Północne ruiny są w niebezpieczeństwie."),
+                    Step::show_text("dialog_box", "Witaj wędrowcze! Północne ruiny są w niebezpieczeństwie."),
                     Step::wait_for_input(),
-                    Step::show_text("dialog_box", "Mędrcze: Weź ten miecz i 150 sztuk złota na drogę."),
+                    Step::show_text("dialog_box", "Weź ten miecz i 150 sztuk złota na drogę."),
                     Step::wait_for_input(),
                     Step::play_sound("quest_accept"),
                     Step::run(|ctx, _| {
                         ctx.increment("player_gold", 150);
                         ctx.set_flag("quest_ruins_started", true);
+                        ctx.set_flag("dialog_active", false);
                     }),
                     Step::set_visible("dialog_box", false),
                     Step::end(),
@@ -279,77 +240,237 @@ async fn main() {
     Engine::new(scene).run().await;
 }`,
           collapsible: false
+        },
+        {
+          title: "System Questów z Licznikiem i Triggerem Nagrody",
+          code: `// Inicjalizacja stanu questów na starcie sceny:
+ctx.state.set_int("kill_count", 0);
+ctx.state.set_bool("quest_ruins_started", false);
+ctx.state.set_bool("quest_ruins_done", false);
+
+// Trigger: gdy 5 wrogów zabitych i quest aktywny → quest ukończony:
+ctx.triggers.register(Trigger::new(
+    |ctx| {
+        ctx.state.get_bool("quest_ruins_started") &&
+        ctx.state.get_int("kill_count") >= 5
+    },
+    |ctx| {
+        ctx.state.set_bool("quest_ruins_done", true);
+        ctx.emit_signal("open_reward_chest");
+        ctx.play_sound("quest_complete_fanfare");
+    }
+));
+
+// W update() encji Enemy — po zabiciu:
+if enemy.data.hp <= 0 {
+    ctx.increment("kill_count", 1);
+    ctx.emit(EnemyKilled { pos: enemy.position });
+    enemy.destroy();
+}`,
+          collapsible: true,
+          defaultCollapsed: true
+        },
+        {
+          title: "Zapis i Wczytanie Postępu Questów",
+          code: `// Zapis gry (np. po wejściu do save pointu):
+let meta = SaveSlotMeta {
+    slot_id: 1,
+    title: format!(
+        "Quest: {}/{} wrogów — Złoto: {}",
+        ctx.state.get_int("kill_count"), 5,
+        ctx.state.get_int("player_gold")
+    ),
+    playtime_seconds: ctx.elapsed_time(),
+    timestamp: 0,
+};
+ctx.save_system.save_slot(1, &ctx.state, meta).expect("Błąd zapisu");
+
+// Wczytanie przy starcie:
+if let Ok((loaded_state, meta)) = ctx.save_system.load_slot(1) {
+    ctx.state = loaded_state;
+    println!("Wczytano: {}", meta.title);
+}`,
+          collapsible: true,
+          defaultCollapsed: true
         }
       ]
+    },
+    {
+      id: "rpg-api",
+      title: "API Reference: RPG & Dialogi",
+      apiTable: {
+        headers: ["Metoda / Typ", "Parametry", "Zwraca", "Opis"],
+        rows: [
+          ["Sequence::new(steps)", "Vec<Step>", "Sequence", "Tworzy sekwencję kroków do spawnowania jako dialog NPC."],
+          ["Step::show_text(tag, text)", "&str, &str", "Step", "Wyświetla tekst w widgecie UI o podanym tagu."],
+          ["Step::wait_for_input()", "brak", "Step", "Wstrzymuje sekwencję do wciśnięcia E/Enter/Spacji."],
+          ["Step::play_sound(name)", "&str", "Step", "Odtwarza dźwięk podczas sekwencji."],
+          ["Step::run(closure)", "FnMut(&mut Context, ...)", "Step", "Wykonuje dowolny kod Rust wewnątrz sekwencji."],
+          ["ctx.spawn_logic(seq)", "impl Object", "()", "Dodaje sekwencję dialogu do warstwy logic świata."],
+          ["ctx.has_flag(name)", "&str", "bool", "Sprawdza flagę bool w StateStore."],
+          ["ctx.increment(key, delta)", "&str, i64", "i64", "Inkrementuje licznik i zwraca nową wartość."],
+        ]
+      }
     }
   ]
 };
 
 export const gamePlatformerDoc = {
   id: "game-platformer",
-  title: "32. 🏃 Platformówka 2D (Precision Platformer)",
+  title: "36. 🏃 Platformówka 2D (Precision Platformer)",
+  badge: "Complete Game",
   description: "Precyzyjny kontroler postaci z coyote time, jump buffering, bieganiem po rampach 45° i platformami one-way.",
   sections: [
     {
-      id: "platformer-main",
-      title: "Kompletny Kod Gry: Platformówka 2D",
-      content: `Kompletny kod platformówki ze wspinaniem się po rampach, platformami skokowymi i fizyką grawitacji:`,
+      id: "platformer-architecture",
+      title: "Architektura Precyzyjnej Platformówki",
+      content: `Precision Platformer to gatunek wymagający ekstremalnej responsywności kontrolera i perfekcyjnej fizyki kolizji. RustedEngine dostarcza gotowe narzędzia:
+
+### Kluczowe Mechaniki Kontrolera:
+| Mechanika | Opis | Implementacja |
+|---|---|---|
+| **Grawitacja** | Stałe przyspieszenie w dół | \`velocity.y += 920.0 * dt\` |
+| **Skok** | Natychmiastowy impuls w górę | \`velocity.y = -360.0\` |
+| **Coyote Time** | Skok przez ~100ms po opuszczeniu krawędzi | \`coyote_timer > 0.0\` |
+| **Jump Buffer** | Skok zarejestrowany ~100ms przed lądowaniem | \`jump_buffer_timer > 0.0\` |
+| **Rampy 45°** | \`TileCollision::SlopeUpRight/Left\` | Automatyczna kolizja silnika |
+| **Platformy One-Way** | Skok przez platformę od dołu | \`TileCollision::OneWay\` |
+
+### Kolizje Kafelkowe:
+\`Tilemap\` obsługuje specjalne kształty kolizji — rampy i platformy skocznościowe — bez konieczności pisania własnego kodu kolizji.
+
+> [!TIP]
+> **Coyote Time** (zwany też "coyote frames") to jedna z najważniejszych technik feel-good w platformówkach. Bez niej gracz czuje frustację gdy skok nie rejestruje się przy krawędzi. 100ms to złoty standard (Mario używa ~6 klatek przy 60fps).
+
+> [!NOTE]
+> **Jump Buffer** pozwala graczowi wcisnąć skok chwilę przed lądowaniem i zarejestrować go gdy postać dotknie ziemi. Sprawia że sterowanie czuje się przewidywalnie i responsywnie nawet przy lagach inputu.`,
       codeExamples: [
         {
-          title: "src/main.rs (Platformer 2D)",
+          title: "PlayerData z Coyote Time & Jump Buffer",
+          code: `struct PlayerData {
+    pub velocity: Vec2,
+    pub is_grounded: bool,
+    pub coyote_timer: f32,      // Czas po opuszczeniu platformy gdy skok jeszcze działa
+    pub jump_buffer_timer: f32, // Wciśnięty skok zostanie zarejestrowany przy lądowaniu
+    pub was_grounded: bool,     // Stan z poprzedniej klatki
+}
+
+impl PlayerData {
+    pub fn new() -> Self {
+        Self {
+            velocity: Vec2::ZERO,
+            is_grounded: false,
+            coyote_timer: 0.0,
+            jump_buffer_timer: 0.0,
+            was_grounded: false,
+        }
+    }
+}`,
+          collapsible: false
+        },
+        {
+          title: "Kompletny Kontroler Platformówki",
           code: `use rusted_engine::prelude::*;
 use macroquad::prelude::*;
 
-struct PlayerData {
-    pub velocity: Vec2,
-    pub is_grounded: bool,
-    pub coyote_timer: f32,
-}
+const GRAVITY: f32     = 920.0;
+const JUMP_FORCE: f32  = -360.0;
+const SPEED: f32       = 190.0;
+const COYOTE_TIME: f32 = 0.10;
+const JUMP_BUFFER: f32 = 0.10;
 
-#[macroquad::main(Engine::conf("Platformer 2D", 1280, 720))]
-async fn main() {
-    let mut map = Tilemap::new(Texture2D::empty(), vec2(16.0, 16.0), 30, 20)
-        .with_solid_tiles([1])
-        .with_tile_collision(2, TileCollision::SlopeUpRight)
-        .with_tile_collision(3, TileCollision::OneWay);
+let player = Sprite::solid(vec2(80.0, 100.0), vec2(16.0, 24.0), YELLOW)
+    .with_data(PlayerData::new())
+    .update(|p, ctx| {
+        let dt = ctx.dt();
 
-    map.load_from_ascii("
-##############################
-#                            #
-#    ===                     #
-#              /\\            #
-##############################
-", |c| match c { '#' => Some(1), '/' => Some(2), '=' => Some(3), _ => None });
+        // Coyote Time: odliczaj gdy w powietrzu tuż po krawędzi
+        if p.data.was_grounded && !p.data.is_grounded {
+            p.data.coyote_timer = COYOTE_TIME;
+        }
+        p.data.coyote_timer = (p.data.coyote_timer - dt).max(0.0);
+        p.data.was_grounded = p.data.is_grounded;
 
-    let player = Sprite::solid(vec2(80.0, 100.0), vec2(16.0, 24.0), YELLOW)
-        .with_data(PlayerData { velocity: vec2(0.0, 0.0), is_grounded: false, coyote_timer: 0.0 })
-        .update(|p, ctx| {
-            // Ruch w osi X
-            p.data.velocity.x = ctx.input.axis_x() * 190.0;
+        // Jump Buffer: zarejestruj wciśnięcie skoku
+        if ctx.input.is_key_pressed(KeyCode::Space) {
+            p.data.jump_buffer_timer = JUMP_BUFFER;
+        }
+        p.data.jump_buffer_timer = (p.data.jump_buffer_timer - dt).max(0.0);
 
-            // Grawitacja
-            p.data.velocity.y += 920.0 * ctx.dt();
+        // Ruch poziomy
+        p.data.velocity.x = ctx.input.axis_x() * SPEED;
 
-            // Skok
-            if ctx.input.is_key_pressed(KeyCode::Space) && p.data.is_grounded {
-                p.data.velocity.y = -360.0;
-                p.data.is_grounded = false;
-                ctx.play_sound_varied("jump", 0.08, 0.1);
-            }
+        // Grawitacja
+        if !p.data.is_grounded {
+            p.data.velocity.y += GRAVITY * dt;
+        }
 
-            p.position += p.data.velocity * ctx.dt();
-            ctx.camera.follow(p.position, 5.5, ctx.dt());
-        });
+        // Skok z coyote time lub jump buffer
+        let can_jump  = p.data.is_grounded || p.data.coyote_timer > 0.0;
+        let wants_jump = p.data.jump_buffer_timer > 0.0;
 
-    let scene = Scene::new("Level1", world! {
-        objects: [map, player],
-    });
+        if can_jump && wants_jump {
+            p.data.velocity.y = JUMP_FORCE;
+            p.data.coyote_timer = 0.0;
+            p.data.jump_buffer_timer = 0.0;
+            ctx.play_sound_varied("jump", 0.08, 0.1);
+        }
 
-    Engine::new(scene).run().await;
-}`,
+        p.position += p.data.velocity * dt;
+        ctx.camera.look_ahead(p.position, p.data.velocity, 60.0, 5.0, dt);
+    });`,
           collapsible: false
+        },
+        {
+          title: "Konfiguracja Tilemap z Rampami i Platformami",
+          code: `let mut map = Tilemap::new(tileset_texture, vec2(16.0, 16.0), 40, 22)
+    .with_solid_tiles([1, 2])
+    .with_tile_collision(3, TileCollision::SlopeUpRight)
+    .with_tile_collision(4, TileCollision::SlopeUpLeft)
+    .with_tile_collision(5, TileCollision::OneWay);
+
+// Wczytanie poziomu z ASCII:
+map.load_from_ascii("
+########################################
+#                                      #
+#     ===          /\\\\                 #
+#            ####                      #
+########################################
+", |c| match c {
+    '#' => Some(1),
+    '/' => Some(3),  // Rampa w prawo
+    '=' => Some(5),  // Platforma one-way
+    _   => None
+});
+
+let scene = Scene::new("Level1", world! {
+    objects: [map, player],
+});
+
+Engine::new(scene)
+    .with_virtual_resolution(480.0, 270.0)
+    .run()
+    .await;`,
+          collapsible: true,
+          defaultCollapsed: true
         }
       ]
+    },
+    {
+      id: "platformer-api",
+      title: "API Reference: Platformówka",
+      apiTable: {
+        headers: ["Mechanika / Metoda", "Parametry", "Zwraca", "Opis"],
+        rows: [
+          ["ctx.input.axis_x()", "brak", "f32", "Oś pozioma z klawiszy A/D i strzałek, wartość [-1.0, 1.0]."],
+          ["ctx.input.is_key_pressed(key)", "KeyCode", "bool", "Sprawdza czy klawisz został wciśnięty w tej klatce."],
+          ["ctx.camera.look_ahead(pos, vel, dist, spd, dt)", "Vec2, Vec2, f32, f32, f32", "()", "Wyprzedza kamerę w kierunku biegu postaci."],
+          ["TileCollision::SlopeUpRight", "brak", "brak", "Kształt kolizji: rampa wznosząca się w prawo (/)."],
+          ["TileCollision::SlopeUpLeft", "brak", "brak", "Kształt kolizji: rampa wznosząca się w lewo."],
+          ["TileCollision::OneWay", "brak", "brak", "Platforma skocznościowa: kolizja tylko od góry."],
+          ["ctx.play_sound_varied(name, p, v)", "&str, f32, f32", "()", "Dźwięk skoku z losową wariacją tonu."],
+        ]
+      }
     }
   ]
 };

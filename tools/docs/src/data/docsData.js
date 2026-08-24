@@ -2,6 +2,7 @@ import * as Core from './coreDocs.js';
 import * as Data from './dataDocs.js';
 import * as Logic from './logicDocs.js';
 import * as Graphics from './graphicsDocs.js';
+import * as AdvGraphics from './advancedGraphicsUiDocs.js';
 import * as Mechanics from './mechanicsDocs.js';
 import * as Games from './gamesDocs.js';
 
@@ -32,10 +33,14 @@ export const allDocs = [
   // 4. Grafika, UI & Audio
   Graphics.cameraDoc,
   Graphics.virtualResolutionDoc,
+  AdvGraphics.postprocessDoc,
+  AdvGraphics.animatedSpriteDoc,
+  AdvGraphics.bitmapFontDoc,
   Graphics.tilemapsDoc,
   Graphics.particlesDoc,
   Graphics.uiWidgetsDoc,
   Graphics.uiLayoutDoc,
+  AdvGraphics.panelManagerDoc,
   Graphics.audioSfxDoc,
 
   // 5. Gotowe Mechaniki Gry

@@ -21,9 +21,10 @@ export function CodeBlock({ title, code, language = 'rust', collapsible = false,
   const lang = (language || 'rust').toLowerCase();
   const grammar = Prism.languages[lang] || Prism.languages.rust || Prism.languages.clike;
   const highlightedCode = grammar ? Prism.highlight(code, grammar, lang) : code;
+  const lineCount = code.split('\n').length;
 
   return (
-    <div className="my-5 rounded-xl border border-zinc-800/90 bg-[#090a0f] overflow-hidden shadow-lg transition-all">
+    <div className="my-5 rounded-xl border border-zinc-800/90 bg-[#090a0f] overflow-hidden shadow-lg">
       <div
         onClick={collapsible ? () => setIsExpanded((prev) => !prev) : undefined}
         className={`px-3.5 sm:px-4 py-2.5 bg-zinc-900/95 border-b border-zinc-800/80 flex items-center justify-between select-none ${
@@ -54,6 +55,9 @@ export function CodeBlock({ title, code, language = 'rust', collapsible = false,
         </div>
 
         <div className="flex items-center gap-2 shrink-0 ml-2">
+          <span className="text-[10.5px] font-mono text-zinc-600 hidden sm:inline-block" title={`${lineCount} linii kodu`}>
+            {lineCount}L
+          </span>
           <span className="text-[10.5px] uppercase font-mono font-bold tracking-wider text-zinc-400 bg-zinc-950/80 px-2 py-0.5 rounded border border-zinc-800 hidden sm:inline-block">
             {lang}
           </span>

@@ -10,7 +10,7 @@ import { ContextFieldsGrid } from "./ContextFieldsGrid";
 import { RichTextPlayground } from "./Playgrounds/RichTextPlayground";
 import { SequencePlayground } from "./Playgrounds/SequencePlayground";
 import { LayoutPlayground } from "./Playgrounds/LayoutPlayground";
-import { ArrowLeft, ArrowRight, Copy, Check, ArrowUp, Link2, ArrowUpRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Copy, Check, ArrowUp, Link2, ArrowUpRight, Clock } from "lucide-react";
 
 const ENGINE_LIFECYCLE_STEPS = [
   {
@@ -120,12 +120,17 @@ export function DocViewer({
 }) {
   const [copiedPage, setCopiedPage] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [readingProgress, setReadingProgress] = useState(0);
 
   const navigateFn = onNavigateTo || onNavigateDoc;
 
   useEffect(() => {
     const handleScroll = () => {
-      setShowScrollTop(window.scrollY > 350);
+      const scrollTop = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = docHeight > 0 ? Math.round((scrollTop / docHeight) * 100) : 0;
+      setShowScrollTop(scrollTop > 350);
+      setReadingProgress(progress);
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
@@ -138,6 +143,11 @@ export function DocViewer({
   const nextDoc =
     currentIdx < allDocs.length - 1 ? allDocs[currentIdx + 1] : null;
 
+  // Estimated read time: ~200 words per minute
+  const totalText = doc.sections?.map(s => (s.content || '') + (s.subsections?.map(ss => ss.content || '').join(' ') || '')).join(' ') || '';
+  const wordCount = totalText.trim().split(/\s+/).length;
+  const readMinutes = Math.max(1, Math.round(wordCount / 200));
+
   const handleCopyPageLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopiedPage(true);
@@ -146,6 +156,11 @@ export function DocViewer({
 
   return (
     <div className="flex-1 flex min-w-0 bg-[#09090b]">
+      {/* Reading Progress Bar */}
+      <div
+        className="reading-progress"
+        style={{ width: `${readingProgress}%` }}
+      />
       {/* Main Content Area */}
       <main className="flex-1 min-w-0 max-w-4xl px-4 sm:px-8 py-8 mx-auto">
         {/* Breadcrumb & Quick Actions */}
@@ -179,7 +194,7 @@ export function DocViewer({
 
         {/* Document Header */}
         <div className="mb-10 pb-6 border-b border-zinc-800/80">
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center gap-3 mb-3 flex-wrap">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-100 tracking-tight">
               {doc.title}
             </h1>
@@ -189,17 +204,25 @@ export function DocViewer({
               </span>
             )}
           </div>
-          <p className="text-[14px] sm:text-[15px] text-zinc-300 leading-relaxed font-normal">
+          <p className="text-[14px] sm:text-[15px] text-zinc-300 leading-relaxed font-normal mb-3">
             {doc.description}
           </p>
+          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+            <Clock className="w-3 h-3" />
+            <span>~{readMinutes} min czytania</span>
+            <span className="mx-1 opacity-40">·</span>
+            <span>{doc.sections?.length || 0} sekcji</span>
+          </div>
         </div>
 
         {/* Render Sections */}
         <div className="space-y-10">
-          {doc.sections.map((section) => (
-            <section key={section.id} id={section.id} className="scroll-mt-20">
-              <h2 className="text-lg sm:text-xl font-bold text-zinc-100 mb-3 tracking-tight flex items-center gap-2 border-b border-zinc-800/60 pb-2 mt-1">
+          {doc.sections.map((section, secIdx) => (
+            <section key={section.id} id={section.id} className="scroll-mt-20 section-fade-in" style={{ animationDelay: `${secIdx * 0.04}s` }}>
+              <h2 className="text-lg sm:text-xl font-bold text-zinc-100 mb-3 tracking-tight flex items-center gap-2.5 border-b border-zinc-800/60 pb-2 mt-1">
+                <span className="section-accent-bar" />
                 <span>{section.title}</span>
+                <span className="ml-auto text-[10px] font-mono text-zinc-700 font-normal hidden sm:inline">§{secIdx + 1}</span>
               </h2>
 
               <div className="my-3">
@@ -377,14 +400,14 @@ export function DocViewer({
           {prevDoc ? (
             <button
               onClick={() => onNavigateDoc(prevDoc.id)}
-              className="flex items-center gap-3 p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-left transition-all cursor-pointer group flex-1 min-w-[200px]"
+              className="pagination-btn flex items-center gap-3 p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-left cursor-pointer group flex-1 min-w-[200px]"
             >
               <ArrowLeft className="w-4 h-4 text-zinc-400 group-hover:-translate-x-1 transition-transform shrink-0" />
               <div className="min-w-0">
                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
                   Poprzedni
                 </div>
-                <div className="text-xs font-bold text-zinc-200 truncate">
+                <div className="text-xs font-bold text-zinc-200 truncate group-hover:text-amber-400 transition-colors">
                   {prevDoc.title}
                 </div>
               </div>
@@ -396,13 +419,13 @@ export function DocViewer({
           {nextDoc ? (
             <button
               onClick={() => onNavigateDoc(nextDoc.id)}
-              className="flex items-center gap-3 p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-right transition-all cursor-pointer group flex-1 min-w-[200px] justify-end"
+              className="pagination-btn flex items-center gap-3 p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-right cursor-pointer group flex-1 min-w-[200px] justify-end"
             >
               <div className="min-w-0">
                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
                   Następny
                 </div>
-                <div className="text-xs font-bold text-zinc-200 truncate">
+                <div className="text-xs font-bold text-zinc-200 truncate group-hover:text-amber-400 transition-colors">
                   {nextDoc.title}
                 </div>
               </div>
