@@ -1,6 +1,6 @@
 export const assetsAudioDoc = {
   id: "assets-audio",
-  title: "7. 🎨 Asset Management, Audio & Bitmap Fonts",
+  title: "11. 🎨 Asset Management, Audio & Shaders",
   icon: "Image",
   badge: "Assets & Font Atlas",
   description: "Zarządca zasobów Assets, odtwarzanie dźwięków z losową wariacją i throttlerem (Audio/AmbientPool) oraz wypiekanie natywnych fontów pikselowych BitmapFont.",

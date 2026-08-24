@@ -1,6 +1,6 @@
 [package]
 name = "rusted-engine-docs"
-version = "0.5.0"
+version = "1.0.0"
 description = "RustedEngine Documentation Desktop App"
 authors = ["Szymon"]
 edition = "2024"

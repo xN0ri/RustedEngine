@@ -1,6 +1,6 @@
 export const mathGeometryRngDoc = {
   id: "math-geometry-rng",
-  title: "9. 📐 Math, Geometry, Time & RNG",
+  title: "7. 📐 Math, Geometry, Time & RNG",
   icon: "Compass",
   badge: "Math & Spatial Systems",
   description: "Prymitywy geometryczne (Circle, Segment, Capsule), matematyka wektorowa, wygładzanie sprężynowe smooth_damp, animacje Tween/TweenVec2, timery oraz deterministyczny generator PCG32 i szum Perlina.",

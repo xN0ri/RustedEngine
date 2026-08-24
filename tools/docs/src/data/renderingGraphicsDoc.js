@@ -111,8 +111,51 @@ engine.post_process = Some(pp);`,
       subsections: [
         {
           id: "tilemap-ascii",
-          title: "Siatka Kafelkowa & Kolizje z Poziomów ASCII",
-          content: `- **\`Tilemap\`**: Obsługuje renderowanie siatek kafelkowych z arkusza tekstury, wczytywanie układów z poziomów napisanych w ASCII (\`load_from_ascii\`) oraz kolizje AABB z kafelkami oznaczonymi jako bryły (\`with_solid_tiles\`).`
+          title: "Siatka Kafelkowa & Zaawansowane Kształty Kolizji (`TileCollision`)",
+          content: `- **\`Tilemap\`**: Obsługuje siatki kafelkowe z arkuszy tekstur, wczytywanie map wprost z ciągów ASCII (\`load_from_ascii\`) oraz precyzyjne kształty kolizji per kafelki.
+- **Kształty Kolizji (\`TileCollision\`)**:
+  - \`TileCollision::Solid\`: Pełna bryła AABB (\`16×16\`).
+  - \`TileCollision::OneWay\`: Jednokierunkowa platforma (przenikalna od dołu, solidna od góry przy lądowaniu).
+  - \`TileCollision::SlopeUpRight\` / \`SlopeUpLeft\`: 45-stopniowe rampy i pochyłości (wspinanie w prawo/lewo).
+  - \`TileCollision::HalfBottom\` / \`HalfTop\`: Półpłytki (*half-slabs* o połowie wysokości).
+  - \`TileCollision::CustomRect(Rect)\`: Własny podobszar kolizji w przestrzeni kafelka (np. kolce, płotki).
+- **Zapytania Kolizyjne**:
+  - \`collides_point(pos) -> bool\`: Precyzyjny test punktu (wspiera rampy i półpłytki).
+  - \`get_slope_surface_y(pos) -> Option<f32>\`: Oblicza dokładną wysokość powierzchni rampy w świecie (do płynnego biegania po zboczach).
+  - \`collides_oneway_landing(rect, prev_y) -> Option<f32>\`: Wykrywa lądowanie stóp postaci na platformie jednokierunkowej.`,
+          codeExamples: [
+            {
+              title: "Przykład: Mapa ASCII z Rampami i Platformami Jednokierunkowymi",
+              code: `let mut map = Tilemap::new(tile_texture, vec2(16.0, 16.0), 32, 18)
+    .with_solid_tiles([1]) // Pełna bryła AABB '#'
+    .with_tile_collision(2, TileCollision::SlopeUpRight) // Rampa wznosząca '/'
+    .with_tile_collision(3, TileCollision::SlopeUpLeft)  // Rampa opadająca '\\'
+    .with_tile_collision(4, TileCollision::OneWay)       // Platforma skokowa '='
+    .with_tile_collision(5, TileCollision::HalfBottom);  // Półpłytka '_'
+
+map.load_from_ascii("
+####################
+#                  #
+#    ==            #
+#         /\\       #
+#   __   /  \\      #
+####################
+", |c| match c {
+    '#' => Some(1),
+    '/' => Some(2),
+    '\\\\' => Some(3),
+    '=' => Some(4),
+    '_' => Some(5),
+    _ => None,
+});
+
+// W update postaci: jeśli postać stoi na rampie, przyklejamy stopy do powierzchni:
+if let Some(ground_y) = map.get_slope_surface_y(player.position + vec2(8.0, 16.0)) {
+    player.position.y = ground_y - 16.0;
+}`,
+              collapsible: false
+            }
+          ]
         },
         {
           id: "particle-emitter-auto-destroy",

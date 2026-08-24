@@ -1,6 +1,6 @@
 export const uiSystemDoc = {
   id: "ui-system",
-  title: "3. 🖥️ Screen-Space UI & Layout System",
+  title: "8. 🖥️ Screen-Space UI & Layout System",
   icon: "Layout",
   badge: "UI Subsystem",
   description: "Kompletna architektura interfejsu użytkownika: dualny system współrzędnych, silnik layoutu Flexbox (Column, Row, Grid), bogaty katalog widgetów oraz Desktop Window Manager (PanelManager).",

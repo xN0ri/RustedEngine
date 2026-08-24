@@ -3,7 +3,8 @@ export const gettingStartedDoc = {
   title: "1. 🚀 Architecture & Core Engine",
   icon: "Zap",
   badge: "Core System",
-  description: "Drobiazgowa analiza cyklu życia silnika RustedEngine, pętli głównej, dwustopniowego pipeline'u renderowania oraz uniwersalnego kontekstu Context.",
+  description:
+    "Drobiazgowa analiza cyklu życia silnika RustedEngine, pętli głównej, dwustopniowego pipeline'u renderowania oraz uniwersalnego kontekstu Context.",
   sections: [
     {
       id: "architecture-overview",
@@ -24,7 +25,7 @@ Silnik powstał w celu wyeliminowania żmudnego boilerplate'u w Rust i dostarcze
    - \`ui_objects\`: Elementy interfejsu w przestrzeni ekranu (Screen Space).
    - \`logic\`: Niewidzialne kontrolery logiki aktualizowane co klatkę bez narzutu na GPU (działają jako faza dispatchu po obiektach).
 4. **Uniwersalny System Zachowań (\`Behavior<Inner, Data>\`)**:
-   - Brak sztywnych hierarchii klas. Dowolny obiekt rysowalny można owinąć w \`Behavior\`, uzyskując własny stan \`Data\` oraz domknięcie \`update\` z pełnym dostępem przez blanket cechę \`Deref\` i \`DerefMut\`.`
+   - Brak sztywnych hierarchii klas. Dowolny obiekt rysowalny można owinąć w \`Behavior\`, uzyskując własny stan \`Data\` oraz domknięcie \`update\` z pełnym dostępem przez blanket cechę \`Deref\` i \`DerefMut\`.`,
         },
         {
           id: "execution-layers",
@@ -40,8 +41,8 @@ Silnik powstał w celu wyeliminowania żmudnego boilerplate'u w Rust i dostarcze
             {
               type: "protip",
               title: "Pro Tip: Logic jako faza dispatchu zdarzeń",
-              text: "Warstwa `logic` wykonuje się zawsze PO `objects` i `ui_objects`. Dzięki temu kontrolery w `Logic` mają gwarancję odebrania 100% zdarzeń wyemitowanych przez encje w danej klatce!"
-            }
+              text: "Warstwa `logic` wykonuje się zawsze PO `objects` i `ui_objects`. Dzięki temu kontrolery w `Logic` mają gwarancję odebrania 100% zdarzeń wyemitowanych przez encje w danej klatce!",
+            },
           ],
           codeExamples: [
             {
@@ -60,11 +61,11 @@ let game_controller = Logic::run(|ctx| {
 
 world.add_logic(game_controller);`,
               collapsible: true,
-              defaultCollapsed: false
-            }
-          ]
-        }
-      ]
+              defaultCollapsed: false,
+            },
+          ],
+        },
+      ],
     },
     {
       id: "engine-lifecycle",
@@ -88,7 +89,7 @@ world.add_logic(game_controller);`,
    - Czyszczenie bufora GPU: \`clear_background(color)\`.
    - Rysowanie obiektów świata w przestrzeni kamery (z opcjonalnym shaderem \`PostProcess\`).
    - Rysowanie warstwy UI i nakładki tekstowej w rozdzielczości natywnej.
-10. **Rysowanie Kursora & Synchronizacja**: Narysowanie \`CustomCursor\` i wywołanie \`next_frame().await\`.`
+10. **Rysowanie Kursora & Synchronizacja**: Narysowanie \`CustomCursor\` i wywołanie \`next_frame().await\`.`,
         },
         {
           id: "engine-configuration",
@@ -112,11 +113,11 @@ async fn main() {
 
     engine.run().await;
 }`,
-              collapsible: false
-            }
-          ]
-        }
-      ]
+              collapsible: false,
+            },
+          ],
+        },
+      ],
     },
     {
       id: "context-struct",
@@ -140,7 +141,7 @@ async fn main() {
 | \`ctx.triggers\` | \`TriggerSystem\` | Silnik reguł Warunek → Akcja operujący bezpośrednio na \`Context\`. |
 | \`ctx.events\` | \`EventBus\` | Typowana magistrala zdarzeń pub/sub oraz sygnałów tekstowych. |
 | \`ctx.actions\` | \`ActionMap\` | Mapowanie nazwanych akcji wejścia z łańcuchowym konstruktorem (\`with_key\`, \`with_mouse\`). |
-| \`ctx.save_system\` | \`SaveSystem\` | Sloty zapisu gry z weryfikacją sumy kontrolnej CRC32. |`
+| \`ctx.save_system\` | \`SaveSystem\` | Sloty zapisu gry z weryfikacją sumy kontrolnej CRC32. |`,
         },
         {
           id: "context-shortcuts",
@@ -166,11 +167,11 @@ ctx.play_sound_varied("hit_punch", 0.1, 0.15);
 if ctx.input.is_key_pressed(KeyCode::P) {
     ctx.toggle_pause();
 }`,
-              collapsible: false
-            }
-          ]
-        }
-      ]
+              collapsible: false,
+            },
+          ],
+        },
+      ],
     },
     {
       id: "api-reference",
@@ -179,19 +180,74 @@ if ctx.input.is_key_pressed(KeyCode::P) {
       apiTable: {
         headers: ["Metoda / Konstruktor", "Parametry", "Zwraca", "Opis"],
         rows: [
-          ["Engine::new(scene)", "Scene", "Engine", "Tworzy nową instancję silnika z początkową sceną."],
-          ["Engine::conf(title, w, h)", "&str, i32, i32", "Conf", "Generuje konfigurację okna Macroquad z zadanym tytułem i wymiarami."],
-          [".with_virtual_resolution(w, h)", "f32, f32", "Self", "Włącza dwufazowy pipeline wirtualnej rozdzielczości z letterboxingiem."],
-          [".with_integer_scaling(bool)", "bool", "Self", "Wymusza skalowanie wirtualnego bufora wyłącznie o wielokrotności całkowite (1x, 2x, 3x)."],
-          [".with_letterbox_color(color)", "Color", "Self", "Ustawia kolor pasków letterboxa/pillarboxa."],
-          ["ctx.spawn(object)", "O: Object + 'static", "()", "Bezpiecznie kolejkuje dodanie bytu do warstwy świata na koniec klatki."],
-          ["ctx.mouse_world()", "&self", "Vec2", "Zwraca aktualną pozycję kursora przeliczoną do przestrzeni świata 2D przez aktywną kamerę."],
-          ["ctx.emit(event)", "E: 'static + Send + Sync", "()", "Emituje typowane zdarzenie na magistralę EventBus."],
-          ["ctx.increment(key, delta)", "&mut self, &str, i64", "i64", "Zwiększa zmienną liczbową w StateStore o delta i zwraca nową wartość."],
-          ["ctx.toggle_pause()", "&mut self", "()", "Przełącza stan pauzy gry."],
-          ["ctx.emit_signal(name)", "&mut self, impl Into<String>", "()", "Emituje prosty sygnał tekstowy bez ładunku."]
-        ]
-      }
-    }
-  ]
+          [
+            "Engine::new(scene)",
+            "Scene",
+            "Engine",
+            "Tworzy nową instancję silnika z początkową sceną.",
+          ],
+          [
+            "Engine::conf(title, w, h)",
+            "&str, i32, i32",
+            "Conf",
+            "Generuje konfigurację okna Macroquad z zadanym tytułem i wymiarami.",
+          ],
+          [
+            ".with_virtual_resolution(w, h)",
+            "f32, f32",
+            "Self",
+            "Włącza dwufazowy pipeline wirtualnej rozdzielczości z letterboxingiem.",
+          ],
+          [
+            ".with_integer_scaling(bool)",
+            "bool",
+            "Self",
+            "Wymusza skalowanie wirtualnego bufora wyłącznie o wielokrotności całkowite (1x, 2x, 3x).",
+          ],
+          [
+            ".with_letterbox_color(color)",
+            "Color",
+            "Self",
+            "Ustawia kolor pasków letterboxa/pillarboxa.",
+          ],
+          [
+            "ctx.spawn(object)",
+            "O: Object + 'static",
+            "()",
+            "Bezpiecznie kolejkuje dodanie bytu do warstwy świata na koniec klatki.",
+          ],
+          [
+            "ctx.mouse_world()",
+            "&self",
+            "Vec2",
+            "Zwraca aktualną pozycję kursora przeliczoną do przestrzeni świata 2D przez aktywną kamerę.",
+          ],
+          [
+            "ctx.emit(event)",
+            "E: 'static + Send + Sync",
+            "()",
+            "Emituje typowane zdarzenie na magistralę EventBus.",
+          ],
+          [
+            "ctx.increment(key, delta)",
+            "&mut self, &str, i64",
+            "i64",
+            "Zwiększa zmienną liczbową w StateStore o delta i zwraca nową wartość.",
+          ],
+          [
+            "ctx.toggle_pause()",
+            "&mut self",
+            "()",
+            "Przełącza stan pauzy gry.",
+          ],
+          [
+            "ctx.emit_signal(name)",
+            "&mut self, impl Into<String>",
+            "()",
+            "Emituje prosty sygnał tekstowy bez ładunku.",
+          ],
+        ],
+      },
+    },
+  ],
 };

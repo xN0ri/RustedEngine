@@ -1,6 +1,6 @@
-import React from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export function MarkdownRenderer({ content }) {
   if (!content) return null;
@@ -36,15 +36,9 @@ export function MarkdownRenderer({ content }) {
               {children}
             </ol>
           ),
-          li: ({ children }) => (
-            <li className="leading-relaxed">
-              {children}
-            </li>
-          ),
+          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
           strong: ({ children }) => (
-            <strong className="font-semibold text-zinc-100">
-              {children}
-            </strong>
+            <strong className="font-semibold text-zinc-100">{children}</strong>
           ),
           code: ({ inline, children }) => {
             return (
@@ -66,9 +60,7 @@ export function MarkdownRenderer({ content }) {
             </thead>
           ),
           tbody: ({ children }) => (
-            <tbody className="divide-y divide-zinc-800/60">
-              {children}
-            </tbody>
+            <tbody className="divide-y divide-zinc-800/60">{children}</tbody>
           ),
           tr: ({ children }) => (
             <tr className="hover:bg-zinc-900/40 transition-colors">

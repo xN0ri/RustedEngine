@@ -67,7 +67,7 @@ pub use rng::{
 pub use save_system::{SaveError, SaveSlotMeta, SaveSystem};
 pub use scene::{SceneChanged, SceneManager};
 pub use sequence::{SequenceBuilder, Step};
-pub use tilemap::Tilemap;
+pub use tilemap::{TileCollision, Tilemap};
 pub use trigger::{Trigger, TriggerSystem};
 pub use tween::{Easing, Tween};
 pub use ui::{

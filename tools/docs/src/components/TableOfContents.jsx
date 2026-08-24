@@ -20,7 +20,7 @@ export function TableOfContents({ sections, activeSectionId, onSelectSection }) 
                 onClick={() => onSelectSection(sec.id)}
                 className={`block w-full text-left text-xs py-1.5 px-2 rounded-md transition-all truncate cursor-pointer ${
                   isActive
-                    ? 'text-amber-400 font-medium bg-amber-500/10 border-l-2 border-amber-500 -ml-[15px] pl-[13px]'
+                    ? 'text-amber-400 font-medium bg-amber-500/10'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'
                 }`}
               >
@@ -36,7 +36,7 @@ export function TableOfContents({ sections, activeSectionId, onSelectSection }) 
                       onClick={() => onSelectSection(sub.id)}
                       className={`block w-full text-left text-[11px] py-1 pl-4 pr-2 rounded-md transition-all truncate cursor-pointer ${
                         isSubActive
-                          ? 'text-amber-300 font-medium bg-amber-500/10 border-l-2 border-amber-500 -ml-[15px] pl-[27px]'
+                          ? 'text-amber-300 font-medium bg-amber-500/10'
                           : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/30'
                       }`}
                     >

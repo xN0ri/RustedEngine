@@ -32,7 +32,7 @@ pub use crate::{
     scene::{Scene, SceneChanged, SceneManager},
     sequence::{Sequence, SequenceBuilder, Step},
     state::{StateStore, StateValue},
-    tilemap::Tilemap,
+    tilemap::{TileCollision, Tilemap},
     time::{Time, Timer},
     trigger::{Trigger, TriggerSystem},
     tween::{Easing, Tween, TweenVec2},

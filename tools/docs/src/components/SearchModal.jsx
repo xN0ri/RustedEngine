@@ -89,7 +89,7 @@ export function SearchModal({ isOpen, onClose, onSelectResult }) {
         {/* Footer info */}
         <div className="p-3 border-t border-zinc-800/80 bg-zinc-950 flex items-center justify-between text-xs text-zinc-500">
           <span>Wymagany klawisz: <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded font-mono text-[10px] text-zinc-400">ESC</kbd> aby zamknąć</span>
-          <span className="font-mono text-[10px]">rusted_engine v0.5.0</span>
+          <span className="font-mono text-[10px]">rusted_engine v1.0.0</span>
         </div>
       </div>
     </div>

@@ -29,7 +29,7 @@ export function Header({ onOpenSearch, isTauri, activeTab, onSelectTab, isMobile
           <div className="flex items-center gap-2">
             <span className="font-bold text-zinc-100 text-sm tracking-tight">RustedEngine</span>
             <span className="text-[11px] font-mono font-medium text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-              v0.5.0
+              v1.0.0
             </span>
           </div>
         </div>
