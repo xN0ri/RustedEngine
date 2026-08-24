@@ -1,42 +1,54 @@
-import { gettingStartedDoc } from './gettingStartedDoc.js';
-import { worldObjectsDoc } from './worldObjectsDoc.js';
-import { stateResourcesDoc } from './stateResourcesDoc.js';
-import { dataSaveDoc } from './dataSaveDoc.js';
-import { eventsActionsDoc } from './eventsActionsDoc.js';
-import { sequenceDoc } from './sequenceDoc.js';
-import { mathGeometryRngDoc } from './mathGeometryRngDoc.js';
-import { uiSystemDoc } from './uiSystemDoc.js';
-import { renderingCameraDoc } from './renderingCameraDoc.js';
-import { tilemapsParticlesDoc } from './tilemapsParticlesDoc.js';
-import { assetsAudioDoc } from './assetsAudioDoc.js';
-import { combatSystemsDoc } from './combatSystemsDoc.js';
-import { gameplaySystemsDoc } from './gameplaySystemsDoc.js';
-import { examplesCookbookDoc } from './examplesCookbookDoc.js';
+import * as Core from './coreDocs.js';
+import * as Data from './dataDocs.js';
+import * as Logic from './logicDocs.js';
+import * as Graphics from './graphicsDocs.js';
+import * as Mechanics from './mechanicsDocs.js';
+import * as Games from './gamesDocs.js';
 
 export const allDocs = [
   // 1. Architektura & Rdzeń
-  gettingStartedDoc,
-  worldObjectsDoc,
+  Core.quickstartDoc,
+  Core.lifecycleDoc,
+  Core.contextDoc,
+  Core.worldLayersDoc,
+  Core.behaviorsDoc,
 
-  // 2. Stan & Dane
-  stateResourcesDoc,
-  dataSaveDoc,
+  // 2. Stan, Dane & Zapis
+  Data.entityDataDoc,
+  Data.resourcesDoc,
+  Data.stateStoreDoc,
+  Data.contentPipelineDoc,
+  Data.saveSystemDoc,
 
-  // 3. Logika & Zdarzenia
-  eventsActionsDoc,
-  sequenceDoc,
-  mathGeometryRngDoc,
+  // 3. Logika, Zdarzenia & Wejście
+  Logic.eventBusDoc,
+  Logic.inputActionsDoc,
+  Logic.triggersDoc,
+  Logic.sequencesDoc,
+  Logic.tweensTimersDoc,
+  Logic.mathGeometryDoc,
+  Logic.rngProceduralDoc,
 
   // 4. Grafika, UI & Audio
-  uiSystemDoc,
-  renderingCameraDoc,
-  tilemapsParticlesDoc,
-  assetsAudioDoc,
+  Graphics.cameraDoc,
+  Graphics.virtualResolutionDoc,
+  Graphics.tilemapsDoc,
+  Graphics.particlesDoc,
+  Graphics.uiWidgetsDoc,
+  Graphics.uiLayoutDoc,
+  Graphics.audioSfxDoc,
 
-  // 5. Gotowe Systemy & Gry
-  combatSystemsDoc,
-  gameplaySystemsDoc,
-  examplesCookbookDoc,
+  // 5. Gotowe Mechaniki Gry
+  Mechanics.meleeCombatDoc,
+  Mechanics.shootingWeaponsDoc,
+  Mechanics.inventorySystemDoc,
+  Mechanics.turnSystemDoc,
+  Mechanics.enemyAiDoc,
+
+  // 6. Kompletne Gry
+  Games.gameSurvivorDoc,
+  Games.gameRpgQuestDoc,
+  Games.gamePlatformerDoc,
 ];
 
 export function searchDocs(query) {

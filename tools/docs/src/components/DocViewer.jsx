@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { CodeBlock } from "./CodeBlock";
 import { Callout } from "./Callout";
 import { ApiTable } from "./ApiTable";
@@ -10,7 +10,7 @@ import { ContextFieldsGrid } from "./ContextFieldsGrid";
 import { RichTextPlayground } from "./Playgrounds/RichTextPlayground";
 import { SequencePlayground } from "./Playgrounds/SequencePlayground";
 import { LayoutPlayground } from "./Playgrounds/LayoutPlayground";
-import { ArrowLeft, ArrowRight, Copy, Check } from "lucide-react";
+import { ArrowLeft, ArrowRight, Copy, Check, ArrowUp } from "lucide-react";
 
 const ENGINE_LIFECYCLE_STEPS = [
   {
@@ -118,6 +118,15 @@ export function DocViewer({
   onSelectSection,
 }) {
   const [copiedPage, setCopiedPage] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 350);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   if (!doc) return null;
 
@@ -356,6 +365,17 @@ export function DocViewer({
           )}
         </div>
       </main>
+
+      {/* Floating Scroll to Top Button */}
+      {showScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-6 right-6 z-30 p-2.5 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 text-zinc-300 hover:text-amber-400 shadow-xl transition-all cursor-pointer backdrop-blur-sm"
+          title="Przewiń na górę strony"
+        >
+          <ArrowUp className="w-4 h-4" />
+        </button>
+      )}
 
       {/* Right Sidebar: Table of Contents ("Na tej stronie") */}
       <TableOfContents

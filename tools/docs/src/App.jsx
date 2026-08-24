@@ -35,6 +35,13 @@ export function App() {
     setActiveDocId(docId);
     setActiveSectionId(null);
     setIsMobileMenuOpen(false);
+    if (['getting-started', 'world-objects'].includes(docId)) {
+      setActiveTab('architecture');
+    } else if (['ui-system'].includes(docId)) {
+      setActiveTab('components');
+    } else {
+      setActiveTab('docs');
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

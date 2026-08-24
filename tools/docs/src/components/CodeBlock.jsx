@@ -51,23 +51,28 @@ export function CodeBlock({ title, code, language = 'rust', collapsible = false,
           </div>
         </div>
 
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-zinc-300 hover:text-zinc-100 bg-zinc-800/80 hover:bg-zinc-700/80 rounded-md border border-zinc-700/70 transition-colors cursor-pointer shrink-0 ml-2"
-          title="Kopiuj kod do schowka"
-        >
-          {copied ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-emerald-400 font-medium text-[11px]">Skopiowano</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3.5 h-3.5 text-zinc-400" />
-              <span className="text-[11px] font-medium">Kopiuj</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          <span className="text-[10.5px] uppercase font-mono font-bold tracking-wider text-zinc-400 bg-zinc-950/80 px-2 py-0.5 rounded border border-zinc-800 hidden sm:inline-block">
+            {lang}
+          </span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-zinc-300 hover:text-zinc-100 bg-zinc-800/80 hover:bg-zinc-700/80 rounded-md border border-zinc-700/70 transition-colors cursor-pointer"
+            title="Kopiuj kod do schowka"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400 font-medium">Skopiowano</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Kopiuj</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {(!collapsible || isExpanded) && (

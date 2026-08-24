@@ -1,28 +1,49 @@
-import React, { useState, useEffect } from 'react';
-import { Search, X, BookOpen, ChevronRight, CornerDownLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, X, ChevronRight, CornerDownLeft } from 'lucide-react';
 import { searchDocs } from '../data/docsData';
 
 export function SearchModal({ isOpen, onClose, onSelectResult }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const resultsContainerRef = useRef(null);
 
   useEffect(() => {
     if (query.trim() === '') {
       setResults([]);
+      setSelectedIndex(0);
     } else {
-      setResults(searchDocs(query));
+      const res = searchDocs(query);
+      setResults(res);
+      setSelectedIndex(0);
     }
   }, [query]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((prev) => (results.length > 0 ? (prev + 1) % results.length : 0));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((prev) => (results.length > 0 ? (prev - 1 + results.length) % results.length : 0));
+      } else if (e.key === 'Enter') {
+        if (results.length > 0 && results[selectedIndex]) {
+          e.preventDefault();
+          const item = results[selectedIndex];
+          onSelectResult(item.docId, item.sectionId);
+          onClose();
+        }
+      }
     };
+
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, results, selectedIndex, onSelectResult]);
 
   if (!isOpen) return null;
 
@@ -43,7 +64,7 @@ export function SearchModal({ isOpen, onClose, onSelectResult }) {
           {query && (
             <button
               onClick={() => setQuery('')}
-              className="text-zinc-400 hover:text-zinc-200 p-1 rounded-lg"
+              className="text-zinc-400 hover:text-zinc-200 p-1 rounded-lg cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -51,45 +72,56 @@ export function SearchModal({ isOpen, onClose, onSelectResult }) {
         </div>
 
         {/* Results List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div ref={resultsContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2">
           {query.trim() === '' ? (
             <div className="p-8 text-center text-zinc-500 text-xs">
-              Wpisz frazę wyszukiwania (np. <span className="text-amber-400 font-mono">Behavior</span>, <span className="text-amber-400 font-mono">SaveSystem</span>, <span className="text-amber-400 font-mono">EventBus</span>, <span className="text-amber-400 font-mono">BitmapFont</span>)...
+              Wpisz frazę wyszukiwania (np. <span className="text-amber-400 font-mono">TileCollision</span>, <span className="text-amber-400 font-mono">Resources</span>, <span className="text-amber-400 font-mono">SaveSystem</span>, <span className="text-amber-400 font-mono">EventBus</span>)...
             </div>
           ) : results.length === 0 ? (
             <div className="p-8 text-center text-zinc-400 text-xs">
               Brak wyników wyszukiwania dla &quot;{query}&quot;.
             </div>
           ) : (
-            results.map((res, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  onSelectResult(res.docId, res.sectionId);
-                  onClose();
-                }}
-                className="w-full text-left p-3 rounded-xl bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800/80 hover:border-amber-500/30 transition-all cursor-pointer group"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                      {res.docTitle}
-                    </span>
-                    <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-                    <span className="text-xs font-bold text-zinc-200">{res.sectionTitle}</span>
+            results.map((res, idx) => {
+              const isSelected = idx === selectedIndex;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    onSelectResult(res.docId, res.sectionId);
+                    onClose();
+                  }}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer group ${
+                    isSelected
+                      ? 'bg-zinc-900 border-amber-500/50 shadow-sm'
+                      : 'bg-zinc-900/50 hover:bg-zinc-900 border-zinc-800/80 hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                        {res.docTitle}
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
+                      <span className="text-xs font-bold text-zinc-200">{res.sectionTitle}</span>
+                    </div>
+                    <CornerDownLeft className={`w-3.5 h-3.5 transition-colors ${isSelected ? 'text-amber-400' : 'text-zinc-600'}`} />
                   </div>
-                  <CornerDownLeft className="w-3.5 h-3.5 text-zinc-500 group-hover:text-amber-400 transition-colors" />
-                </div>
-                <p className="text-xs text-zinc-400 line-clamp-2">{res.snippet}</p>
-              </button>
-            ))
+                  <p className="text-xs text-zinc-400 line-clamp-2">{res.snippet}</p>
+                </button>
+              );
+            })
           )}
         </div>
 
         {/* Footer info */}
         <div className="p-3 border-t border-zinc-800/80 bg-zinc-950 flex items-center justify-between text-xs text-zinc-500">
-          <span>Wymagany klawisz: <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded font-mono text-[10px] text-zinc-400">ESC</kbd> aby zamknąć</span>
-          <span className="font-mono text-[10px]">rusted_engine v1.0.0</span>
+          <div className="flex items-center gap-3">
+            <span>Nawigacja: <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded font-mono text-[10px] text-zinc-400">↑</kbd> <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded font-mono text-[10px] text-zinc-400">↓</kbd></span>
+            <span>Wybór: <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded font-mono text-[10px] text-zinc-400">ENTER</kbd></span>
+          </div>
+          <span className="font-mono text-[10px] text-zinc-400">rusted_engine v1.0.0</span>
         </div>
       </div>
     </div>
