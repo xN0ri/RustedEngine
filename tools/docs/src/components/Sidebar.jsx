@@ -19,7 +19,14 @@ const CATEGORIES = [
     icon: BookOpen,
     accent: "text-sky-400",
     dotColor: "#38bdf8",
-    docIds: ["quickstart", "lifecycle", "context", "world-layers", "behaviors"],
+    docIds: [
+      "quickstart",
+      "lifecycle",
+      "context",
+      "world-layers",
+      "behavior",
+      "architecture-best-practices",
+    ],
   },
   {
     id: "data",
@@ -31,7 +38,7 @@ const CATEGORIES = [
       "entity-data",
       "resources",
       "state-store",
-      "content-pipeline",
+      "datasets-pipeline",
       "save-system",
     ],
   },
@@ -84,6 +91,8 @@ const CATEGORIES = [
       "inventory-system",
       "turn-system",
       "enemy-ai",
+      "twin-stick-roguelike",
+      "spatial-queries-detection",
     ],
   },
   {
@@ -272,6 +281,52 @@ export function Sidebar({
               </div>
             );
           })}
+
+          {/* Fallback for any docs not explicitly in CATEGORIES */}
+          {(() => {
+            const allCategorizedIds = new Set(CATEGORIES.flatMap((c) => c.docIds));
+            const uncategorizedDocs = filteredDocs.filter((d) => !allCategorizedIds.has(d.id));
+            if (uncategorizedDocs.length === 0) return null;
+
+            return (
+              <div className="space-y-1 pt-3.5 border-t border-zinc-800/80">
+                <div className="flex items-center justify-between px-2 pt-1.5 pb-1">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-3.5 h-3.5 text-zinc-400" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300/95">
+                      Pozostałe Dokumenty
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md border text-zinc-400 bg-zinc-900/60 border-zinc-800/60">
+                    {uncategorizedDocs.length}
+                  </span>
+                </div>
+                <div className="space-y-0.5 pl-0.5">
+                  {uncategorizedDocs.map((doc) => {
+                    const isActive = activeDocId === doc.id;
+                    return (
+                      <div key={doc.id} className="space-y-0.5">
+                        <button
+                          onClick={() => {
+                            onSelectDoc(doc.id);
+                            if (onClose) onClose();
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-2 cursor-pointer group ${
+                            isActive
+                              ? "bg-zinc-800/90 text-zinc-100 font-semibold shadow-xs border border-zinc-700/70"
+                              : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/60"
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-zinc-500" />
+                          <span className="truncate flex-1">{doc.title}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer Meta */}
