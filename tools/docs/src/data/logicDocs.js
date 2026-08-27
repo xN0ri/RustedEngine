@@ -418,6 +418,34 @@ for name in actions.action_names() {
       ]
     },
     {
+      id: "clickable-trait",
+      title: "Cecha Clickable & Interakcje Myszą (Button, Sprite, Rectangle)",
+      content: `Każdy obiekt posiadający obszar klikalny implementuje cechę **\`Clickable\`**:
+
+### Metody Detekcji Kliknięcia (z aliasami):
+- **Wciśnięcie w tej klatce**: \`obj.is_pressed(Side::Left)\` (lub \`obj.click(Side::Left)\` / \`obj.is_pressed_ctx(ctx, Side::Left)\`).
+- **Ciągłe trzymanie wciśniętego**: \`obj.is_down(Side::Left)\` (lub \`obj.clicked(Side::Left)\` / \`obj.is_down_ctx(ctx, Side::Left)\`).
+- **Puszczenie w tej klatce**: \`obj.is_released(Side::Left)\` (lub \`obj.is_released_ctx(ctx, Side::Left)\`).
+- **Pod kursorem (Hover)**: \`obj.is_hovered()\` (lub \`obj.is_hovered_ctx(ctx)\`).`,
+      codeExamples: [
+        {
+          title: "Interakcja z Obiektem Świata lub UI za Pomocą Clickable",
+          code: `// W pętli .on_update(|obj, ctx| ...):
+if obj.is_pressed(Side::Left) {
+    println!("Kliknięto obiekt lewym przyciskiem myszy!");
+    ctx.play_varied("btn_click", 0.05, 0.05);
+}
+
+if obj.is_hovered() {
+    obj.color = GOLD; // Podświetlenie po najechaniu kursorem
+} else {
+    obj.color = WHITE;
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
       id: "input-api",
       title: "API Reference: Input & ActionMap",
       apiTable: {
@@ -439,6 +467,10 @@ for name in actions.action_names() {
           ["actions.is_released(action)", "&str", "bool", "true w klatce puszczenia dowolnego bindingu."],
           ["actions.unbind(action)", "&str", "()", "Usuwa wszystkie klawisze i mysz z akcji."],
           ["actions.action_names()", "brak", "Vec<&str>", "Posortowana lista wszystkich zarejestrowanych akcji."],
+          ["obj.is_pressed(side)", "Side", "bool", "Clickable: wciśnięto podany przycisk na obiekcie w tej klatce."],
+          ["obj.is_down(side)", "Side", "bool", "Clickable: przycisk myszy jest trzymany na obiekcie."],
+          ["obj.is_released(side)", "Side", "bool", "Clickable: puszczono przycisk myszy na obiekcie w tej klatce."],
+          ["obj.is_hovered()", "brak", "bool", "Clickable: kursor myszy znajduje się nad obiektem."],
         ]
       }
     }
@@ -776,12 +808,13 @@ ctx.set_ui_text("respawn_label", &format!("Odrodzenie za {:.1}s", remaining));`,
 \`EaseInQuart\`, \`EaseOutQuart\`, \`EaseInOutQuart\`,
 \`EaseInBounce\`, **\`EaseOutBounce\`**
 
-### Metody Tween:
-- **\`.tick(dt) -> f32\`** — odlicza i zwraca aktualną wartość.
-- **\`.value() -> f32\`** — zwraca aktualną wartość bez odliczania.
-- **\`.progress() -> f32\`** — postęp \`[0.0, 1.0]\`.
-- **\`.reset()\`** — resetuje do startu.
-- **\`.reverse()\`** — zamienia start/end i resetuje (animacja w tył).
+### Metody Tween & TweenVec2:
+- **\`.tick(dt) -> f32 / Vec2\`** — odlicza i zwraca aktualną wartość.
+- **\`.value() -> f32 / Vec2\`** — zwraca aktualną wartość bez odliczania.
+- **\`.progress() -> f32\`** — postęp animacji w przedziale \`[0.0, 1.0]\`.
+- **\`.is_finished() -> bool\`** — \`true\` gdy animacja dobiegła końca.
+- **\`.reset()\`** — resetuje stan animacji do punktu startowego.
+- **\`.reverse()\`** — zamienia start/end i resetuje (płynna animacja w tył / efekt ping-pong).
 
 > [!TIP]
 > \`Easing::evaluate(t)\` działa też samodzielnie — podaj dowolne \`t\` z \`[0.0, 1.0]\` i otrzymaj wygładzoną wartość.`,
@@ -798,8 +831,8 @@ let mut slide_tween = TweenVec2::new(
 
 // W update() panelu (co klatkę):
 if !slide_tween.is_finished() {
-    // Używaj raw_deltatime() jeśli chcesz płynność niezależnie od pauzy/time_scale:
-    panel.position = slide_tween.tick(ctx.time.raw_deltatime());
+    // Używaj raw_delta_time() jeśli chcesz płynność niezależnie od pauzy/time_scale:
+    panel.position = slide_tween.tick(ctx.time.raw_delta_time());
 }
 
 // Po dotarciu do celu — animacja w tył (chowanie panelu):
@@ -815,7 +848,7 @@ let mut alpha_tween = Tween::new(0.3, 1.0, 0.5, Easing::EaseInOutQuad);
 
 // W update() widgetu:
 let alpha = alpha_tween.tick(ctx.dt());
-if alpha_tween.finished {
+if alpha_tween.is_finished() {
     alpha_tween.reverse(); // Ping-pong: w tył i w przód
 }
 hp_bar.color = Color::new(1.0, 0.2, 0.2, alpha);`,
@@ -834,13 +867,13 @@ hp_bar.color = Color::new(1.0, 0.2, 0.2, alpha);`,
 - **\`ctx.time.set_paused(bool)\`** — pausuje grę (\`ctx.dt()\` zwraca \`0.0\` gdy paused).
 - **\`ctx.time.toggle_pause()\`** — przełącza pauzę.
 - **\`ctx.time.is_paused() -> bool\`** — sprawdza stan pauzy.
-- **\`ctx.time.deltatime() -> f32\`** — **skalowany** dt (uwzględnia time_scale i pauzę).
-- **\`ctx.time.raw_deltatime() -> f32\`** — **nieskalowany** dt (idealny do animacji UI niezależnych od gry).
+- **\`ctx.time.delta_time()\`** (oraz \`deltatime()\`) — **skalowany** dt w sekundach (uwzględnia time_scale i pauzę).
+- **\`ctx.time.raw_delta_time()\`** (oraz \`raw_deltatime()\`) — **nieskalowany** dt (idealny do animacji UI niezależnych od gry).
 - **\`ctx.time.fps() -> i32\`** — aktualny licznik FPS.
 - **\`ctx.time.elapsed_time() -> f64\`** — całkowity czas od startu aplikacji.
 
 > [!NOTE]
-> Do animacji UI (paneli, tweenów menu) zawsze używaj \`ctx.time.raw_deltatime()\` — dzięki temu menu działa płynnie nawet gdy gra jest na pauzie lub w slow-mo.`,
+> Do animacji UI (paneli, tweenów menu) zawsze używaj \`ctx.time.raw_delta_time()\` — dzięki temu menu działa płynnie nawet gdy gra jest na pauzie lub w slow-mo.`,
       codeExamples: [
         {
           title: "Hitstop i Slow-Motion z Automatycznym Przywróceniem",
@@ -882,8 +915,6 @@ if ctx.input.is_key_pressed(KeyCode::Escape) {
           [".tick_and_fire(dt, fn)", "f32, FnOnce()", "bool", "Odlicza i wywołuje callback przy wyzwoleniu."],
           [".just_finished()", "brak", "bool", "true tylko w klatce wyzwolenia."],
           [".progress()", "brak", "f32", "Postęp [0.0, 1.0] — do pasków UI."],
-          [".time_remaining()", "brak", "f32", "Sekundy do wyzwolenia."],
-          [".set_duration(dur)", "f32", "()", "Zmienia czas trwania i resetuje."],
           ["Tween::new(s, e, dur, easing)", "f32, f32, f32, Easing", "Tween", "Interpoluje f32 od s do e w czasie dur."],
           [".tick(dt) -> f32", "f32", "f32", "Odlicza i zwraca aktualną wartość."],
           [".reverse()", "brak", "()", "Zamienia start/end i resetuje (ping-pong)."],
@@ -901,35 +932,191 @@ if ctx.input.is_key_pressed(KeyCode::Escape) {
 
 export const mathGeometryDoc = {
   id: "math-geometry",
-  title: "16. 📐 Geometria, Kolizje & Tłumienie (Math)",
-  description: "Prymitywy geometryczne (Circle, Segment, Capsule, Ray2D), raycasting, tłumienie sprężynowe smooth_damp i interpolacje kątowe.",
+  title: "16. 📐 Geometria, Raycasting & Zapytania Przestrzenne (Spatial Queries)",
+  description: "Prymitywy geometryczne (Circle, Segment, Capsule, Ray2D), raycasting i Line-of-Sight, wykrywanie obiektów w promieniu (Circle / find_within_radius), stożek widzenia (FOV Cone), promień interakcji z promptami UI ('Naciśnij E') oraz tłumienie sprężynowe smooth_damp.",
   sections: [
     {
       id: "math-primitives",
-      title: "Prymitywy Kolizyjne & Raycasting 2D",
-      content: `Moduł \`geometry\` dostarcza precyzyjne kształty 2D i testy przecięć:
+      title: "1. 🔍 Prymitywy Kolizyjne & Raycasting 2D (Ray2D & RayHit)",
+      content: `Moduł \`geometry\` dostarcza precyzyjne kształty 2D i testy ciągłych przecięć:
 
-- **\`Circle::new(center, radius)\`**: Okrąg kolizyjny.
-- **\`Segment::new(a, b)\`**: Odcinek w przestrzeni 2D (\`.closest_point(p)\`, \`.distance_to_point(p)\`).
-- **\`Capsule::new(a, b, radius)\`**: Kapsuła kolizyjna (idealna do mieczy, laserów i korpusów postaci).
-- **\`Ray2D::new(origin, dir)\`**: Promień raycastu z testem przecięcia z prostokątami AABB i okręgami.`,
+### Dostępne Prymitywy:
+- **\`Ray2D::new(origin, dir)\`**: Promień z automatyczną normalizacją kierunku.
+  - \`ray.cast_against_rect(rect, max_dist) -> Option<RayHit>\`: Zwraca punkt uderzenia, odległość i normalną ściany.
+  - \`ray.cast_against_circle(circle, max_dist) -> Option<RayHit>\`: Precyzyjne przecięcie ze sferycznym hitboxem.
+  - \`ray.cast_against_segment(segment, max_dist) -> Option<RayHit>\`: Trafienie w linię/odcinek.
+- **\`Circle::new(center, radius)\`**: Okrąg kolizyjny (\`.contains(p)\`, \`.intersects_rect(r)\`, \`.intersects_circle(c)\`).
+- **\`Segment::new(a, b)\`**: Odcinek 2D (\`.closest_point(p)\`, \`.distance_to_point(p)\`, \`.intersects_segment(s)\`).
+- **\`Capsule::new(a, b, radius)\`**: Kapsuła (zamieciony okrąg — idealna do mieczy, laserów i ciał postaci).`,
       codeExamples: [
         {
-          title: "Raycast Ściany i Kolizja Kapsuły",
+          title: "Raycast Line-of-Sight (Czy wróg widzi gracza przez ściany?)",
           code: `use rusted_engine::prelude::*;
+use macroquad::prelude::*;
 
-// 1. Raycast w linii wzroku gracza (zasięg 300px):
-let ray = Ray2D::new(player.position, player.facing);
-if let Some(hit) = ray.cast_against_rect(wall_rect, 300.0) {
-    println!("Ściana trafiona w odległości {:.1}px w punkcie {:?}", hit.distance, hit.point);
+// 1. Sprawdzanie Line of Sight (LoS) między wrogiem a graczem:
+fn has_line_of_sight(from: Vec2, to: Vec2, walls: &[Rect]) -> bool {
+    let dir = (to - from).normalize_or_zero();
+    let dist = from.distance(to);
+    let ray = Ray2D::new(from, dir);
+
+    for wall in walls {
+        if let Some(hit) = ray.cast_against_rect(*wall, dist) {
+            if hit.distance < dist {
+                return false; // Ściana zasłania gracza!
+            }
+        }
+    }
+    true // Czysta linia wzroku
 }
 
-// 2. Sprawdzenie przecięcia kapsuły ataku miecza z wrogiem:
-let sword_capsule = Capsule::new(player.position, player.position + player.facing * 45.0, 14.0);
-let enemy_circle = Circle::new(enemy.position, 16.0);
+// 2. Raycast lasera z odbiciem od ściany:
+let laser_ray = Ray2D::new(gun_pos, gun_facing);
+if let Some(hit) = laser_ray.cast_against_rect(wall_rect, 500.0) {
+    // Rysuj promień do punktu trafienia:
+    draw_line(gun_pos.x, gun_pos.y, hit.point.x, hit.point.y, 2.0, RED);
+    
+    // Oblicz wektor odbicia: r = d - 2*(d · n)*n
+    let reflected_dir = laser_ray.direction - 2.0 * laser_ray.direction.dot(hit.normal) * hit.normal;
+    let bounce_ray = Ray2D::new(hit.point, reflected_dir);
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "spatial-interaction",
+      title: "2. 🎁 Zasięg Interakcji z Przedmiotami & Komunikat UI (Press E)",
+      content: `Wykrywanie najbliższego przedmiotu/skrzyni/NPC w zasięgu gracza i wyświetlenie dynamicznej podpowiedzi UI:
 
-if sword_capsule.intersects_circle(enemy_circle) {
-    println!("Cięcie mieczem trafiło wroga!");
+### Wzorzec Detekcji:
+1. **Wyszukanie Najbliższego Obiektu**: \`ctx.find_nearest(player.position, "pickup")\` lub \`ctx.find_within_radius(player.position, 60.0)\`.
+2. **Sprawdzenie Dystansu**: Jeśli odległość $< 55\text{px}$, włącz podpowiedź w HUD.
+3. **Akcja pod Klawiszem**: Po wciśnięciu klawisza \`E\` wykonaj akcję podniesienia lub otwarcia.`,
+      codeExamples: [
+        {
+          title: "System Interakcji z Podnoszeniem Przedmiotów (Pickups)",
+          code: `// Encja Przedmiotu na ziemi (np. Mikstura Życia):
+pub struct ItemPickupData {
+    pub name: String,
+    pub heal_amount: i32,
+}
+
+pub fn spawn_potion(pos: Vec2) -> impl Object {
+    Sprite::solid(pos, vec2(16.0, 16.0), GREEN)
+        .with_tag("pickup")
+        .with_data(ItemPickupData {
+            name: "Mikstura Zdrowia (+50 HP)".into(),
+            heal_amount: 50,
+        })
+}
+
+// W update() encji Gracza:
+let interact_range = 55.0;
+let mut prompt_text = None;
+
+// Znajdź najbliższy przedmiot z tagiem "pickup":
+if let Some(nearest) = ctx.find_nearest(player.position, "pickup") {
+    if let Some(bounds) = nearest.bounds() {
+        let item_center = vec2(bounds.x + bounds.w * 0.5, bounds.y + bounds.h * 0.5);
+        let dist = player.position.distance(item_center);
+
+        if dist <= interact_range {
+            prompt_text = Some("[E] Podnieś Przedmiot");
+
+            // Gracz wciska klawisz interakcji E:
+            if ctx.input.is_key_pressed(KeyCode::E) {
+                player.data.hp = (player.data.hp + 50).min(100);
+                ctx.play_varied("potion_drink", 0.1, 0.05);
+                ctx.emit_signal("item_collected");
+            }
+        }
+    }
+}
+
+// Wyświetl podpowiedź w UI (lub ukryj jeśli gracz odszedł):
+if let Some(text) = prompt_text {
+    ctx.set_ui_text("interact_prompt", text);
+} else {
+    ctx.set_ui_text("interact_prompt", "");
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "spatial-fov-cone",
+      title: "3. 🔦 Stożek Widzenia / Kątowe Pole Widzenia (FOV Cone)",
+      content: `Wykrywanie czy cel znajduje się w stożku widzenia postaci (np. kąt $70^\circ$ przed oczami w zasięgu $220\text{px}$):
+
+### Matematyka Iloczynu Skalarnego (Dot Product):
+Wektor kierunku patrzenia $\vec{F}$ oraz znormalizowany wektor do celu $\vec{D}$:
+$$\vec{F} \cdot \vec{D} = \cos(\theta)$$
+Jeśli $\vec{F} \cdot \vec{D} \ge \cos(\text{half\_fov})$ oraz $\text{distance} \le \text{max\_range}$, cel znajduje się wewnątrz stożka!`,
+      codeExamples: [
+        {
+          title: "Detekcja Celu w Stożku Widzenia AI Strażnika",
+          code: `pub fn is_in_vision_cone(
+    guard_pos: Vec2,
+    guard_facing: Vec2, // znormalizowany wektor wzroku (np. vec2(1.0, 0.0))
+    target_pos: Vec2,
+    max_range: f32,
+    fov_degrees: f32,
+) -> bool {
+    let to_target = target_pos - guard_pos;
+    let dist = to_target.length();
+
+    if dist > max_range || dist < 0.001 {
+        return false;
+    }
+
+    let dir_to_target = to_target / dist;
+    let min_dot = (fov_degrees.to_radians() * 0.5).cos();
+
+    // Iloczyn skalarny sprawdza kąt między wzrokiem a celem:
+    guard_facing.dot(dir_to_target) >= min_dot
+}
+
+// W update() strażnika AI:
+let player_pos = ctx.resources.get::<Vec2>().copied().unwrap_or(Vec2::ZERO);
+
+// Stożek 70 stopni na dystans 220 pikseli:
+if is_in_vision_cone(guard.position, guard.data.facing, player_pos, 220.0, 70.0) {
+    // Strażnik zauważył gracza!
+    ctx.play_sound("guard_alert_sfx");
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "spatial-aoe",
+      title: "4. 💥 Obrażenia Obszarowe (AoE Radial Explosion)",
+      content: `Wybuchy granatów, pocisków rakietowych i czarów obszarowych wykorzystują zapytanie \`ctx.find_within_radius(center, radius)\`:`,
+      codeExamples: [
+        {
+          title: "Eksplozja Obszarowa ze Spadkiem Obrażeń (Damage Falloff)",
+          code: `pub fn trigger_explosion(ctx: &mut Context, center: Vec2, radius: f32, max_damage: f32) {
+    ctx.camera.shake(0.3, 10.0);
+    ctx.play_varied("explosion_boom", 0.15, 0.1);
+
+    // Znajdź wszystkie obiekty w promieniu wybuchu:
+    let nearby_objects = ctx.find_within_radius(center, radius);
+
+    for obj in nearby_objects {
+        if obj.has_tag("enemy") {
+            if let Some(bounds) = obj.bounds() {
+                let obj_center = vec2(bounds.x + bounds.w * 0.5, bounds.y + bounds.h * 0.5);
+                let dist = center.distance(obj_center);
+
+                // Liniowy spadek obrażeń: 100% w centrum, 0% na skraju:
+                let factor = (1.0 - (dist / radius)).clamp(0.0, 1.0);
+                let damage = (max_damage * factor).round() as i32;
+
+                println!("Wybuch zadał {} obrażeń wrogowi na pozycji {:?}", damage, obj_center);
+            }
+        }
+    }
 }`,
           collapsible: false
         }
@@ -937,9 +1124,35 @@ if sword_capsule.intersects_circle(enemy_circle) {
     },
     {
       id: "math-smoothing",
-      title: "Płynne Tłumienie Sprężynowe & Interpolacje Kątowe",
+      title: "5. 🌊 Płynne Tłumienie Sprężynowe & Interpolacje Kątowe",
       content: `- **\`smooth_damp_vec2\`**: Matematycznie stabilne tłumienie sprężynowe (jak w Unity \`SmoothDamp\`) eliminujące szarpanie kamery.
 - **\`lerp_angle(a, b, t)\`**: Płynna interpolacja kątowa z poprawnym przejściem przez granicę 0 / 2π radianów.
+- **\`remap(val, in_min, in_max, out_min, out_max)\`**: Przelicza wartość z jednego przedziału liczbowego na inny.
+- **\`approach(current, target, max_delta)\`**: Przesuwa wartość w stronę celu z maksymalnym limitem kroku.`,
+      codeExamples: [
+        {
+          title: "Tłumienie Kamery i Płynny Obrót Wieżyczki",
+          code: `// 1. Płynne podążanie kamery za celem:
+let smooth_pos = smooth_damp_vec2(
+    ctx.camera.target,
+    player.position,
+    &mut cam_velocity,
+    0.15,
+    1200.0,
+    ctx.dt()
+);
+ctx.camera.target = smooth_pos;
+
+// 2. Płynne celowanie wieżyczki w stronę myszy:
+let target_dir = ctx.mouse_world() - turret.position;
+let target_angle = target_dir.y.atan2(target_dir.x);
+turret.rotation = lerp_angle(turret.rotation, target_angle, 8.0 * ctx.dt());`,
+          collapsible: false
+        }
+      ]
+    }
+  ]
+};z granicę 0 / 2π radianów.
 - **\`remap(val, in_min, in_max, out_min, out_max)\`**: Przelicza wartość z jednego przedziału liczbowego na inny.
 - **\`approach(current, target, max_delta)\`**: Przesuwa wartość w stronę celu z maksymalnym limitem kroku.`,
       codeExamples: [

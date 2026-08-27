@@ -35,6 +35,16 @@ pub struct Slider {
 }
 
 impl Slider {
+    /// Creates a new [`Slider`] at `(0, 0)` with default dimensions `(160.0, 20.0)` in range `[min, max]` initialized at `value`.
+    pub fn simple(min_val: f32, max_val: f32, value: f32) -> Self {
+        Self::new(Vec2::ZERO, Vec2::new(160.0, 20.0), min_val, max_val, value)
+    }
+
+    /// Creates an empty [`Slider`] at `(0, 0)` with default dimensions `(160.0, 20.0)` in range `[0.0, 1.0]`.
+    pub fn empty() -> Self {
+        Self::simple(0.0, 1.0, 0.0)
+    }
+
     /// Creates a new [`Slider`] using a Rust [`std::ops::RangeInclusive<f32>`] (e.g. `0.0..=100.0`).
     pub fn range(position: Vec2, size: Vec2, range: std::ops::RangeInclusive<f32>, value: f32) -> Self {
         Self::new(position, size, *range.start(), *range.end(), value)
@@ -57,6 +67,73 @@ impl Slider {
             visible: true,
             active: true,
         }
+    }
+
+    /// Builder pattern: Sets explicit slider position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit slider position `(x, y)` (alias for [`with_position`](Slider::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit slider size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = macroquad::math::vec2(rect.x, rect.y);
+        self.size = macroquad::math::vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets slider value range `[min, max]`.
+    pub fn with_range(mut self, min_val: f32, max_val: f32) -> Self {
+        self.min_val = min_val;
+        self.max_val = max_val;
+        self.value = self.value.clamp(min_val, max_val);
+        self
+    }
+
+    /// Builder pattern: Sets slider value.
+    pub fn with_value(mut self, value: f32) -> Self {
+        self.value = value.clamp(self.min_val, self.max_val);
+        self
+    }
+
+    /// Builder pattern: Sets slider colors (track, fill, knob).
+    pub fn with_colors(mut self, track: Color, fill: Color, knob: Color) -> Self {
+        self.track_color = track;
+        self.fill_color = fill;
+        self.knob_color = knob;
+        self
+    }
+
+    /// Builder pattern: Sets the entity tag.
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
+        self
+    }
+
+    /// Builder pattern: Centers slider on screen.
+    pub fn center_on_screen(mut self) -> Self {
+        let sw = super::core::safe_screen_width();
+        let sh = super::core::safe_screen_height();
+        self.position = macroquad::math::vec2((sw - self.size.x) * 0.5, (sh - self.size.y) * 0.5);
+        self
+    }
+
+    /// Builder pattern: Aligns slider on screen using a [`UIAnchor`](super::core::UIAnchor) preset and padding.
+    pub fn align_to_screen(mut self, anchor: super::core::UIAnchor, padding: impl Into<super::core::Padding>) -> Self {
+        self.position = anchor.compute_position(self.size, padding);
+        self
     }
 
     /// Builder pattern: Attaches an `on_change` callback closure.
@@ -152,6 +229,18 @@ impl Object for Slider {
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
     }
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
+    }
+    fn set_size(&mut self, size: macroquad::math::Vec2) {
+        self.size = size;
+    }
+}
+
+impl Default for Slider {
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 /// Interactive checkbox widget with label for boolean settings.
@@ -171,6 +260,16 @@ pub struct Checkbox {
 }
 
 impl Checkbox {
+    /// Creates a new [`Checkbox`] at `(0, 0)` with default box size `(20.0, 20.0)`.
+    pub fn simple(label: impl Into<String>, checked: bool) -> Self {
+        Self::new(Vec2::ZERO, Vec2::new(20.0, 20.0), label, checked)
+    }
+
+    /// Creates an empty [`Checkbox`] at `(0, 0)` with default box size `(20.0, 20.0)`.
+    pub fn empty() -> Self {
+        Self::simple("", false)
+    }
+
     /// Creates a [`Checkbox`] with default box size `(20.0, 20.0)` and initial `checked = false`.
     pub fn label(label: impl Into<String>, position: Vec2) -> Self {
         Self::new(position, Vec2::new(20.0, 20.0), label, false)
@@ -191,6 +290,71 @@ impl Checkbox {
             visible: true,
             active: true,
         }
+    }
+
+    /// Builder pattern: Sets explicit checkbox position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit checkbox position `(x, y)` (alias for [`with_position`](Checkbox::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit checkbox box size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = macroquad::math::vec2(rect.x, rect.y);
+        self.size = macroquad::math::vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets checkbox label text.
+    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+        self.label = label.into();
+        self
+    }
+
+    /// Builder pattern: Sets checked state.
+    pub fn with_checked(mut self, checked: bool) -> Self {
+        self.checked = checked;
+        self
+    }
+
+    /// Builder pattern: Sets the entity tag.
+    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = tag.into();
+        self
+    }
+
+    /// Builder pattern: Sets box, checkmark, and label text colors.
+    pub fn with_colors(mut self, box_color: Color, check_color: Color, text_color: Color) -> Self {
+        self.box_color = box_color;
+        self.check_color = check_color;
+        self.text_color = text_color;
+        self
+    }
+
+    /// Builder pattern: Centers checkbox on screen.
+    pub fn center_on_screen(mut self) -> Self {
+        let sw = super::core::safe_screen_width();
+        let sh = super::core::safe_screen_height();
+        self.position = macroquad::math::vec2((sw - self.size.x) * 0.5, (sh - self.size.y) * 0.5);
+        self
+    }
+
+    /// Builder pattern: Aligns checkbox on screen using a [`UIAnchor`](super::core::UIAnchor) preset and padding.
+    pub fn align_to_screen(mut self, anchor: super::core::UIAnchor, padding: impl Into<super::core::Padding>) -> Self {
+        self.position = anchor.compute_position(self.size, padding);
+        self
     }
 
     /// Builder pattern: Attaches an `on_toggle` callback.
@@ -262,6 +426,18 @@ impl Object for Checkbox {
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
     }
+    fn set_position(&mut self, pos: macroquad::math::Vec2) {
+        self.position = pos;
+    }
+    fn set_size(&mut self, size: macroquad::math::Vec2) {
+        self.size = size;
+    }
+}
+
+impl Default for Checkbox {
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 /// Hover information card popup displaying contextual info text over target components.
@@ -275,6 +451,16 @@ pub struct Tooltip {
 }
 
 impl Tooltip {
+    /// Creates a new [`Tooltip`] at `(0, 0)` displaying `text`.
+    pub fn simple(text: impl Into<String>) -> Self {
+        Self::new(text, Vec2::ZERO)
+    }
+
+    /// Creates an empty [`Tooltip`] at `(0, 0)`.
+    pub fn empty() -> Self {
+        Self::simple("")
+    }
+
     /// Creates a new [`Tooltip`] displaying `text` at cursor offset `position`.
     pub fn new(text: impl Into<String>, position: Vec2) -> Self {
         Self {
@@ -285,6 +471,37 @@ impl Tooltip {
             text_color: WHITE,
             visible: true,
         }
+    }
+
+    /// Builder pattern: Sets explicit tooltip position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit tooltip position `(x, y)` (alias for [`with_position`](Tooltip::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets tooltip text.
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = text.into();
+        self
+    }
+
+    /// Builder pattern: Sets font size.
+    pub fn with_font_size(mut self, font_size: f32) -> Self {
+        self.font_size = font_size;
+        self
+    }
+
+    /// Builder pattern: Sets background and text colors.
+    pub fn with_colors(mut self, bg_color: Color, text_color: Color) -> Self {
+        self.bg_color = bg_color;
+        self.text_color = text_color;
+        self
     }
 }
 
@@ -307,5 +524,15 @@ impl Object for Tooltip {
             self.font_size,
             self.text_color,
         );
+    }
+
+    fn set_position(&mut self, pos: Vec2) {
+        self.position = pos;
+    }
+}
+
+impl Default for Tooltip {
+    fn default() -> Self {
+        Self::empty()
     }
 }

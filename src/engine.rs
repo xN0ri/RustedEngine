@@ -147,6 +147,42 @@ impl Context {
         }
     }
 
+    /// Finds the nearest object matching `tag` to `pos` in the active world.
+    pub fn find_nearest(&self, pos: Vec2, tag: &str) -> Option<&dyn crate::world::Object> {
+        if let Some(ptr) = self.world_ptr {
+            unsafe { (*ptr).find_nearest(pos, tag) }
+        } else {
+            None
+        }
+    }
+
+    /// Finds all world-space objects whose bounding box is within `radius` of `center` in active world.
+    pub fn find_within_radius(&self, center: Vec2, radius: f32) -> Vec<&dyn crate::world::Object> {
+        if let Some(ptr) = self.world_ptr {
+            unsafe { (*ptr).find_within_radius(center, radius) }
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Finds all world-space objects matching `tag` in active world.
+    pub fn find_by_tag(&self, tag: &str) -> Vec<&dyn crate::world::Object> {
+        if let Some(ptr) = self.world_ptr {
+            unsafe { (*ptr).find_by_tag(tag) }
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Counts world-space objects matching `tag` in active world.
+    pub fn count_by_tag(&self, tag: &str) -> usize {
+        if let Some(ptr) = self.world_ptr {
+            unsafe { (*ptr).count_by_tag(tag) }
+        } else {
+            0
+        }
+    }
+
     /// Requests a scene switch by name to be executed at the start of the next frame.
     pub fn switch_scene(&mut self, scene_name: impl Into<String>) {
         self.pending_scene = Some(scene_name.into());
@@ -155,6 +191,18 @@ impl Context {
     /// Returns the delta time in seconds for the current frame. Shorthand for `ctx.time.deltatime()`.
     pub fn dt(&self) -> f32 {
         self.time.deltatime()
+    }
+
+    /// Returns `true` periodically once every `interval` seconds based on elapsed game time.
+    pub fn every(&self, interval: f32) -> bool {
+        if interval <= 0.0 {
+            return false;
+        }
+        let elapsed = self.time.elapsed_time() as f32;
+        let dt = self.time.deltatime().max(0.0001);
+        let prev = (elapsed - dt) / interval;
+        let curr = elapsed / interval;
+        prev.floor() < curr.floor()
     }
 
     /// Helper: Plays a sound effect by asset key using default settings.
@@ -238,9 +286,34 @@ impl Context {
         self.state.get_bool(key)
     }
 
+    /// Checks if a boolean flag exists and is true. Shorthand for `ctx.state.has_flag(key)`.
+    pub fn has_flag(&self, key: &str) -> bool {
+        self.state.has_flag(key)
+    }
+
     /// Sets boolean flag value in state store. Shorthand for `ctx.state.set_bool(key, v)`.
     pub fn set_flag(&mut self, key: &str, v: bool) {
         self.state.set_bool(key, v);
+    }
+
+    /// Returns float value from state store. Shorthand for `ctx.state.get_float(key)`.
+    pub fn get_float(&self, key: &str) -> f64 {
+        self.state.get_float(key)
+    }
+
+    /// Sets float value in state store. Shorthand for `ctx.state.set_float(key, v)`.
+    pub fn set_float(&mut self, key: &str, v: impl Into<f64>) {
+        self.state.set_float(key, v);
+    }
+
+    /// Returns string text value from state store. Shorthand for `ctx.state.get_text(key)`.
+    pub fn get_state_text(&self, key: &str) -> &str {
+        self.state.get_text(key)
+    }
+
+    /// Sets string text value in state store. Shorthand for `ctx.state.set_text(key, v)`.
+    pub fn set_state_text(&mut self, key: &str, v: impl Into<String>) {
+        self.state.set_text(key, v);
     }
 
     /// Returns 2D vector value from state store. Shorthand for `ctx.state.get_vec2(key)`.
@@ -341,9 +414,19 @@ impl Context {
         self.audio.play_varied(&self.assets, name, pitch_variance, volume_variance);
     }
 
+    /// Helper: Plays a sound effect with randomized volume variation (alias for [`play_sound_varied`](Context::play_sound_varied)).
+    pub fn play_varied(&self, name: &str, pitch_variance: f32, volume_variance: f32) {
+        self.play_sound_varied(name, pitch_variance, volume_variance);
+    }
+
     /// Helper: Plays a sound effect with rate limiting / throttling.
     pub fn play_sound_throttled(&mut self, name: &str, min_interval_secs: f32) {
         self.audio.play_throttled(&self.assets, name, min_interval_secs);
+    }
+
+    /// Helper: Plays a sound effect with rate limiting / throttling (alias for [`play_sound_throttled`](Context::play_sound_throttled)).
+    pub fn play_throttled(&mut self, name: &str, min_interval_secs: f32) {
+        self.play_sound_throttled(name, min_interval_secs);
     }
 
     // --- Time shortcuts ---

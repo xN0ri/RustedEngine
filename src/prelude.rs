@@ -1,7 +1,7 @@
 //! Prelude re-exporting common structs, traits, enums, and macros for easy importing via `use rusted_engine::prelude::*;`.
 
 pub use crate::{
-    column, row, scene, ui_vec,
+    col, column, vbox, row, hbox, div, scene, ui_vec,
     actions::ActionMap,
     animated_texture::AnimatedSprite,
     asset_manager::Assets,
@@ -13,11 +13,11 @@ pub use crate::{
     draggable::{DragState, Draggable},
     engine::{Context, CustomCursor, Engine},
     events::EventBus,
-    geometry::{Capsule, Circle, Segment},
+    geometry::{Capsule, Circle, Ray2D, RayHit, Segment},
     input::Input,
     math::{Vec2Ext, smooth_damp, smooth_damp_vec2},
     object::{Behavior, Clickable, GameObject, Logic, LogicObject, Rectangle, Side, Sprite},
-    panel_manager::{Panel, PanelId, PanelManager},
+    panel_manager::{DesktopWindow, Panel, PanelId, PanelManager, WindowPanel},
     particles::{Particle, ParticleEmitter},
     postprocess::{PostProcess, SceneRenderTarget},
     resources::Resources,
@@ -37,7 +37,7 @@ pub use crate::{
     trigger::{Trigger, TriggerSystem},
     tween::{Easing, Tween, TweenVec2},
     ui::{
-        Align, Button, Checkbox, Column, Container, CrossAxisAlignment, Gap, Grid, HBox, Image, ImageObject,
+        Align, Button, Checkbox, Column, Container, CrossAxisAlignment, Div, DivDirection, Gap, Grid, HBox, Image, ImageObject,
         IntoUIObject, LayoutAlign, LayoutJustify, MainAxisAlignment, Margin, Padding, Panel as UiPanel,
         ProgressBar, RevealMode, RichText, RichTextObject, Row, ScrollMode, Slider, Text, TextAlign, TextAlignment, TextField,
         TextFieldObject, TextLog, TextLogObject, TextObject, UIAnchor, VBox,

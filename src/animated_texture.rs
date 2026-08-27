@@ -26,6 +26,49 @@ pub struct AnimatedSprite {
 }
 
 impl AnimatedSprite {
+    /// Creates an empty [`AnimatedSprite`].
+    pub fn empty() -> Self {
+        Self {
+            position: Vec2::ZERO,
+            size: Vec2::ZERO,
+            rotation: 0.0,
+            color: WHITE,
+            frames: Vec::new(),
+            fps: 12.0,
+            looping: true,
+            current_frame: 0,
+            frame_timer: 0.0,
+            playing: true,
+            tag: String::new(),
+            visible: true,
+            active: true,
+        }
+    }
+
+    /// Creates an [`AnimatedSprite`] from a list of texture frames with native size based on first frame.
+    pub fn from_frames(frames: Vec<Texture2D>) -> Self {
+        let size = if let Some(first) = frames.first() {
+            macroquad::math::vec2(first.width(), first.height())
+        } else {
+            Vec2::ZERO
+        };
+        Self {
+            position: Vec2::ZERO,
+            size,
+            rotation: 0.0,
+            color: WHITE,
+            frames,
+            fps: 12.0,
+            looping: true,
+            current_frame: 0,
+            frame_timer: 0.0,
+            playing: true,
+            tag: String::new(),
+            visible: true,
+            active: true,
+        }
+    }
+
     /// Creates a new [`AnimatedSprite`] with the provided texture frames and playback speed (FPS).
     pub fn new(position: Vec2, size: Vec2, frames: Vec<Texture2D>, fps: f32) -> Self {
         Self {
@@ -43,6 +86,36 @@ impl AnimatedSprite {
             visible: true,
             active: true,
         }
+    }
+
+    /// Builder pattern: Sets explicit position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit position `(x, y)` (alias for [`with_position`](AnimatedSprite::with_position)).
+    pub fn with_pos(self, pos: Vec2) -> Self {
+        self.with_position(pos)
+    }
+
+    /// Builder pattern: Sets explicit size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = macroquad::math::vec2(rect.x, rect.y);
+        self.size = macroquad::math::vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets playback speed (FPS).
+    pub fn with_fps(mut self, fps: f32) -> Self {
+        self.fps = if fps > 0.0 { fps } else { 12.0 };
+        self
     }
 
     /// Builder pattern: Sets rotation in radians.
@@ -232,7 +305,21 @@ impl Object for AnimatedSprite {
         self.active = active;
     }
 
+    fn set_position(&mut self, pos: Vec2) {
+        self.position = pos;
+    }
+
+    fn set_size(&mut self, size: Vec2) {
+        self.size = size;
+    }
+
     fn bounds(&self) -> Option<Rect> {
         Some(self.rect())
+    }
+}
+
+impl Default for AnimatedSprite {
+    fn default() -> Self {
+        Self::empty()
     }
 }

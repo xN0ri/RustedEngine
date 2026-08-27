@@ -45,9 +45,14 @@ impl Scene {
 
     /// Attaches an `on_exit` callback triggered just before this scene is deactivated
     /// and another scene takes over. Useful for stopping BGM, clearing UI state, etc.
-    pub fn on_exit_hook<F: FnMut(&mut Context) + 'static>(mut self, callback: F) -> Self {
+    pub fn on_exit<F: FnMut(&mut Context) + 'static>(mut self, callback: F) -> Self {
         self.on_exit = Some(Box::new(callback));
         self
+    }
+
+    /// Attaches an `on_exit` callback (alias for [`on_exit`](Scene::on_exit)).
+    pub fn on_exit_hook<F: FnMut(&mut Context) + 'static>(self, callback: F) -> Self {
+        self.on_exit(callback)
     }
 
     /// Internal: Triggers the `on_enter` callback if set.

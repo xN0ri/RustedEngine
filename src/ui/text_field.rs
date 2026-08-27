@@ -3,7 +3,7 @@
 use macroquad::{
     color::{Color, GRAY, WHITE},
     input::{KeyCode, MouseButton, is_key_pressed, is_mouse_button_pressed},
-    math::{Rect, Vec2},
+    math::{Rect, Vec2, vec2},
     shapes::draw_rectangle,
     text::{Font, TextParams, draw_text, draw_text_ex, measure_text},
 };
@@ -22,6 +22,26 @@ pub enum TextAlignment {
     Left,
     Center,
     Right,
+}
+
+impl From<super::text::TextAlign> for TextAlignment {
+    fn from(a: super::text::TextAlign) -> Self {
+        match a {
+            super::text::TextAlign::Left => TextAlignment::Left,
+            super::text::TextAlign::Center => TextAlignment::Center,
+            super::text::TextAlign::Right => TextAlignment::Right,
+        }
+    }
+}
+
+impl From<TextAlignment> for super::text::TextAlign {
+    fn from(a: TextAlignment) -> Self {
+        match a {
+            TextAlignment::Left => super::text::TextAlign::Left,
+            TextAlignment::Center => super::text::TextAlign::Center,
+            TextAlignment::Right => super::text::TextAlign::Right,
+        }
+    }
 }
 
 /// Interactive UI text input field supporting focus management, character typing,
@@ -61,6 +81,21 @@ pub struct TextField {
 }
 
 impl TextField {
+    /// Creates a new UI [`TextField`] at `(0, 0)` with default dimensions `(200.0, 36.0)` and given placeholder.
+    pub fn placeholder(placeholder: impl Into<String>) -> Self {
+        Self::new(Vec2::ZERO, Vec2::new(200.0, 36.0), &placeholder.into())
+    }
+
+    /// Creates a new UI [`TextField`] at `(0, 0)` with default dimensions `(200.0, 36.0)` and given placeholder (alias for [`placeholder`](TextField::placeholder)).
+    pub fn simple(placeholder: impl Into<String>) -> Self {
+        Self::placeholder(placeholder)
+    }
+
+    /// Creates an empty UI [`TextField`] at `(0, 0)` with default dimensions `(200.0, 36.0)`.
+    pub fn empty() -> Self {
+        Self::placeholder("")
+    }
+
     /// Creates a new UI [`TextField`] with default styling and decorations enabled.
     pub fn new(position: Vec2, size: Vec2, placeholder: &str) -> Self {
         Self {
@@ -94,6 +129,71 @@ impl TextField {
             text_offset: Vec2::ZERO,
             bitmap_font: None,
         }
+    }
+
+    /// Builder pattern: Sets explicit text field position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit text field position `(x, y)` (alias for [`with_position`](TextField::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit text field size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = vec2(rect.x, rect.y);
+        self.size = vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets font size.
+    pub fn with_font_size(mut self, font_size: f32) -> Self {
+        self.font_size = font_size;
+        self
+    }
+
+    /// Builder pattern: Sets text content.
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = text.into();
+        self
+    }
+
+    /// Builder pattern: Sets placeholder text.
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.placeholder = placeholder.into();
+        self
+    }
+
+    /// Builder pattern: Sets background, text, and placeholder colors.
+    pub fn with_colors(mut self, bg: Color, text: Color, placeholder: Color) -> Self {
+        self.bg_color = bg;
+        self.text_color = text;
+        self.placeholder_color = placeholder;
+        self
+    }
+
+    /// Builder pattern: Centers text field on screen.
+    pub fn center_on_screen(mut self) -> Self {
+        let sw = super::core::safe_screen_width();
+        let sh = super::core::safe_screen_height();
+        self.position = vec2((sw - self.size.x) * 0.5, (sh - self.size.y) * 0.5);
+        self
+    }
+
+    /// Builder pattern: Aligns text field on screen using a [`UIAnchor`](super::core::UIAnchor) preset and padding.
+    pub fn align_to_screen(mut self, anchor: super::core::UIAnchor, padding: impl Into<Padding>) -> Self {
+        self.position = anchor.compute_position(self.size, padding);
+        self
     }
 
     /// Builder pattern: Attaches a pre-baked [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas for 100% crisp pixel font rendering.
@@ -133,20 +233,19 @@ impl TextField {
     }
 
     /// Builder pattern: Sets text alignment (Left, Center, Right).
-    pub fn with_text_alignment(mut self, alignment: TextAlignment) -> Self {
-        self.alignment = alignment;
+    pub fn with_text_alignment(mut self, alignment: impl Into<TextAlignment>) -> Self {
+        self.alignment = alignment.into();
         self
+    }
+
+    /// Builder pattern: Sets text alignment (Left, Center, Right) (alias for [`with_text_alignment`](TextField::with_text_alignment)).
+    pub fn with_text_align(self, alignment: impl Into<TextAlignment>) -> Self {
+        self.with_text_alignment(alignment)
     }
 
     /// Builder pattern: Sets manual pixel text offset (dx, dy).
     pub fn with_text_offset(mut self, offset: Vec2) -> Self {
         self.text_offset = offset;
-        self
-    }
-
-    /// Builder pattern: Sets initial text.
-    pub fn with_text(mut self, text: &str) -> Self {
-        self.text = text.to_string();
         self
     }
 
@@ -195,12 +294,6 @@ impl TextField {
         if let Some(bm) = assets.get_bitmap_font(name) {
             self.bitmap_font = Some(bm);
         }
-        self
-    }
-
-    /// Builder pattern: Sets font size.
-    pub fn with_font_size(mut self, size: f32) -> Self {
-        self.font_size = size;
         self
     }
 
@@ -632,6 +725,12 @@ impl Object for TextField {
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
+    }
+}
+
+impl Default for TextField {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 

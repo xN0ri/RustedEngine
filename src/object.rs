@@ -118,6 +118,36 @@ pub trait Clickable {
     fn is_clicked_ctx(&self, ctx: &Context) -> bool {
         self.click_ctx(ctx, Side::Left)
     }
+
+    /// Returns `true` during the single frame the specified mouse button was pressed over the entity (**screen space**) (alias for [`click`](Clickable::click)).
+    fn is_pressed(&self, btn: Side) -> bool {
+        self.click(btn)
+    }
+
+    /// Returns `true` during the single frame the specified mouse button was pressed over the entity (**world space**) (alias for [`click_ctx`](Clickable::click_ctx)).
+    fn is_pressed_ctx(&self, ctx: &Context, btn: Side) -> bool {
+        self.click_ctx(ctx, btn)
+    }
+
+    /// Returns `true` while the specified mouse button is held down over the entity (**screen space**) (alias for [`clicked`](Clickable::clicked)).
+    fn is_down(&self, btn: Side) -> bool {
+        self.clicked(btn)
+    }
+
+    /// Returns `true` while the specified mouse button is held down over the entity (**world space**) (alias for [`clicked_ctx`](Clickable::clicked_ctx)).
+    fn is_down_ctx(&self, ctx: &Context, btn: Side) -> bool {
+        self.clicked_ctx(ctx, btn)
+    }
+
+    /// Returns `true` during the single frame the specified mouse button was released over the entity (**screen space**).
+    fn is_released(&self, btn: Side) -> bool {
+        self.is_hovered() && macroquad::input::is_mouse_button_released(btn.to_macroquad())
+    }
+
+    /// Returns `true` during the single frame the specified mouse button was released over the entity (**world space**).
+    fn is_released_ctx(&self, ctx: &Context, btn: Side) -> bool {
+        self.is_hovered_ctx(ctx) && ctx.input.is_mouse_button_released(btn.to_macroquad())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +167,18 @@ pub struct Sprite {
 }
 
 impl Sprite {
+    /// Creates a new [`Sprite`] from a texture at `(0, 0)` with the texture's native dimensions.
+    pub fn from_texture(texture: Texture2D) -> Self {
+        let w = texture.width();
+        let h = texture.height();
+        Self::new(Vec2::ZERO, vec2(w, h), 0.0, texture)
+    }
+
+    /// Creates a solid colored 2D box sprite at `(0, 0)` with default `(32.0, 32.0)` size.
+    pub fn solid_box(color: Color) -> Self {
+        Self::solid(Vec2::ZERO, vec2(32.0, 32.0), color)
+    }
+
     /// Creates a new [`Sprite`] with default white tint.
     pub fn new(position: Vec2, size: Vec2, rotation: f32, texture: Texture2D) -> Self {
         Self {
@@ -149,6 +191,37 @@ impl Sprite {
             visible: true,
             active: true,
         }
+    }
+
+    /// Builder pattern: Sets explicit sprite position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit sprite position `(x, y)` (alias for [`with_position`](Sprite::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit sprite size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = vec2(rect.x, rect.y);
+        self.size = vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets rotation in radians.
+    pub fn with_rotation(mut self, rotation: f32) -> Self {
+        self.rotation = rotation;
+        self
     }
 
     /// Creates a solid colored 2D rectangle sprite without requiring a texture file.
@@ -297,6 +370,14 @@ impl Sprite {
         Behavior::new(self, data)
     }
 
+    /// Fluent constructor: wraps this sprite in a [`Behavior`](crate::object::Behavior) with unit data `()` and registers an update closure.
+    pub fn on_update<F>(self, func: F) -> Behavior<Self, ()>
+    where
+        F: FnMut(&mut Behavior<Self, ()>, &mut Context) + 'static,
+    {
+        Behavior::new(self, ()).update(func)
+    }
+
     /// Sets the position vector.
     #[deprecated(since = "0.5.0", note = "Use `set_position()` instead")]
     pub fn setpos(&mut self, pos: Vec2) {
@@ -375,6 +456,16 @@ pub struct Rectangle {
 }
 
 impl Rectangle {
+    /// Creates a new [`Rectangle`] at `(0, 0)` with given size and color.
+    pub fn simple(size: Vec2, color: Color) -> Self {
+        Self::new(Vec2::ZERO, size, 0.0, color)
+    }
+
+    /// Creates an empty [`Rectangle`] at `(0, 0)` with `(0, 0)` size.
+    pub fn empty() -> Self {
+        Self::simple(Vec2::ZERO, WHITE)
+    }
+
     /// Creates a new [`Rectangle`].
     pub fn new(position: Vec2, size: Vec2, rotation: f32, color: Color) -> Self {
         Self {
@@ -386,6 +477,43 @@ impl Rectangle {
             visible: true,
             active: true,
         }
+    }
+
+    /// Builder pattern: Sets explicit rectangle position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit rectangle position `(x, y)` (alias for [`with_position`](Rectangle::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit rectangle size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = vec2(rect.x, rect.y);
+        self.size = vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets rectangle fill color.
+    pub fn with_color(mut self, color: Color) -> Self {
+        self.color = color;
+        self
+    }
+
+    /// Builder pattern: Sets rotation in radians.
+    pub fn with_rotation(mut self, rotation: f32) -> Self {
+        self.rotation = rotation;
+        self
     }
 
     /// Builder pattern: Sets the entity tag.
@@ -438,6 +566,14 @@ impl Rectangle {
     pub fn with_data<Data>(self, data: Data) -> Behavior<Self, Data> {
         Behavior::new(self, data)
     }
+
+    /// Fluent constructor: wraps this rectangle in a [`Behavior`](crate::object::Behavior) with unit data `()` and registers an update closure.
+    pub fn on_update<F>(self, func: F) -> Behavior<Self, ()>
+    where
+        F: FnMut(&mut Behavior<Self, ()>, &mut Context) + 'static,
+    {
+        Behavior::new(self, ()).update(func)
+    }
 }
 
 impl Object for Rectangle {
@@ -489,6 +625,12 @@ impl Object for Rectangle {
     }
 }
 
+impl Default for Rectangle {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Behavior<Inner, Data> — Generic component wrapper with custom update closure
 // ---------------------------------------------------------------------------
@@ -530,6 +672,32 @@ impl<Inner, Data> Behavior<Inner, Data> {
         }
     }
 
+    /// Builder pattern: Sets the inner entity position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self
+    where
+        Inner: Object,
+    {
+        self.inner.set_position(position);
+        self
+    }
+
+    /// Builder pattern: Sets the inner entity position `(x, y)` (alias for [`with_position`](Behavior::with_position)).
+    pub fn with_pos(self, pos: Vec2) -> Self
+    where
+        Inner: Object,
+    {
+        self.with_position(pos)
+    }
+
+    /// Builder pattern: Sets the inner entity size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self
+    where
+        Inner: Object,
+    {
+        self.inner.set_size(size);
+        self
+    }
+
     /// Marks this entity as destroyed for automatic cleanup at the end of the update pass.
     pub fn destroy(&mut self) {
         self.destroyed = true;
@@ -553,6 +721,14 @@ impl<Inner, Data> Behavior<Inner, Data> {
     {
         self.func = Some(Box::new(func));
         self
+    }
+
+    /// Registers a closure to be executed on each frame update pass (alias for [`update`](Behavior::update)).
+    pub fn on_update<F>(self, func: F) -> Self
+    where
+        F: FnMut(&mut Behavior<Inner, Data>, &mut Context) + 'static,
+    {
+        self.update(func)
     }
 
     /// Internal: Runs the update callback closure for this frame.

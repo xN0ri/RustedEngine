@@ -25,11 +25,21 @@ impl Time {
         }
     }
 
+    /// Returns the scaled frame delta time in seconds (alias for [`deltatime`](Time::deltatime)).
+    pub fn delta_time(&self) -> f32 {
+        self.deltatime()
+    }
+
     /// Returns the unscaled frame delta time in seconds, unaffected by [`set_time_scale`](Time::set_time_scale) or pause state.
     ///
     /// Ideal for UI animations, debug metrics, and background loaders.
     pub fn raw_deltatime(&self) -> f32 {
         if cfg!(test) { 0.016 } else { get_frame_time() }
+    }
+
+    /// Returns the unscaled frame delta time in seconds (alias for [`raw_deltatime`](Time::raw_deltatime)).
+    pub fn raw_delta_time(&self) -> f32 {
+        self.raw_deltatime()
     }
 
     /// Returns the current simulation time scale multiplier (default `1.0`).

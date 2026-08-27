@@ -13,6 +13,7 @@ export const allDocs = [
   Core.contextDoc,
   Core.worldLayersDoc,
   Core.behaviorDoc,
+  Core.architectureBestPracticesDoc,
 
   // 2. Stan, Dane & Zapis
   Data.entityDataDoc,
@@ -39,6 +40,7 @@ export const allDocs = [
   Graphics.tilemapsDoc,
   Graphics.particlesDoc,
   Graphics.uiWidgetsDoc,
+  Graphics.uiImageDoc,
   Graphics.uiLayoutDoc,
   AdvGraphics.panelManagerDoc,
   Graphics.audioSfxDoc,
@@ -49,6 +51,8 @@ export const allDocs = [
   Mechanics.inventorySystemDoc,
   Mechanics.turnSystemDoc,
   Mechanics.enemyAiDoc,
+  Mechanics.twinStickRoguelikeDoc,
+  Mechanics.spatialQueriesDetectionDoc,
 
   // 6. Kompletne Gry
   Games.gameSurvivorDoc,

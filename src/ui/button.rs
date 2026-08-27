@@ -42,16 +42,11 @@ pub struct Button {
 }
 
 impl Button {
-    /// Creates a UI [`Button`] with default dimensions `(140.0, 40.0)`.
-    pub fn label(label: impl Into<String>, position: Vec2) -> Self {
-        Self::new(position, Vec2::new(140.0, 40.0), label)
-    }
-
-    /// Creates a new UI [`Button`].
-    pub fn new(position: Vec2, size: Vec2, label: impl Into<String>) -> Self {
+    /// Creates a new UI [`Button`] with given label at `(0, 0)` and default dimensions `(140.0, 40.0)`.
+    pub fn new(label: impl Into<String>) -> Self {
         Self {
-            position,
-            size,
+            position: Vec2::ZERO,
+            size: Vec2::new(140.0, 40.0),
             label: label.into(),
             font_size: 20.0,
             font: None,
@@ -70,6 +65,101 @@ impl Button {
             was_hovered: false,
             bitmap_font: None,
         }
+    }
+
+    /// Creates a UI [`Button`] with explicit position, size, and label.
+    pub fn new_with_size(position: Vec2, size: Vec2, label: impl Into<String>) -> Self {
+        let mut btn = Self::new(label);
+        btn.position = position;
+        btn.size = size;
+        btn
+    }
+
+    /// Creates a UI [`Button`] with default dimensions `(140.0, 40.0)` at `position`.
+    pub fn label(label: impl Into<String>, position: Vec2) -> Self {
+        Self::new(label).with_position(position)
+    }
+
+    /// Creates an empty UI [`Button`] at `(0, 0)` with default dimensions `(140.0, 40.0)`.
+    pub fn empty() -> Self {
+        Self::new("")
+    }
+
+    /// Builder pattern: Sets explicit button position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit button position `(x, y)` (alias for [`with_position`](Button::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit button size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = macroquad::math::vec2(rect.x, rect.y);
+        self.size = macroquad::math::vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets button text label.
+    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+        self.label = label.into();
+        self
+    }
+
+    /// Builder pattern: Sets font size.
+    pub fn with_font_size(mut self, font_size: f32) -> Self {
+        self.font_size = font_size;
+        self
+    }
+
+    /// Builder pattern: Sets background color.
+    pub fn with_color(mut self, color: Color) -> Self {
+        self.color = color;
+        self
+    }
+
+    /// Builder pattern: Sets hover background color.
+    pub fn with_hover_color(mut self, color: Color) -> Self {
+        self.hover_color = color;
+        self
+    }
+
+    /// Builder pattern: Sets text color.
+    pub fn with_text_color(mut self, color: Color) -> Self {
+        self.text_color = color;
+        self
+    }
+
+    /// Builder pattern: Sets normal background, hover background, and text colors.
+    pub fn with_colors(mut self, bg: Color, hover: Color, text: Color) -> Self {
+        self.color = bg;
+        self.hover_color = hover;
+        self.text_color = text;
+        self
+    }
+
+    /// Builder pattern: Centers button on screen.
+    pub fn center_on_screen(mut self) -> Self {
+        let sw = super::core::safe_screen_width();
+        let sh = super::core::safe_screen_height();
+        self.position = macroquad::math::vec2((sw - self.size.x) * 0.5, (sh - self.size.y) * 0.5);
+        self
+    }
+
+    /// Builder pattern: Aligns button position on screen using a [`UIAnchor`](super::core::UIAnchor) preset and padding.
+    pub fn align_to_screen(mut self, anchor: super::core::UIAnchor, padding: impl Into<Padding>) -> Self {
+        self.position = anchor.compute_position(self.size, padding);
+        self
     }
 
     /// Builder pattern: Attaches a pre-baked [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas for 100% crisp pixel font rendering.
@@ -302,6 +392,10 @@ impl Object for Button {
         self.position = pos;
     }
 
+    fn set_size(&mut self, size: macroquad::math::Vec2) {
+        self.size = size;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
@@ -328,5 +422,11 @@ impl Object for Button {
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
+    }
+}
+
+impl Default for Button {
+    fn default() -> Self {
+        Self::empty()
     }
 }

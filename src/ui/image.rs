@@ -125,9 +125,22 @@ impl Image {
         self
     }
 
+    /// Builder pattern: Sets explicit image position `(x, y)` (alias for [`with_position`](Image::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
     /// Builder pattern: Sets explicit image size `(width, height)`.
     pub fn with_size(mut self, size: Vec2) -> Self {
         self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = vec2(rect.x, rect.y);
+        self.size = vec2(rect.w, rect.h);
         self
     }
 

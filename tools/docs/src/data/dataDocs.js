@@ -76,32 +76,43 @@ if let Some(economy) = ctx.resources.get::<GameEconomy>() {
 export const stateStoreDoc = {
   id: "state-store",
   title: "8. 💾 Zmienne & Flagi Stanu (ctx.state)",
-  description: "Centralny magazyn stanu StateStore (ctx.state), operacje na typach prymitywnych, inkrementacja oraz serializacja struktur Serde.",
+  description: "Centralny magazyn stanu StateStore (ctx.state), operacje na typach prymitywnych, bezpieczne gettery z Option/Default, inkrementacja oraz serializacja struktur Serde.",
   sections: [
     {
       id: "state-store-main",
       title: "Magazyn Stanu Gry (StateStore)",
       content: `\`StateStore\` (\`ctx.state\`) stanowi centralne repozytorium zmiennych, flag i struktur stanu rozgrywki dostępne w całym cyklu życia gry, serializowane do zapisu stanu rozgrywki (*savegame*).
 
-### Obsługa Typów Prymitywnych & Inkrementacja
-Magazyn operuje na silnie typowanych kluczach:
+### Obsługa Typów Prymitywnych & Bezpieczne Gettery
+Magazyn operuje na silnie typowanych kluczach i dostarcza potrójny zestaw metod dla każdego typu: bezpośrednie, z wartością domyślną (\`_or\`) oraz bezpieczne opcjonalne (\`_opt\`):
 
-- **\`Bool(bool)\`**: Flagi logiczne (\`set_bool\`, \`get_bool\`, \`toggle\`, \`ctx.flag\`, \`ctx.set_flag\`).
-- **\`Int(i64)\`**: Liczniki całkowite (\`set_int\`, \`get_int\`, \`increment -> i64\` — **zwraca zaktualizowaną wartość w jednej linijce!**).
-- **\`Float(f64)\`**: Wartości zmiennoprzecinkowe (\`set_float\`, \`get_float\`).
-- **\`Text(String)\`**: Ciągi znakowe (\`set_string\`, \`get_string\`).
-- **\`Vec2(f32, f32)\`**: Wektory 2D (\`set_vec2\`, \`get_vec2\`).`,
+- **\`Bool(bool)\`**:
+  - \`get_bool_opt(key) -> Option<bool>\`, \`get_bool(key) -> bool\` (domyślnie \`false\`), \`get_bool_or(key, def) -> bool\`, \`set_bool(key, val)\`, \`toggle(key)\`.
+- **\`Int(i64)\`**:
+  - \`get_int_opt(key) -> Option<i64>\`, \`get_int(key) -> i64\` (domyślnie \`0\`), \`get_int_or(key, def) -> i64\`, \`set_int(key, val)\`.
+  - \`increment(key, delta) -> i64\` — **zwiększa i zwraca zaktualizowaną wartość w jednej linijce!**
+- **\`Float(f64)\`**:
+  - \`get_float_opt(key) -> Option<f64>\`, \`get_float(key) -> f64\` (domyślnie \`0.0\`), \`get_float_or(key, def) -> f64\`, \`set_float(key, val)\`.
+- **\`Text(String)\`**:
+  - \`get_text_opt(key) -> Option<&str>\`, \`get_text(key) -> &str\` (domyślnie \`""\`), \`get_text_or(key, def) -> &str\`, \`set_text(key, val)\`.
+- **\`Vec2(f32, f32)\`**:
+  - \`get_vec2(key) -> Option<Vec2>\`, \`get_vec2_or(key, def) -> Vec2\`, \`set_vec2(key, vec)\`.`,
       codeExamples: [
         {
-          title: "Inkrementacja i Zmienne w StateStore",
+          title: "Inkrementacja, Opcje i Wartości Domyślne w StateStore",
           code: `ctx.state.set_int("score", 0);
 
-// increment zwraca zaktualizowaną wartość w jednej linijce:
+// 1. increment zwraca zaktualizowaną wartość w jednej linijce:
 let new_score = ctx.state.increment("score", 50); // new_score == 50
 println!("Nowy wynik: {}", new_score);
 
-ctx.state.set_bool("tutorial_completed", true);
-ctx.state.set_vec2("checkpoint_pos", vec2(450.0, 320.0));`,
+// 2. Bezpieczny odczyt z wartością domyślną (_or) i Option (_opt):
+let player_name = ctx.state.get_text_or("player_name", "Bezimienny");
+if let Some(target_vec) = ctx.state.get_vec2("checkpoint_pos") {
+    println!("Checkpoint na pozycji: {:?}", target_vec);
+}
+
+ctx.state.set_bool("tutorial_completed", true);`,
           collapsible: false
         }
       ]

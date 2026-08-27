@@ -41,10 +41,10 @@ struct PlayerData {
 
 #[macroquad::main("My First Game")]
 async fn main() {
-    // 3. Entity: Visual sprite combined with PlayerData
+    // 3. Entity: Visual sprite combined with PlayerData (or direct .on_update)
     let player = Sprite::solid(vec2(100.0, 100.0), vec2(32.0, 32.0), BLUE)
         .with_data(PlayerData { speed: 220.0, hp: 100 })
-        .update(|player, ctx| {
+        .on_update(|player, ctx| {
             // Smooth 2D WASD movement
             player.position += ctx.input.wasd() * player.data.speed * ctx.dt();
             player.look_at(ctx.mouse_world());
@@ -52,6 +52,8 @@ async fn main() {
             // Press K to test damage
             if ctx.input.is_key_pressed(KeyCode::K) {
                 player.data.hp -= 50;
+                ctx.play_varied("hurt", 0.1, 0.05); // Sound with pitch variation
+
                 if player.data.hp <= 0 {
                     player.destroy();
                     ctx.emit(PlayerDied { reason: "Took lethal damage" });

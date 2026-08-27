@@ -47,6 +47,29 @@ impl Camera {
         }
     }
 
+    /// Builder pattern: Sets the camera target position in world space.
+    pub fn with_target(mut self, target: Vec2) -> Self {
+        self.target = target;
+        self
+    }
+
+    /// Builder pattern: Sets the camera target position in world space (alias for [`with_target`](Camera::with_target)).
+    pub fn with_pos(self, target: Vec2) -> Self {
+        self.with_target(target)
+    }
+
+    /// Builder pattern: Sets zoom level multiplier.
+    pub fn with_zoom(mut self, zoom: f32) -> Self {
+        self.zoom = zoom;
+        self
+    }
+
+    /// Builder pattern: Sets camera rotation angle in radians.
+    pub fn with_rotation(mut self, rotation: f32) -> Self {
+        self.rotation = rotation;
+        self
+    }
+
     /// Builder pattern: Sets world bounds clamping for camera target.
     pub fn with_bounds(mut self, bounds: Rect) -> Self {
         self.bounds = Some(bounds);
@@ -118,6 +141,16 @@ impl Camera {
         let max_x = top_left.x.max(bottom_right.x);
         let max_y = top_left.y.max(bottom_right.y);
         Rect::new(min_x, min_y, max_x - min_x, max_y - min_y)
+    }
+
+    /// Alias for [`visible_world_rect`](Camera::visible_world_rect).
+    pub fn visible_rect(&self) -> Rect {
+        self.visible_world_rect()
+    }
+
+    /// Alias for [`visible_world_rect`](Camera::visible_world_rect).
+    pub fn screen_rect(&self) -> Rect {
+        self.visible_world_rect()
     }
 
     /// Returns `true` if the world-space point `pos` is visible on screen with an optional padding `margin`.

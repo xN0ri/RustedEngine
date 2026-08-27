@@ -35,6 +35,16 @@ pub struct ProgressBar {
 }
 
 impl ProgressBar {
+    /// Creates a new [`ProgressBar`] at `(0, 0)` with default dimensions `(200.0, 20.0)` and given initial progress `[0.0, 1.0]`.
+    pub fn progress(progress: f32) -> Self {
+        Self::new(Vec2::ZERO, Vec2::new(200.0, 20.0), progress)
+    }
+
+    /// Creates an empty [`ProgressBar`] at `(0, 0)` with default dimensions `(200.0, 20.0)`.
+    pub fn empty() -> Self {
+        Self::progress(0.0)
+    }
+
     /// Creates a new [`ProgressBar`] with default height 20.0.
     pub fn simple(position: Vec2, width: f32, progress: f32) -> Self {
         Self::new(position, Vec2::new(width, 20.0), progress)
@@ -60,6 +70,53 @@ impl ProgressBar {
             padding: Padding::default(),
             margin: Margin::default(),
         }
+    }
+
+    /// Builder pattern: Sets explicit progress bar position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit progress bar position `(x, y)` (alias for [`with_position`](ProgressBar::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit progress bar size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`macroquad::math::Rect`].
+    pub fn with_rect(mut self, rect: macroquad::math::Rect) -> Self {
+        self.position = macroquad::math::vec2(rect.x, rect.y);
+        self.size = macroquad::math::vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets current progress value `[0.0, 1.0]`.
+    pub fn with_progress(mut self, progress: f32) -> Self {
+        let p = progress.clamp(0.0, 1.0);
+        self.progress = p;
+        self.target_progress = p;
+        self
+    }
+
+    /// Builder pattern: Centers progress bar on screen.
+    pub fn center_on_screen(mut self) -> Self {
+        let sw = super::core::safe_screen_width();
+        let sh = super::core::safe_screen_height();
+        self.position = macroquad::math::vec2((sw - self.size.x) * 0.5, (sh - self.size.y) * 0.5);
+        self
+    }
+
+    /// Builder pattern: Aligns progress bar on screen using a [`UIAnchor`](super::core::UIAnchor) preset and padding.
+    pub fn align_to_screen(mut self, anchor: super::core::UIAnchor, padding: impl Into<Padding>) -> Self {
+        self.position = anchor.compute_position(self.size, padding);
+        self
     }
 
     /// Builder pattern: Enables smooth lerp transition when progress value changes.
@@ -225,11 +282,21 @@ impl Object for ProgressBar {
         self.position = pos;
     }
 
+    fn set_size(&mut self, size: macroquad::math::Vec2) {
+        self.size = size;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+}
+
+impl Default for ProgressBar {
+    fn default() -> Self {
+        Self::empty()
     }
 }

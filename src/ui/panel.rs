@@ -84,6 +84,11 @@ pub struct Panel {
 
 #[allow(deprecated)]
 impl Panel {
+    /// Creates an empty [`Panel`] at `(0, 0)` with default dimensions `(300.0, 200.0)`.
+    pub fn empty() -> Self {
+        Self::new(Vec2::ZERO, Vec2::new(300.0, 200.0))
+    }
+
     /// Creates a new [`Panel`] with default styling and dragging enabled.
     pub fn new(position: Vec2, size: Vec2) -> Self {
         Self {
@@ -113,6 +118,44 @@ impl Panel {
         }
     }
 
+    /// Builder pattern: Sets explicit panel position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit panel position `(x, y)` (alias for [`with_position`](Panel::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit panel size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = vec2(rect.x, rect.y);
+        self.size = vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets background color.
+    pub fn with_background_color(mut self, color: Color) -> Self {
+        self.background_color = color;
+        self
+    }
+
+    /// Builder pattern: Sets border color and width.
+    pub fn with_border(mut self, color: Color, width: f32) -> Self {
+        self.border_color = Some(color);
+        self.border_width = width;
+        self
+    }
+
     /// Builder pattern: Enables 9-patch Nine-Slice texture rendering for frame background.
     pub fn with_nine_slice(mut self, texture: Texture2D, margins: (f32, f32, f32, f32)) -> Self {
         self.background_texture = Some(texture);
@@ -140,7 +183,7 @@ impl Panel {
 
     /// Fluent builder: Adds a new [`Button`] component to panel children.
     pub fn add_button(mut self, pos: Vec2, size: Vec2, label: impl Into<String>) -> Self {
-        self.children.push(Box::new(Button::new(pos, size, label)));
+        self.children.push(Box::new(Button::new(label).with_position(pos).with_size(size)));
         self
     }
 
@@ -253,13 +296,6 @@ impl Panel {
     /// Builder pattern: Sets tint color applied when rendering the background texture.
     pub fn with_texture_tint(mut self, tint: Color) -> Self {
         self.texture_tint = tint;
-        self
-    }
-
-    /// Builder pattern: Sets panel border color and width.
-    pub fn with_border(mut self, color: Color, width: f32) -> Self {
-        self.border_color = Some(color);
-        self.border_width = width;
         self
     }
 
@@ -542,6 +578,10 @@ impl Object for Panel {
         self.position = pos;
     }
 
+    fn set_size(&mut self, size: macroquad::math::Vec2) {
+        self.size = size;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
@@ -589,6 +629,12 @@ impl Object for Panel {
 
     fn get_children_mut<'a>(&'a mut self) -> Vec<&'a mut (dyn Object + 'static)> {
         self.children.iter_mut().map(|c| c.as_mut()).collect()
+    }
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 

@@ -171,6 +171,27 @@ impl UIAnchor {
         };
         vec2(pos.x.round(), pos.y.round())
     }
+
+    /// Computes relative offset `Vec2(x, y)` inside `parent_size` for a child of `child_size` with `padding`.
+    pub fn compute_offset(self, parent_size: Vec2, child_size: Vec2, padding: impl Into<Padding>) -> Vec2 {
+        let p = padding.into();
+        let avail_w = (parent_size.x - p.left - p.right).max(0.0);
+        let avail_h = (parent_size.y - p.top - p.bottom).max(0.0);
+
+        let (rx, ry) = match self {
+            UIAnchor::TopLeft => (0.0, 0.0),
+            UIAnchor::TopCenter => ((avail_w - child_size.x) * 0.5, 0.0),
+            UIAnchor::TopRight => (avail_w - child_size.x, 0.0),
+            UIAnchor::CenterLeft => (0.0, (avail_h - child_size.y) * 0.5),
+            UIAnchor::Center => ((avail_w - child_size.x) * 0.5, (avail_h - child_size.y) * 0.5),
+            UIAnchor::CenterRight => (avail_w - child_size.x, (avail_h - child_size.y) * 0.5),
+            UIAnchor::BottomLeft => (0.0, avail_h - child_size.y),
+            UIAnchor::BottomCenter => ((avail_w - child_size.x) * 0.5, avail_h - child_size.y),
+            UIAnchor::BottomRight => (avail_w - child_size.x, avail_h - child_size.y),
+        };
+
+        vec2(p.left + rx, p.top + ry)
+    }
 }
 
 /// Layout padding container for UI element margins and anchor offsets (left, top, right, bottom).

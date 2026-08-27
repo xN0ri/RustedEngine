@@ -66,6 +66,7 @@ const CATEGORIES = [
       "tilemaps",
       "particles",
       "ui-widgets",
+      "ui-image",
       "ui-layout",
       "panel-manager",
       "audio-sfx",

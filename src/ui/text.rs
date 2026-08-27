@@ -80,6 +80,16 @@ impl Text {
         Self::new(text, position, 20.0, WHITE)
     }
 
+    /// Creates a new [`Text`] component at `(0, 0)` with default font size 20.0 and WHITE color.
+    pub fn simple(text: impl Into<String>) -> Self {
+        Self::new(text, Vec2::ZERO, 20.0, WHITE)
+    }
+
+    /// Creates an empty [`Text`] component at `(0, 0)`.
+    pub fn empty() -> Self {
+        Self::simple("")
+    }
+
     /// Creates a new [`Text`] component with instant reveal mode.
     pub fn new(text: impl Into<String>, position: Vec2, font_size: f32, color: Color) -> Self {
         let content = text.into();
@@ -107,6 +117,53 @@ impl Text {
             fill_parent: false,
             size: Vec2::ZERO,
         }
+    }
+
+    /// Builder pattern: Sets explicit text position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit text position `(x, y)` (alias for [`with_position`](Text::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit dimensions / bounding box size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        if size.x > 0.0 && self.max_width.is_none() {
+            self.max_width = Some(size.x);
+        }
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = vec2(rect.x, rect.y);
+        self.size = vec2(rect.w, rect.h);
+        if rect.w > 0.0 && self.max_width.is_none() {
+            self.max_width = Some(rect.w);
+        }
+        self
+    }
+
+    /// Builder pattern: Sets font size.
+    pub fn with_font_size(mut self, font_size: f32) -> Self {
+        self.font_size = font_size;
+        self
+    }
+
+    /// Builder pattern: Updates text content.
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        let content = text.into();
+        let len = content.len() as f32;
+        self.content = content.clone();
+        self.full_content = content;
+        self.revealed_chars = len;
+        self
     }
 
     /// Builder pattern: Enables expanding width to fill parent container bounds.
@@ -660,6 +717,12 @@ impl Object for Text {
     }
 }
 
+impl Default for Text {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 /// Type alias for a text component combined with game data and update closure.
 pub type TextObject<Data> = Behavior<Text, Data>;
 
@@ -805,6 +868,16 @@ pub struct RichText {
 }
 
 impl RichText {
+    /// Creates a new [`RichText`] component at `(0, 0)` with default font size 20.0 and BBCode markup support.
+    pub fn simple(content: impl Into<String>) -> Self {
+        Self::new(content, Vec2::ZERO, 20.0)
+    }
+
+    /// Creates an empty [`RichText`] component at `(0, 0)`.
+    pub fn empty() -> Self {
+        Self::simple("")
+    }
+
     /// Creates a new [`RichText`] component with BBCode markup support.
     pub fn new(content: impl Into<String>, position: Vec2, font_size: f32) -> Self {
         Self {
@@ -821,6 +894,51 @@ impl RichText {
             align: TextAlign::Left,
             bitmap_font: None,
         }
+    }
+
+    /// Builder pattern: Sets explicit text position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit text position `(x, y)` (alias for [`with_position`](RichText::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets font size.
+    pub fn with_font_size(mut self, font_size: f32) -> Self {
+        self.font_size = font_size;
+        self
+    }
+
+    /// Builder pattern: Updates rich text content.
+    pub fn with_content(mut self, content: impl Into<String>) -> Self {
+        self.content = content.into();
+        self
+    }
+
+    /// Builder pattern: Updates rich text content (alias for [`with_content`](RichText::with_content)).
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.content = text.into();
+        self
+    }
+
+    /// Builder pattern: Centers rich text on screen.
+    pub fn center_on_screen(mut self) -> Self {
+        let sw = super::core::safe_screen_width();
+        let sh = super::core::safe_screen_height();
+        self.position = vec2(sw * 0.5, sh * 0.5);
+        self
+    }
+
+    /// Builder pattern: Aligns rich text on screen using a [`UIAnchor`](super::core::UIAnchor) preset and padding.
+    pub fn align_to_screen(mut self, anchor: super::core::UIAnchor, padding: impl Into<Padding>) -> Self {
+        let dummy_size = vec2(100.0, self.font_size);
+        self.position = anchor.compute_position(dummy_size, padding);
+        self
     }
 
     /// Builder pattern: Attaches a pre-baked [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas for 100% crisp pixel font rendering.
@@ -1194,6 +1312,12 @@ impl Clickable for RichText {
 
     fn is_active(&self) -> bool {
         self.active
+    }
+}
+
+impl Default for RichText {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 

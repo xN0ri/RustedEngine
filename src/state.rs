@@ -151,52 +151,58 @@ impl StateStore {
         self.values.get(key)
     }
 
+    /// Returns the boolean flag value for `key` as an `Option`.
+    pub fn get_bool_opt(&self, key: &str) -> Option<bool> {
+        match self.values.get(key) {
+            Some(StateValue::Bool(v)) => Some(*v),
+            _ => None,
+        }
+    }
+
     /// Returns the boolean flag value for `key`, or `false` if not set or mismatched.
     pub fn get_bool(&self, key: &str) -> bool {
-        match self.values.get(key) {
-            Some(StateValue::Bool(v)) => *v,
-            _ => false,
-        }
+        self.get_bool_opt(key).unwrap_or(false)
     }
 
     /// Returns the boolean flag value for `key`, or `default` if not set.
     pub fn get_bool_or(&self, key: &str, default: bool) -> bool {
+        self.get_bool_opt(key).unwrap_or(default)
+    }
+
+    /// Returns the integer value for `key` as an `Option`.
+    pub fn get_int_opt(&self, key: &str) -> Option<i64> {
         match self.values.get(key) {
-            Some(StateValue::Bool(v)) => *v,
-            _ => default,
+            Some(StateValue::Int(v)) => Some(*v),
+            _ => None,
         }
     }
 
     /// Returns the integer value for `key`, or `0` if not set or mismatched.
     pub fn get_int(&self, key: &str) -> i64 {
-        match self.values.get(key) {
-            Some(StateValue::Int(v)) => *v,
-            _ => 0,
-        }
+        self.get_int_opt(key).unwrap_or(0)
     }
 
     /// Returns the integer value for `key`, or `default` if not set.
     pub fn get_int_or(&self, key: &str, default: i64) -> i64 {
+        self.get_int_opt(key).unwrap_or(default)
+    }
+
+    /// Returns the float value for `key` as an `Option`.
+    pub fn get_float_opt(&self, key: &str) -> Option<f64> {
         match self.values.get(key) {
-            Some(StateValue::Int(v)) => *v,
-            _ => default,
+            Some(StateValue::Float(v)) => Some(*v),
+            _ => None,
         }
     }
 
     /// Returns the float value for `key`, or `0.0` if not set or mismatched.
     pub fn get_float(&self, key: &str) -> f64 {
-        match self.values.get(key) {
-            Some(StateValue::Float(v)) => *v,
-            _ => 0.0,
-        }
+        self.get_float_opt(key).unwrap_or(0.0)
     }
 
     /// Returns the float value for `key`, or `default` if not set.
     pub fn get_float_or(&self, key: &str, default: f64) -> f64 {
-        match self.values.get(key) {
-            Some(StateValue::Float(v)) => *v,
-            _ => default,
-        }
+        self.get_float_opt(key).unwrap_or(default)
     }
 
     /// Returns the 2D vector coordinate value for `key`, or `None` if not set or mismatched.
@@ -212,20 +218,22 @@ impl StateStore {
         self.get_vec2(key).unwrap_or(default)
     }
 
+    /// Returns the string text value for `key` as an `Option`.
+    pub fn get_text_opt(&self, key: &str) -> Option<&str> {
+        match self.values.get(key) {
+            Some(StateValue::Text(v)) => Some(v.as_str()),
+            _ => None,
+        }
+    }
+
     /// Returns the string text value for `key`, or `""` if not set or mismatched.
     pub fn get_text(&self, key: &str) -> &str {
-        match self.values.get(key) {
-            Some(StateValue::Text(v)) => v.as_str(),
-            _ => "",
-        }
+        self.get_text_opt(key).unwrap_or("")
     }
 
     /// Returns the string text value for `key`, or `default` if not set.
     pub fn get_text_or<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
-        match self.values.get(key) {
-            Some(StateValue::Text(v)) => v.as_str(),
-            _ => default,
-        }
+        self.get_text_opt(key).unwrap_or(default)
     }
 
     /// Deserializes a Serde [`DeserializeOwned`](serde::de::DeserializeOwned) struct from JSON stored under `key`.

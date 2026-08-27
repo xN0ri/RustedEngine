@@ -148,23 +148,23 @@ mod tests {
     #[test]
     fn test_vbox_hbox_grid_layouts() {
         let vbox = VBox::new(vec2(10.0, 10.0), 5.0)
-            .with_child(Button::new(Vec2::ZERO, vec2(100.0, 30.0), "Btn 1"))
-            .with_child(Button::new(Vec2::ZERO, vec2(100.0, 30.0), "Btn 2"));
+            .with_child(Button::new("Btn 1").with_size(vec2(100.0, 30.0)))
+            .with_child(Button::new("Btn 2").with_size(vec2(100.0, 30.0)));
 
         assert_eq!(vbox.children[0].bounds().unwrap().y, 10.0);
         assert_eq!(vbox.children[1].bounds().unwrap().y, 45.0); // 10 + 30 + 5
 
         let hbox = HBox::new(vec2(10.0, 10.0), 10.0)
-            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 30.0), "B1"))
-            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 30.0), "B2"));
+            .with_child(Button::new("B1").with_size(vec2(50.0, 30.0)))
+            .with_child(Button::new("B2").with_size(vec2(50.0, 30.0)));
 
         assert_eq!(hbox.children[0].bounds().unwrap().x, 10.0);
         assert_eq!(hbox.children[1].bounds().unwrap().x, 70.0); // 10 + 50 + 10
 
         let grid = Grid::new(vec2(0.0, 0.0), 2, vec2(50.0, 50.0), vec2(10.0, 10.0))
-            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 50.0), "1"))
-            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 50.0), "2"))
-            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 50.0), "3"));
+            .with_child(Button::new("1").with_size(vec2(50.0, 50.0)))
+            .with_child(Button::new("2").with_size(vec2(50.0, 50.0)))
+            .with_child(Button::new("3").with_size(vec2(50.0, 50.0)));
 
         assert_eq!(grid.children[0].bounds().unwrap().x, 0.0);
         assert_eq!(grid.children[1].bounds().unwrap().x, 60.0);
@@ -188,12 +188,12 @@ mod tests {
     #[test]
     fn test_flutter_like_layout_system() {
         let mut col = column![
-            Button::new(Vec2::ZERO, vec2(100.0, 30.0), "Btn 1"),
+            Button::new("Btn 1").with_size(vec2(100.0, 30.0)),
             Gap::height(10.0),
             row![
-                Button::new(Vec2::ZERO, vec2(40.0, 20.0), "R1"),
+                Button::new("R1").with_size(vec2(40.0, 20.0)),
                 Gap::width(5.0),
-                Button::new(Vec2::ZERO, vec2(40.0, 20.0), "R2"),
+                Button::new("R2").with_size(vec2(40.0, 20.0)),
             ],
         ]
         .with_spacing(5.0)
@@ -211,7 +211,7 @@ mod tests {
             .with_size(vec2(200.0, 100.0))
             .with_padding(Padding::all(10.0))
             .with_alignment(Align::Center)
-            .with_child(Button::new(Vec2::ZERO, vec2(50.0, 20.0), "Inner"));
+            .with_child(Button::new("Inner").with_size(vec2(50.0, 20.0)));
 
         if let Some(ref mut child) = container.child {
             let child_size = child.bounds().map(|b| vec2(b.w, b.h)).unwrap_or(Vec2::ZERO);
@@ -255,5 +255,69 @@ mod tests {
 
         tf.text.pop();
         assert_eq!(tf.text, "Hello Worl");
+    }
+
+    #[test]
+    fn test_div_component() {
+        use macroquad::color::GOLD;
+        let div_container = div![
+            Gap::height(20.0),
+            Gap::height(10.0),
+            Gap::width(50.0),
+        ]
+        .with_padding(Padding::all(16.0))
+        .with_border(GOLD, 2.0);
+
+        assert_eq!(div_container.children.len(), 3);
+        assert_eq!(div_container.padding.top, 16.0);
+        assert_eq!(div_container.border_width, 2.0);
+        assert!(div_container.border_color.is_some());
+    }
+
+    #[test]
+    fn test_col_and_column_macros() {
+        let c1 = col![
+            Button::new("Play"),
+            Button::new("Options"),
+        ];
+        assert_eq!(c1.children.len(), 2);
+
+        let c2 = column![
+            Button::new("A"),
+            Button::new("B"),
+            Button::new("C"),
+        ];
+        assert_eq!(c2.children.len(), 3);
+    }
+
+    #[test]
+    fn test_alignment_conversions() {
+        let anchor = UIAnchor::Center;
+        let align: Align = anchor.into();
+        assert_eq!(align, Align::Center);
+        let back_anchor: UIAnchor = align.into();
+        assert_eq!(back_anchor, UIAnchor::Center);
+
+        let pos = align.compute_position(vec2(100.0, 50.0), Padding::zero());
+        assert_eq!(pos, vec2(350.0, 275.0)); // (800 - 100)/2 = 350, (600 - 50)/2 = 275
+
+        let offset = anchor.compute_offset(vec2(200.0, 100.0), vec2(50.0, 20.0), Padding::zero());
+        assert_eq!(offset, vec2(75.0, 40.0));
+
+        let l_align = LayoutAlign::Stretch;
+        let c_align: CrossAxisAlignment = l_align.into();
+        assert_eq!(c_align, CrossAxisAlignment::Stretch);
+        let back_l: LayoutAlign = c_align.into();
+        assert_eq!(back_l, LayoutAlign::Stretch);
+
+        let l_just = LayoutJustify::SpaceBetween;
+        let m_align: MainAxisAlignment = l_just.into();
+        assert_eq!(m_align, MainAxisAlignment::SpaceBetween);
+
+        let t_align = TextAlign::Center;
+        let t_alignment: TextAlignment = t_align.into();
+        assert_eq!(t_alignment, TextAlignment::Center);
+        let back_t: TextAlign = t_alignment.into();
+        assert_eq!(back_t, TextAlign::Center);
     }
 }

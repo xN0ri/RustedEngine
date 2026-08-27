@@ -67,6 +67,12 @@ pub trait Panel {
     }
 }
 
+/// Alias for [`Panel`] to avoid name collision with [`ui::Panel`](crate::ui::Panel).
+pub use Panel as WindowPanel;
+
+/// Alias for [`Panel`] to avoid name collision with [`ui::Panel`](crate::ui::Panel).
+pub use Panel as DesktopWindow;
+
 // ---------------------------------------------------------------------------
 // PanelId
 // ---------------------------------------------------------------------------

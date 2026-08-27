@@ -1,7 +1,7 @@
 //! Auto-scrolling text log UI component for terminal-style output, dialogue logs, and consoles.
 
 use macroquad::{
-    color::Color,
+    color::{Color, WHITE},
     math::{Rect, Vec2, vec2},
     text::{Font, TextParams, draw_text, draw_text_ex, measure_text},
 };
@@ -84,6 +84,16 @@ pub struct TextLog {
 }
 
 impl TextLog {
+    /// Creates a new [`TextLog`] at `(0, 0)` with default dimensions `(300.0, 150.0)`, font size 16.0, and WHITE color.
+    pub fn simple() -> Self {
+        Self::new(Vec2::ZERO, Vec2::new(300.0, 150.0), 16.0, WHITE)
+    }
+
+    /// Creates an empty [`TextLog`] at `(0, 0)` (alias for [`simple`](TextLog::simple)).
+    pub fn empty() -> Self {
+        Self::simple()
+    }
+
     /// Creates a new [`TextLog`] with sensible defaults.
     pub fn new(position: Vec2, size: Vec2, font_size: f32, color: Color) -> Self {
         Self {
@@ -106,6 +116,44 @@ impl TextLog {
             target_scroll: 0.0,
             bitmap_font: None,
         }
+    }
+
+    /// Builder pattern: Sets explicit text log position `(x, y)`.
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Builder pattern: Sets explicit text log position `(x, y)` (alias for [`with_position`](TextLog::with_position)).
+    pub fn with_pos(mut self, pos: Vec2) -> Self {
+        self.position = pos;
+        self
+    }
+
+    /// Builder pattern: Sets explicit text log size `(width, height)`.
+    pub fn with_size(mut self, size: Vec2) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Builder pattern: Sets both position and size from a [`Rect`].
+    pub fn with_rect(mut self, rect: Rect) -> Self {
+        self.position = vec2(rect.x, rect.y);
+        self.size = vec2(rect.w, rect.h);
+        self
+    }
+
+    /// Builder pattern: Sets font size.
+    pub fn with_font_size(mut self, font_size: f32) -> Self {
+        self.font_size = font_size;
+        self.line_spacing = font_size * 1.2;
+        self
+    }
+
+    /// Builder pattern: Sets default text color.
+    pub fn with_color(mut self, color: Color) -> Self {
+        self.color = color;
+        self
     }
 
     /// Builder pattern: Attaches a pre-baked [`BitmapFont`](crate::bitmap_font::BitmapFont) atlas for 100% crisp pixel font rendering.
@@ -185,12 +233,6 @@ impl TextLog {
     /// Builder pattern: Sets a custom TTF font.
     pub fn with_font(mut self, font: Font) -> Self {
         self.font = Some(font);
-        self
-    }
-
-    /// Builder pattern: Sets the text color.
-    pub fn with_color(mut self, color: Color) -> Self {
-        self.color = color;
         self
     }
 
@@ -467,6 +509,10 @@ impl Object for TextLog {
         self.position = pos;
     }
 
+    fn set_size(&mut self, size: macroquad::math::Vec2) {
+        self.size = size;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
@@ -498,6 +544,12 @@ impl Object for TextLog {
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
+    }
+}
+
+impl Default for TextLog {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 

@@ -136,6 +136,11 @@ impl Tween {
         }
     }
 
+    /// Returns `true` if the tween animation has finished.
+    pub fn is_finished(&self) -> bool {
+        self.finished
+    }
+
     /// Resets the tween execution back to the beginning.
     pub fn reset(&mut self) {
         self.elapsed = 0.0;
@@ -192,6 +197,11 @@ impl TweenVec2 {
     /// Returns the current interpolated [`Vec2`](macroquad::math::Vec2) without advancing.
     pub fn value(&self) -> macroquad::math::Vec2 {
         macroquad::math::vec2(self.x.value(), self.y.value())
+    }
+
+    /// Returns normalized progress (`0.0` ..= `1.0`).
+    pub fn progress(&self) -> f32 {
+        self.x.progress()
     }
 
     /// Returns `true` if both axis tweens have finished.

@@ -55,7 +55,7 @@ pub use content::{ContentError, load_content, load_content_dir};
 pub use events::EventBus;
 pub use geometry::{Capsule, Circle, Segment};
 pub use math::{Vec2Ext, smooth_damp, smooth_damp_vec2};
-pub use panel_manager::{PanelId, PanelManager};
+pub use panel_manager::{DesktopWindow, PanelId, PanelManager, WindowPanel};
 pub use resources::Resources;
 pub use rng::{
     Noise, Rng, ShuffleBag, WeightedList, random_angle, random_bool, random_choose,
@@ -69,10 +69,11 @@ pub use scene::{SceneChanged, SceneManager};
 pub use sequence::{SequenceBuilder, Step};
 pub use tilemap::{TileCollision, Tilemap};
 pub use trigger::{Trigger, TriggerSystem};
-pub use tween::{Easing, Tween};
+pub use tween::{Easing, Tween, TweenVec2};
 pub use ui::{
-    Button, Checkbox, Grid, HBox, Image, LayoutAlign, LayoutJustify, Margin, Padding,
-    Panel as UiPanel, ProgressBar, RevealMode, RichText, RichTextObject, ScrollMode, Slider, Text, TextAlign, TextField,
+    Align, Button, Checkbox, Column, Container, CrossAxisAlignment, Div, DivDirection, Gap, Grid, HBox, Image,
+    LayoutAlign, LayoutJustify, MainAxisAlignment, Margin, Padding, Panel as UiPanel, ProgressBar,
+    RevealMode, RichText, RichTextObject, Row, ScrollMode, Slider, Text, TextAlign, TextAlignment, TextField,
     TextLog, TextLogLine, TextSpan, Tooltip, UIAnchor, VBox, UI, margin, padding, parse_color, parse_rich_text, rich_text,
 };
 
@@ -178,7 +179,8 @@ mod tests {
         assert!(!rect.is_visible());
         assert!(!rect.is_active());
 
-        let button = Button::new(vec2(0.0, 0.0), vec2(10.0, 10.0), "Click")
+        let button = Button::new("Click")
+            .with_size(vec2(10.0, 10.0))
             .hidden()
             .deactivated();
         assert!(!button.is_visible());
@@ -1111,5 +1113,89 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].from, "Game");
         assert_eq!(events[0].to, "GameOver");
+    }
+
+    #[test]
+    fn test_camera_and_animated_sprite_builders() {
+        let cam = Camera::new()
+            .with_target(vec2(100.0, 200.0))
+            .with_zoom(2.0)
+            .with_rotation(0.5);
+        assert_eq!(cam.target, vec2(100.0, 200.0));
+        assert_eq!(cam.zoom, 2.0);
+        assert_eq!(cam.rotation, 0.5);
+
+        let mut anim = AnimatedSprite::empty()
+            .with_position(vec2(50.0, 60.0))
+            .with_size(vec2(32.0, 32.0))
+            .with_fps(24.0);
+        assert_eq!(anim.position, vec2(50.0, 60.0));
+        assert_eq!(anim.size, vec2(32.0, 32.0));
+        assert_eq!(anim.fps, 24.0);
+
+        anim.set_position(vec2(10.0, 20.0));
+        anim.set_size(vec2(64.0, 64.0));
+        assert_eq!(anim.position, vec2(10.0, 20.0));
+        assert_eq!(anim.size, vec2(64.0, 64.0));
+    }
+
+    #[test]
+    fn test_tween_and_tween_vec2_extended_methods() {
+        let mut t = Tween::new(0.0, 100.0, 1.0, Easing::Linear);
+        assert!(!t.is_finished());
+        t.tick(0.5);
+        assert_eq!(t.progress(), 0.5);
+        t.tick(0.5);
+        assert!(t.is_finished());
+        t.reverse();
+        assert_eq!(t.start, 100.0);
+        assert_eq!(t.end, 0.0);
+        assert!(!t.is_finished());
+
+        let mut tv = TweenVec2::new(vec2(0.0, 0.0), vec2(100.0, 200.0), 1.0, Easing::Linear);
+        assert!(!tv.is_finished());
+        tv.tick(0.5);
+        assert_eq!(tv.progress(), 0.5);
+        tv.tick(0.5);
+        assert!(tv.is_finished());
+        tv.reverse();
+        assert_eq!(tv.value(), vec2(100.0, 200.0));
+        assert!(!tv.is_finished());
+    }
+
+    #[test]
+    fn test_context_facade_and_state_store_consistency() {
+        let mut ctx = Context::new();
+        ctx.set_flag("game_active", true);
+        ctx.set_int("score", 500);
+        ctx.set_float("health", 95.5);
+        ctx.set_state_text("player", "Hero");
+
+        assert!(ctx.flag("game_active"));
+        assert_eq!(ctx.get_int("score"), 500);
+        assert_eq!(ctx.get_float("health"), 95.5);
+        assert_eq!(ctx.get_state_text("player"), "Hero");
+
+        // StateStore options and defaults
+        assert_eq!(ctx.state.get_bool_opt("game_active"), Some(true));
+        assert_eq!(ctx.state.get_bool_opt("non_existent"), None);
+        assert_eq!(ctx.state.get_int_opt("score"), Some(500));
+        assert_eq!(ctx.state.get_int_opt("non_existent"), None);
+        assert_eq!(ctx.state.get_float_opt("health"), Some(95.5));
+        assert_eq!(ctx.state.get_float_opt("non_existent"), None);
+        assert_eq!(ctx.state.get_text_opt("player"), Some("Hero"));
+        assert_eq!(ctx.state.get_text_opt("non_existent"), None);
+        assert_eq!(ctx.state.get_text_or("non_existent", "DefaultName"), "DefaultName");
+
+        // Time snake_case methods
+        assert_eq!(ctx.time.delta_time(), ctx.time.deltatime());
+        assert_eq!(ctx.time.raw_delta_time(), ctx.time.raw_deltatime());
+
+        // Context emit event shorthand
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        struct LevelLoaded(u32);
+        ctx.emit(LevelLoaded(1));
+        let polled = ctx.events.poll::<LevelLoaded>();
+        assert_eq!(polled, vec![LevelLoaded(1)]);
     }
 }

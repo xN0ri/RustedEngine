@@ -323,12 +323,12 @@ export function DocViewer({
               )}
 
               {/* Interactive Playgrounds */}
-              {(doc.id === "ui-system" || doc.id === "ui-widgets") &&
-                (section.id === "widgets-overview" || section.id === "ui-widgets-main" || section.id === "rich-text-bbcode") && (
+              {(doc.id === "ui-system" || doc.id === "ui-widgets" || doc.id === "ui-image") &&
+                (section.id === "widgets-overview" || section.id === "ui-widgets-main" || section.id === "rich-text-bbcode" || section.id === "widgets-text-bbcode") && (
                   <RichTextPlayground />
                 )}
               {(doc.id === "ui-system" || doc.id === "ui-layout") &&
-                (section.id === "flexbox-layout" || section.id === "ui-layout-main") && (
+                (section.id === "flexbox-layout" || section.id === "ui-layout-main" || section.id === "layout-containers") && (
                   <LayoutPlayground />
                 )}
               {(doc.id === "sequence" || doc.id === "sequences") &&

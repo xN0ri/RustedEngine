@@ -109,6 +109,30 @@ impl Input {
         }
     }
 
+    /// Returns a horizontal axis value between `-1.0` and `1.0` derived from A/D or Left/Right arrow keys.
+    pub fn axis_x(&self) -> f32 {
+        let mut val = 0.0;
+        if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
+            val -= 1.0;
+        }
+        if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
+            val += 1.0;
+        }
+        val
+    }
+
+    /// Returns a vertical axis value between `-1.0` and `1.0` derived from W/S or Up/Down arrow keys.
+    pub fn axis_y(&self) -> f32 {
+        let mut val = 0.0;
+        if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
+            val -= 1.0;
+        }
+        if is_key_down(KeyCode::S) || is_key_down(KeyCode::Down) {
+            val += 1.0;
+        }
+        val
+    }
+
     /// Returns an axis value between `-1.0` and `1.0` based on negative and positive keys.
     pub fn axis_1d(&self, negative: KeyCode, positive: KeyCode) -> f32 {
         let mut val = 0.0;

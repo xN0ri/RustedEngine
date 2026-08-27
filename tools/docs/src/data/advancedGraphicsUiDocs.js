@@ -95,64 +95,65 @@ export const animatedSpriteDoc = {
   id: "animated-sprite",
   title: "21. 🎞️ Animacje Sprite Sheet & AnimatedSprite",
   badge: "2D Graphics",
-  description: "Odtwarzacz sekwencji klatek AnimatedSprite, pętle zapętlania (looping), prędkość FPS, pauzowanie i odwracanie kierunku.",
+  description: "Odtwarzacz sekwencji klatek AnimatedSprite, metody budownicze (with_position, with_fps), pętle zapętlania (looping), pauzowanie i auto-cleanup.",
   sections: [
     {
       id: "animated-sprite-overview",
       title: "Komponent AnimatedSprite",
       content: `Struktura **\`AnimatedSprite\`** reprezentuje 2D obiekt gry odtwarzający ciąg tekstur (klatek) z określoną prędkością FPS.
 
-### Kluczowe Właściwości:
-- **\`fps\`** — liczba klatek na sekundę (np. 12.0 FPS).
-- **\`looping\`** — czy animacja zapętla się po ostatniej klatce (\`with_looping(true/false)\`).
+### Konstruktory i Metody Budownicze:
+- **\`AnimatedSprite::new(pos, size, frames, fps)\`**: Pełny konstruktor z parametrami.
+- **\`AnimatedSprite::empty()\`**: Pusty duszek z domyślnymi parametrami (\`impl Default\`).
+- **\`AnimatedSprite::from_frames(frames)\`**: Tworzy duszka z listy tekstur.
+- **\`.with_position(pos)\`** / **\`.with_pos(pos)\`**: Ustawia pozycję w świecie.
+- **\`.with_size(size)\`**: Ustawia wymiary wyświetlania.
+- **\`.with_fps(fps)\`**: Ustawia prędkość odtwarzania w klatkach na sekundę.
+- **\`.with_looping(bool)\`**: Czy animacja zapętla się po ostatniej klatce.
+
+### Sterowanie w Pętli Gry:
 - **\`playing\`** — flaga odtwarzania (\`.play()\`, \`.pause()\`, \`.stop()\`, \`.reset()\`).
 - **\`current_frame()\` / \`.set_frame(idx)\`** — bezpośredni odczyt i zmiana aktualnej klatki.
 - **\`is_finished()\`** — \`true\` gdy niezapętlona animacja dotarła do końca i zatrzymała się.
 
 > [!TIP]
-> \`AnimatedSprite\` implementuje zarowno \`Object\` jak i \`Clickable\`. Możesz go dodać bezpośrednio do \`objects: [...]\` w \`world!\`.`,
+> \`AnimatedSprite\` implementuje zarowno \`Object\` (w tym \`set_position\`, \`set_size\`) jak i \`Clickable\`. Możesz go dodać bezpośrednio do \`objects: [...]\` w \`world!\` lub zespawnować przez \`ctx.spawn(anim)\`.`,
       codeExamples: [
         {
-          title: "Tworzenie i Kontrola Animowanej Encji Postaci",
+          title: "Tworzenie AnimatedSprite przez Fluent Builder",
           code: `use rusted_engine::prelude::*;
 use macroquad::prelude::*;
 
-// 1. Wczytanie klatek biegającego bohatera:
+// 1. Wczytanie klatek:
 let walk_frames = vec![
-    load_texture("assets/hero_run_1.png").await.unwrap(),
-    load_texture("assets/hero_run_2.png").await.unwrap(),
-    load_texture("assets/hero_run_3.png").await.unwrap(),
-    load_texture("assets/hero_run_4.png").await.unwrap(),
+    load_texture("assets/hero_1.png").await.unwrap(),
+    load_texture("assets/hero_2.png").await.unwrap(),
 ];
 
-// 2. Utworzenie AnimatedSprite (pozycja, rozmiar, klatki, FPS):
-let mut hero = AnimatedSprite::new(
-    vec2(100.0, 150.0),
-    vec2(32.0, 32.0),
-    walk_frames,
-    12.0 // 12 FPS
-)
-.with_tag("player_hero")
-.with_looping(true);
+// 2. Utworzenie przez konstruktor łańcuchowy:
+let mut hero = AnimatedSprite::from_frames(walk_frames)
+    .with_position(vec2(100.0, 150.0))
+    .with_size(vec2(32.0, 32.0))
+    .with_fps(12.0)
+    .with_looping(true)
+    .with_tag("player_hero");
 
 // 3. Kontrola w pętli gry:
 if ctx.input.wasd().length() > 0.0 {
-    hero.play(); // Odtwarzaj bieg
+    hero.play();
 } else {
-    hero.pause(); // Zatrzymaj na obecnej klatce
+    hero.pause();
 }`,
           collapsible: false
         },
         {
           title: "Jednorazowa Animacja Wybuchu (Explosion Effect)",
           code: `// Jednorazowa animacja wybuchu (looping = false):
-let explosion = AnimatedSprite::new(
-    enemy_pos,
-    vec2(48.0, 48.0),
-    explosion_frames,
-    18.0
-)
-.with_looping(false); // Zatańczy raz i się zatrzyma
+let explosion = AnimatedSprite::from_frames(explosion_frames)
+    .with_position(enemy_pos)
+    .with_size(vec2(48.0, 48.0))
+    .with_fps(18.0)
+    .with_looping(false); // Zatańczy raz i się zatrzyma
 
 // W update encji:
 if explosion.is_finished() {
@@ -169,7 +170,12 @@ if explosion.is_finished() {
       apiTable: {
         headers: ["Metoda", "Parametry", "Zwraca", "Opis"],
         rows: [
-          ["AnimatedSprite::new(pos, size, frames, fps)", "Vec2, Vec2, Vec<Texture2D>, f32", "AnimatedSprite", "Tworzy obiekt animowanego duszka z listą klatek."],
+          ["AnimatedSprite::new(pos, size, frames, fps)", "Vec2, Vec2, Vec<Texture2D>, f32", "AnimatedSprite", "Tworzy obiekt animowanego duszka."],
+          ["AnimatedSprite::from_frames(frames)", "Vec<Texture2D>", "AnimatedSprite", "Tworzy duszka z listą klatek (pozycja 0,0, 12 FPS)."],
+          ["AnimatedSprite::empty()", "brak", "AnimatedSprite", "Tworzy pustego duszka z domyślnymi parametrami."],
+          [".with_position(pos) / .with_pos(pos)", "Vec2", "Self", "Ustawia pozycję początkową."],
+          [".with_size(size)", "Vec2", "Self", "Ustawia rozmiar renderowania."],
+          [".with_fps(fps)", "f32", "Self", "Ustawia prędkość animacji w klatkach na sekundę."],
           [".with_looping(bool)", "bool", "Self", "Ustawia czy animacja zapętla się po ostatniej klatce."],
           [".with_rotation(rad)", "f32", "Self", "Ustawia obrót duszka w radianach."],
           [".with_color(color)", "Color", "Self", "Ustawia zabarwienie tint kolorem."],
@@ -245,7 +251,7 @@ let text_widget = Text::new("PUNKTY: 1250 — ŻYCIA: 3", vec2(10.0, 10.0), 16.0
 
 export const panelManagerDoc = {
   id: "panel-manager",
-  title: "27. 🪟 Pulpit OS, Okna & Drag-and-Drop (PanelManager)",
+  title: "28. 🪟 Pulpit OS, Okna & Drag-and-Drop (PanelManager)",
   badge: "Advanced GUI",
   description: "Menedżer ruchomych i skalowalnych okien pulpitu PanelManager, z-ordering (przenoszenie na wierzch), przeciąganie myszą i resize.",
   sections: [
@@ -254,16 +260,17 @@ export const panelManagerDoc = {
       title: "Menedżer Okien Pulpitu (PanelManager)",
       content: `**\`PanelManager\`** zarządza niezależnymi, ruchomymi i skalowalnymi oknami pulpitu (np. okna ekwipunku, drzewka umiejętności, konsole terminalowe).
 
-### Czym różni się \`PanelManager\` od \`ui::Panel\`?
-- **\`ui::Panel\`** — statyczny kontener grupujący layout (flexbox) wewnątrz okna.
-- **\`PanelManager\`** — nadrzędny menedżer okien wyższej warstwy (\`World::add_ui\`), zarządzający kolejnością z-order (wyciąganie na wierzch po kliknięciu), przeciąganiem nagłówka okna i zmianą rozmiaru.
+### Czym różni się `PanelManager` od `ui::Panel`?
+- **`ui::Panel`** — statyczny kontener grupujący layout (flexbox) wewnątrz okna.
+- **`PanelManager`** — nadrzędny menedżer okien wyższej warstwy (`World::add_ui`), zarządzający kolejnością z-order (wyciąganie na wierzch po kliknięciu), przeciąganiem nagłówka okna i zmianą rozmiaru.
 
-### Trait \`Panel\`:
-Dowolna struktura implementująca trait \`Panel\` może zostać zarejestrowana w \`PanelManager\`:
-- \`fn update(&mut self, dt: f32)\`
-- \`fn draw(&self, rect: Rect)\`
-- \`fn is_draggable(&self) -> bool { true }\` — włącza przeciąganie myszą.
-- \`fn is_resizable(&self) -> bool { true }\` — włącza skalowanie krawędzi.`,
+### Trait `Panel` (oraz aliasy `WindowPanel` / `DesktopWindow`):
+Aby uniknąć kolizji nazw z `ui::Panel`, trait okna pulpitu posiada oficjalne aliasy **`WindowPanel`** oraz **`DesktopWindow`**:
+- `fn update(&mut self, dt: f32)`
+- `fn draw(&self, rect: Rect)`
+- `fn on_close(&mut self)` — opcjonalne sprzątanie po zamknięciu.
+- `fn is_draggable(&self) -> bool { true }` — włącza przeciąganie myszą.
+- `fn is_resizable(&self) -> bool { true }` — włącza skalowanie krawędzi.`,
       codeExamples: [
         {
           title: "Implementacja Własnego Okna Ekwipunku (Panel)",

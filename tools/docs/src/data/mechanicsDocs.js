@@ -234,6 +234,67 @@ impl Weapon {
     pub fn needs_reload(&self) -> bool { self.current_ammo == 0 }
 }`,
           collapsible: false
+        },
+        {
+          title: "Zaawansowane Wzorce Pocisków: Homing, Orbitale i Wiązka Lasera",
+          code: `// 1. Pocisk Samonaprowadzający (Homing Tear / Magic Missile):
+pub fn spawn_homing_missile(origin: Vec2, initial_dir: Vec2, ctx: &mut Context) {
+    let missile = Rectangle::simple(vec2(10.0, 10.0), PURPLE)
+        .with_position(origin)
+        .with_tag("bullet_player")
+        .with_data((initial_dir * 320.0, 3.0_f32)) // (velocity, lifetime)
+        .on_update(|obj, m_ctx| {
+            // Szukaj najbliższego wroga w promieniu 350px:
+            if let Some(target_pos) = m_ctx.get_vec2("nearest_enemy") {
+                let to_target = (target_pos - obj.position).normalize_or_zero();
+                // Płynny skręt wektora prędkości (lerp):
+                let current_dir = obj.data.0.normalize_or_zero();
+                let new_dir = current_dir.lerp(to_target, 6.0 * m_ctx.dt()).normalize_or_zero();
+                obj.data.0 = new_dir * 320.0;
+            }
+
+            obj.position += obj.data.0 * m_ctx.dt();
+            obj.data.1 -= m_ctx.dt();
+            if obj.data.1 <= 0.0 { obj.destroy(); }
+        });
+    ctx.spawn(missile);
+}
+
+// 2. Tarcza Orbitujących Pocisków (Orbiting Flies):
+pub fn spawn_orbital_fly(player_pos: Vec2, start_angle: f32, ctx: &mut Context) {
+    let orbital = Rectangle::simple(vec2(12.0, 12.0), BLUE)
+        .with_position(player_pos)
+        .with_tag("orbital_shield")
+        .with_data(start_angle)
+        .on_update(|obj, o_ctx| {
+            // Zwiększaj kąt obrotu:
+            *obj.data += 3.5 * o_ctx.dt(); // 3.5 rad/s
+            let player = o_ctx.get_vec2_or("player_pos", vec2(400.0, 300.0));
+
+            // Pozycja na okręgu wokół gracza (promień 55px):
+            let offset = vec2(obj.data.cos(), obj.data.sin()) * 55.0;
+            obj.position = player + offset;
+        });
+    ctx.spawn(orbital);
+}
+
+// 3. Ciągła Wiązka Lasera (Brimstone / Laser Beam):
+pub fn fire_laser_beam(origin: Vec2, dir: Vec2, range: f32, ctx: &mut Context) {
+    let beam = Segment::new(origin, origin + dir.normalize_or_zero() * range);
+    
+    // Oblicz trafienia wrogów przeciętych odcinkiem lasera:
+    for enemy in ctx.query_mut::<EnemyData>() {
+        if beam.distance_to_point(enemy.rect().center()) < 16.0 {
+            ctx.emit(EnemyHit { damage: 15, source: origin });
+        }
+    }
+
+    // Dynamiczny błysk ekranu i dźwięk:
+    ctx.camera.shake(0.2, 5.0);
+    ctx.play_sound("laser_blast");
+}`,
+          collapsible: true,
+          defaultCollapsed: false
         }
       ]
     },
@@ -249,6 +310,7 @@ impl Weapon {
           ["random_range(min, max)", "f32, f32", "f32", "Generuje losowy float w przedziale [min, max] (rozrzut pocisków)."],
           ["ctx.spawn(bullet)", "impl Object + 'static", "()", "Dodaje pocisk do warstwy objects świata."],
           ["ctx.play_sound_varied(name, p, v)", "&str, f32, f32", "()", "Odtwarza dźwięk z losową wariacją tonu i głośności."],
+          ["Segment::new(start, end)", "Vec2, Vec2", "Segment", "Odcinek 2D do modelowania laserów i promieni penetrujących."],
         ]
       }
     }
@@ -382,6 +444,62 @@ if let Some(inv) = ctx.resources.get::<Inventory>() {
     ctx.set_ui_text("gold_label", &format!("Złoto: {}", gold));
 }`,
           collapsible: false
+        },
+        {
+          title: "Przedmiot Aktywny ze Spacją & Magnes Przyciągający Pickupy",
+          code: `// 1. Struktura Przedmiotu Aktywnego (Spacebar Active Item):
+#[derive(Clone, Debug)]
+pub struct ActiveItem {
+    pub name: String,
+    pub max_charges: u32,
+    pub current_charges: u32,
+}
+
+impl ActiveItem {
+    pub fn try_use(&mut self, ctx: &mut Context) -> bool {
+        if self.current_charges < self.max_charges { return false; }
+        self.current_charges = 0; // Zużyj ładunki
+
+        // Efekt (np. The Yum Heart: ulecz gracza o 1 serce):
+        ctx.increment("player_hp", 2);
+        ctx.camera.shake(0.2, 4.0);
+        ctx.play_sound("heal_chime");
+        true
+    }
+
+    pub fn charge_on_room_clear(&mut self) {
+        self.current_charges = (self.current_charges + 1).min(self.max_charges);
+    }
+}
+
+// 2. Pickup z Efektem Magnesu (Magnet Effect):
+pub fn spawn_magnetic_coin(pos: Vec2, ctx: &mut Context) {
+    let coin = Rectangle::simple(vec2(12.0, 12.0), GOLD)
+        .with_position(pos)
+        .with_tag("pickup_coin")
+        .on_update(|obj, c_ctx| {
+            if let Some(player_pos) = c_ctx.get_vec2("player_pos") {
+                let dist = obj.position.distance(player_pos);
+
+                // Jeśli gracz jest w zasięgu 110px — przyciągaj monetę z przyspieszeniem!
+                if dist < 110.0 {
+                    let dir = obj.position.dir_to(player_pos);
+                    let magnet_speed = (110.0 - dist) * 4.5 + 80.0;
+                    obj.position += dir * magnet_speed * c_ctx.dt();
+                }
+
+                // Zebranie przy bezpośrednim kontakcie:
+                if dist < 18.0 {
+                    obj.destroy();
+                    c_ctx.increment("coins", 1);
+                    c_ctx.play_varied("coin_pickup", 0.05, 0.05);
+                }
+            }
+        });
+    ctx.spawn(coin);
+}`,
+          collapsible: true,
+          defaultCollapsed: false
         }
       ]
     },
@@ -682,6 +800,54 @@ match enemy.data.state {
     }
 }`,
           collapsible: false
+        },
+        {
+          title: "Separacja Wrogów (Flocking Separation) & Telegrafowanie Ataku",
+          code: `// 1. Separacja wrogów (zapobieganie zlewaniu się w jeden punkt):
+pub fn apply_enemy_separation(current_enemy_pos: Vec2, speed: f32, dt: f32, ctx: &mut Context) -> Vec2 {
+    let mut separation_force = Vec2::ZERO;
+
+    // Pobierz pozycje innych wrogów w promieniu 32px:
+    for other in ctx.query_mut::<EnemyData>() {
+        let diff = current_enemy_pos - other.rect().center();
+        let dist = diff.length();
+        if dist > 0.001 && dist < 32.0 {
+            // Siła odwrotnie proporcjonalna do dystansu:
+            separation_force += (diff / dist) * (32.0 - dist) * 2.0;
+        }
+    }
+
+    separation_force * dt
+}
+
+// 2. Telegrafowanie ataku (Windup z Tweenem i Błyskiem):
+pub fn spawn_telegraphed_boss(pos: Vec2, ctx: &mut Context) {
+    let boss = Rectangle::simple(vec2(48.0, 48.0), DARKGRAY)
+        .with_position(pos)
+        .with_tag("boss")
+        .with_data(0.0_f32) // attack_timer
+        .on_update(|obj, b_ctx| {
+            *obj.data += b_ctx.dt();
+
+            // Telegrafowanie: co 3 sekundy ładuj atak przez 0.8s:
+            let cycle = *obj.data % 3.0;
+            if cycle > 2.2 {
+                // Pulsujący błysk ostrzegawczy na żółto/czerwono:
+                let flash = ((cycle - 2.2) * 20.0).sin().abs();
+                obj.color = Color::new(1.0, 0.2 + flash * 0.8, 0.0, 1.0);
+            } else if cycle < 0.2 && *obj.data > 3.0 {
+                // WYKONAJ ATAK (np. fala uderzeniowa 360 stopni):
+                b_ctx.camera.shake(0.3, 8.0);
+                b_ctx.play_sound("boss_slam");
+                obj.color = DARKGRAY;
+            } else {
+                obj.color = DARKGRAY;
+            }
+        });
+    ctx.spawn(boss);
+}`,
+          collapsible: true,
+          defaultCollapsed: false
         }
       ]
     },
@@ -699,6 +865,658 @@ match enemy.data.state {
           ["ctx.resources.get::<PlayerPos>()", "brak", "Option<&PlayerPos>", "Pobiera pozycję gracza z globalnych zasobów (bez bezpośredniej referencji)."],
         ]
       }
+    }
+  ]
+};
+
+export const twinStickRoguelikeDoc = {
+  id: "twinstick-roguelike",
+  title: "34. 🩸 Dungeon Crawler / Twin-Stick Roguelike (TBoI Style)",
+  badge: "Game Recipe",
+  description: "Kompletny poradnik tworzenia gry typu The Binding of Isaac: podział na pliki i moduły, gdzie trzymać stan, iterowanie i kolizje, inercja łez, AI wrogów, bomby, piedestały i HUD.",
+  sections: [
+    {
+      id: "twinstick-structure",
+      title: "1. 📁 Podział Projektu na Pliki & Wzorzec Fabryk (Project Structure)",
+      content: `Aby gra nie stała się jednym wielkim monolitem w \`main.rs\`, kod dzielimy na wyspecjalizowane moduły. W RustedEngine najlepszym podejściem jest **wzorzec funkcji fabrycznych** (\`spawn_*\`):
+
+### Rekomendowany Układ Plików:
+\`\`\`
+src/
+├── main.rs         # Inicjalizacja Engine, scen, pętla startowa
+├── player.rs       # spawn_player(), PlayerData, sterowanie WASD
+├── tears.rs        # spawn_tear(), TearData, inercja, pękanie pocisków
+├── enemies.rs      # spawn_gaper(), spawn_fly(), EnemyData, zachowania AI
+├── dungeon.rs      # Graf pokoi, kafelki ścian, logika otwierania drzwi
+├── items.rs        # Pule przedmiotów (WeightedList), piedestały z Tween
+└── hud.rs          # Deklaratywny interfejs UI (col!, row!, paski HP)
+\`\`\`
+
+### Wzorzec Funkcji Fabrycznej (\`spawn_*\`):
+Funkcja fabryczna przyjmuje pozycję i \`&mut Context\` (lub zwraca byt do \`ctx.spawn\`), konfigurując tagi, dane i callbacki:`,
+      codeExamples: [
+        {
+          title: "src/player.rs — Wydzielony Moduł Gracza",
+          code: `use rusted_engine::prelude::*;
+use macroquad::prelude::*;
+
+pub struct PlayerData {
+    pub speed: f32,
+    pub shoot_cooldown: f32,
+    pub shoot_timer: f32,
+}
+
+/// Funkcja fabryczna: tworzy i konfiguruje encję gracza
+pub fn spawn_player(pos: Vec2, ctx: &mut Context) {
+    let player = Rectangle::simple(vec2(28.0, 28.0), WHITE)
+        .with_position(pos)
+        .with_tag("player")
+        .with_data(PlayerData {
+            speed: 230.0,
+            shoot_cooldown: 0.22,
+            shoot_timer: 0.0,
+        })
+        .on_update(|obj, p_ctx| {
+            // Ruch WASD
+            let mut move_dir = Vec2::ZERO;
+            if p_ctx.is_key_down(KeyCode::W) { move_dir.y -= 1.0; }
+            if p_ctx.is_key_down(KeyCode::S) { move_dir.y += 1.0; }
+            if p_ctx.is_key_down(KeyCode::A) { move_dir.x -= 1.0; }
+            if p_ctx.is_key_down(KeyCode::D) { move_dir.x += 1.0; }
+
+            if move_dir != Vec2::ZERO {
+                obj.position += move_dir.normalize() * obj.data.speed * p_ctx.dt();
+            }
+
+            // Ograniczenie do granic pokoju (Clamp)
+            obj.position.x = obj.position.x.clamp(52.0, 728.0);
+            obj.position.y = obj.position.y.clamp(52.0, 528.0);
+            p_ctx.set_vec2("player_pos", obj.position);
+
+            // Obsługa strzelania łzami
+            obj.data.shoot_timer -= p_ctx.dt();
+            let mut shoot_dir = Vec2::ZERO;
+            if p_ctx.is_key_down(KeyCode::Up)    { shoot_dir.y -= 1.0; }
+            if p_ctx.is_key_down(KeyCode::Down)  { shoot_dir.y += 1.0; }
+            if p_ctx.is_key_down(KeyCode::Left)  { shoot_dir.x -= 1.0; }
+            if p_ctx.is_key_down(KeyCode::Right) { shoot_dir.x += 1.0; }
+
+            if shoot_dir != Vec2::ZERO && obj.data.shoot_timer <= 0.0 {
+                obj.data.shoot_timer = obj.data.shoot_cooldown;
+                crate::tears::spawn_tear(obj.position + vec2(9.0, 9.0), shoot_dir, move_dir, obj.data.speed, p_ctx);
+            }
+        });
+
+    ctx.spawn(player);
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "twinstick-state-ownership",
+      title: "2. 🧠 Gdzie Trzymać Stan: obj.data vs ctx.resources vs ctx.state",
+      content: `W grach w Rust kluczem do czystego kodu bez walki z borrow checkerem jest właściwe przypisanie danych do 3 poziomów stanu silnika:
+
+| Poziom Stanu | Gdzie ląduje | Kiedy stosować | Przykład w Isaacu |
+| :--- | :--- | :--- | :--- |
+| **Prywatny stan encji** | \`obj.data\` w \`Behavior<Inner, Data>\` | Dane dotyczące **wyłącznie tej jednej instancji obiektu**. | Bieżące HP tego konkretnego wroga, timer strzału gracza, prędkość lotu tej jednej łzy. |
+| **Żywy stan sesji (Global)** | \`ctx.resources.get / get_mut\` | Złożone struktury Rust współdzielone przez wiele systemów. | \`PlayerStats\` (Damage, TearRate, ShotSpeed, Luck), graf lochu \`DungeonGraph\`, pule itemów. |
+| **Trwałe flagi & Save** | \`ctx.state\` / \`ctx.save_system\` | Proste flagi, liczniki punktów, postęp i zapis gry do JSON. | \`ctx.set_int("coins", 15)\`, \`ctx.flag("boss_killed")\`, odblokowane postacie. |
+
+### Dlaczego \`ctx.spawn\` i \`obj.destroy\` nigdy nie powodują konfliktów borrow checkera:
+W RustedEngine dodawanie (\`ctx.spawn\`) i niszczenie (\`obj.destroy\`) bytów trafia do bezpiecznej kolejki odroczonej (\`pending_spawn\`). Pętla aktualizacji świata nie modyfikuje wektora obiektów w trakcie iteracji, co pozwala na bezpieczne tworzenie pocisków i cząsteczek bezpośrednio z wnętrza \`on_update\`!`,
+      codeExamples: [
+        {
+          title: "Zarządzanie Statystykami Gracza w ctx.resources",
+          code: `#[derive(Clone, Debug)]
+pub struct PlayerStats {
+    pub damage: f32,
+    pub tear_rate: f32,
+    pub shot_speed: f32,
+    pub coins: i32,
+}
+
+// Inicjalizacja na starcie gry w main.rs:
+ctx.resources.insert(PlayerStats {
+    damage: 3.5,
+    tear_rate: 0.25,
+    shot_speed: 420.0,
+    coins: 0,
+});
+
+// Podniesienie przedmiotu Cricket's Head (+1.5 Damage):
+if let Some(stats) = ctx.resources.get_mut::<PlayerStats>() {
+    stats.damage += 1.5;
+    ctx.play_sound("item_pickup_fanfare");
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "twinstick-collisions-and-querying",
+      title: "3. 🎯 Iterowanie po Obiektach, Tagi & Detekcja Kolizji",
+      content: `W grze typu TBoI potrzebujesz wykrywać:
+1. **Trafienia łez we wrogów** (Łza niszczy się i zadaje obrażenia).
+2. **Zbieranie przedmiotów przez gracza** (Monety, serduszka, bomby).
+3. **Śmierć wrogów i otwieranie drzwi** po wyczyszczeniu pokoju.
+
+### Wzorce Kolizji i Iteracji:
+- **Tagowanie Bytów**: Oznaczaj encje za pomocą \`.with_tag("enemy")\`, \`.with_tag("tear")\`, \`.with_tag("pickup_coin")\`.
+- **Kolizje w Warstwie Logiki (\`add_logic_fn\`)**: Najczystszy wzorzec — zamiast sprawdzać kolizje w każdym obiekcie z osobna, sprawdzasz je w fazie \`Logic\`, która wykonuje się po aktualizacji obiektów świata.`,
+      codeExamples: [
+        {
+          title: "src/tears.rs — Pocisk z Inercją i Pękaniem",
+          code: `use rusted_engine::prelude::*;
+use macroquad::prelude::*;
+
+pub struct TearData {
+    pub velocity: Vec2,
+    pub lifetime: f32,
+    pub damage: f32,
+}
+
+pub fn spawn_tear(pos: Vec2, shoot_dir: Vec2, player_move: Vec2, player_speed: f32, ctx: &mut Context) {
+    let stats = ctx.resources.get::<PlayerStats>().cloned().unwrap_or(PlayerStats {
+        damage: 3.5,
+        tear_rate: 0.25,
+        shot_speed: 420.0,
+        coins: 0,
+    });
+
+    // Inercja pędu gracza:
+    let tear_vel = shoot_dir.normalize() * stats.shot_speed + player_move * (player_speed * 0.25);
+
+    let tear = Rectangle::simple(vec2(10.0, 10.0), SKYBLUE)
+        .with_position(pos)
+        .with_tag("tear")
+        .with_data(TearData {
+            velocity: tear_vel,
+            lifetime: 1.1,
+            damage: stats.damage,
+        })
+        .on_update(|obj, t_ctx| {
+            obj.position += obj.data.velocity * t_ctx.dt();
+            obj.data.lifetime -= t_ctx.dt();
+
+            // Pęknięcie o ściany pokoju
+            let hit_wall = obj.position.x < 48.0 || obj.position.x > 742.0
+                        || obj.position.y < 48.0 || obj.position.y > 542.0;
+
+            if obj.data.lifetime <= 0.0 || hit_wall {
+                obj.destroy();
+                t_ctx.play_varied("tear_pop", 0.1, 0.05);
+            }
+        });
+
+    ctx.spawn(tear);
+    ctx.play_varied("tear_shoot", 0.1, 0.05);
+}`,
+          collapsible: false
+        },
+        {
+          title: "src/enemies.rs — Wrogowie Goniący (Gaper) i Latający (Fly)",
+          code: `use rusted_engine::prelude::*;
+use macroquad::prelude::*;
+
+pub struct EnemyData {
+    pub hp: f32,
+    pub speed: f32,
+}
+
+/// Goniący zombie (Gaper)
+pub fn spawn_gaper(pos: Vec2, ctx: &mut Context) {
+    let gaper = Rectangle::simple(vec2(26.0, 26.0), RED)
+        .with_position(pos)
+        .with_tag("enemy")
+        .with_data(EnemyData { hp: 10.0, speed: 110.0 })
+        .on_update(|obj, e_ctx| {
+            if let Some(player_pos) = e_ctx.get_vec2("player_pos") {
+                let to_player = obj.position.dir_to(player_pos);
+                obj.position += to_player * obj.data.speed * e_ctx.dt();
+            }
+
+            if obj.data.hp <= 0.0 {
+                obj.destroy();
+                e_ctx.camera.shake(6.0, 0.2); // Wstrząs kamery po zabiciu
+                e_ctx.play_sound("enemy_die");
+                e_ctx.increment("score", 100);
+            }
+        });
+
+    ctx.spawn(gaper);
+}
+
+/// Chaotycznie latająca mucha (Fly)
+pub fn spawn_fly(pos: Vec2, ctx: &mut Context) {
+    let fly = Rectangle::simple(vec2(16.0, 16.0), BLACK)
+        .with_position(pos)
+        .with_tag("enemy")
+        .with_data((EnemyData { hp: 5.0, speed: 95.0 }, random_angle()))
+        .on_update(|obj, e_ctx| {
+            obj.data.1 += random_range(-2.0, 2.0) * e_ctx.dt();
+            if let Some(player_pos) = e_ctx.get_vec2("player_pos") {
+                let to_p = obj.position.dir_to(player_pos);
+                let orbit = (Vec2Ext::rotated(to_p, obj.data.1) + to_p).normalize();
+                obj.position += orbit * obj.data.0.speed * e_ctx.dt();
+            }
+
+            if obj.data.0.hp <= 0.0 {
+                obj.destroy();
+                e_ctx.play_sound("fly_splat");
+            }
+        });
+
+    ctx.spawn(fly);
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "twinstick-complete-room",
+      title: "4. 🚀 Kompletny, Działający Szablon Pokoju TBoI",
+      content: `Oto kompletny, gotowy do uruchomienia program łączący pokój lochu, gracza, łzy, wrogów, sprawdzanie wyczyszczenia pokoju oraz deklaratywny HUD w warstwie UI:`,
+      codeExamples: [
+        {
+          title: "src/main.rs — Pełny Prototyp Pokoju",
+          code: `use rusted_engine::prelude::*;
+use macroquad::prelude::*;
+
+#[derive(Clone, Debug)]
+pub struct PlayerStats {
+    pub damage: f32,
+    pub tear_rate: f32,
+    pub shot_speed: f32,
+    pub coins: i32,
+}
+
+#[macroquad::main("The Binding of Rust")]
+async fn main() {
+    let mut engine = Engine::new(800, 600)
+        .with_title("The Binding of Rust - Roguelike Prototype")
+        .with_fps_limit(60);
+
+    let mut game_scene = Scene::new_empty("Dungeon");
+
+    // 1. Podłoga i ściany pokoju
+    game_scene.add(
+        Rectangle::simple(vec2(720.0, 520.0), DARKGRAY)
+            .with_position(vec2(40.0, 40.0))
+            .with_border(BLACK, 8.0)
+    );
+
+    // 2. Gracz (na środku pokoju)
+    let player = Rectangle::simple(vec2(28.0, 28.0), WHITE)
+        .with_position(vec2(400.0, 300.0))
+        .with_tag("player")
+        .with_data(0.0_f32) // timer strzału
+        .on_update(|obj, ctx| {
+            let speed = 230.0;
+            let dt = ctx.dt();
+
+            let mut dir = Vec2::ZERO;
+            if ctx.is_key_down(KeyCode::W) { dir.y -= 1.0; }
+            if ctx.is_key_down(KeyCode::S) { dir.y += 1.0; }
+            if ctx.is_key_down(KeyCode::A) { dir.x -= 1.0; }
+            if ctx.is_key_down(KeyCode::D) { dir.x += 1.0; }
+            if dir != Vec2::ZERO {
+                obj.position += dir.normalize() * speed * dt;
+            }
+            obj.position.x = obj.position.x.clamp(52.0, 728.0);
+            obj.position.y = obj.position.y.clamp(52.0, 528.0);
+            ctx.set_vec2("player_pos", obj.position);
+
+            // Strzał łzą
+            *obj.data -= dt;
+            let mut shoot = Vec2::ZERO;
+            if ctx.is_key_down(KeyCode::Up)    { shoot.y -= 1.0; }
+            if ctx.is_key_down(KeyCode::Down)  { shoot.y += 1.0; }
+            if ctx.is_key_down(KeyCode::Left)  { shoot_dir_x(&mut shoot); }
+            if ctx.is_key_down(KeyCode::Right) { shoot.x += 1.0; }
+
+            if shoot != Vec2::ZERO && *obj.data <= 0.0 {
+                *obj.data = 0.22;
+                let tear_vel = shoot.normalize() * 420.0 + dir * (speed * 0.25);
+                let tear = Rectangle::simple(vec2(10.0, 10.0), SKYBLUE)
+                    .with_position(obj.position + vec2(9.0, 9.0))
+                    .with_tag("tear")
+                    .with_data((tear_vel, 1.2_f32))
+                    .on_update(|t, t_ctx| {
+                        t.position += t.data.0 * t_ctx.dt();
+                        t.data.1 -= t_ctx.dt();
+                        if t.data.1 <= 0.0 || t.position.x < 48.0 || t.position.x > 742.0 || t.position.y < 48.0 || t.position.y > 542.0 {
+                            t.destroy();
+                            t_ctx.play_varied("tear_pop", 0.1, 0.05);
+                        }
+                    });
+                ctx.spawn(tear);
+                ctx.play_varied("tear_shoot", 0.1, 0.05);
+            }
+        });
+    game_scene.add(player);
+
+    // 3. Spawnowanie wrogów
+    game_scene.add(
+        Rectangle::simple(vec2(24.0, 24.0), RED)
+            .with_position(vec2(120.0, 120.0))
+            .with_tag("enemy")
+            .with_data(10.0_f32) // HP
+            .on_update(|e, ctx| {
+                if let Some(target) = ctx.get_vec2("player_pos") {
+                    let to_p = e.position.dir_to(target);
+                    e.position += to_p * 105.0 * ctx.dt();
+                }
+            })
+    );
+
+    // 4. Deklaratywny HUD (UI Layer)
+    game_scene.add_ui(
+        col![
+            row![
+                Text::new("❤️ ❤️ ❤️", Vec2::ZERO, 22.0, RED).with_tag("hud_hp"),
+                Gap::width(16.0),
+                ProgressBar::progress(1.0).with_size(vec2(70.0, 16.0)),
+            ],
+            Gap::height(6.0),
+            row![
+                Text::new("💰 00", Vec2::ZERO, 16.0, GOLD).with_tag("hud_coins"),
+                Gap::width(12.0),
+                Text::new("💣 01", Vec2::ZERO, 16.0, WHITE),
+                Gap::width(12.0),
+                Text::new("🔑 01", Vec2::ZERO, 16.0, WHITE),
+            ],
+        ]
+        .with_padding(Padding::all(16.0))
+        .align_to_screen(UIAnchor::TopLeft, Padding::all(16.0))
+    );
+
+    engine.add_scene(game_scene);
+    engine.run().await;
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "twinstick-room-transitions",
+      title: "5. 🚪 Przejścia Między Pokojami, Płynna Kamera & Spawner Fal",
+      content: `W dungeon crawlerze loch składa się z siatki pokoi. Gdy gracz wejdzie w otwarte drzwi, silnik wykonuje **płynne przejście kamery (Room Transition)** za pomocą \`TweenVec2\`, a kontroler \`Logic\` zarządza falami wrogów i otwieraniem przejść.
+
+### Elementy Układanki:
+1. **Wykrycie Wejścia w Drzwi**: Bounding box drzwi na obrzeżach pokoju (\`door_rect.overlaps_rect(player_rect)\`).
+2. **Animacja Kamery**: \`TweenVec2\` przesuwa \`ctx.camera.target\` z centrum starego pokoju do nowego.
+3. **Teleport Gracza**: Gracz zostaje przesunięty pod przeciwległe drzwi nowego pokoju.
+4. **Zarządca Fal (\`Logic\`)**: Sprawdza liczbę aktywnych wrogów — po pokonaniu wszystkich wrogów emituje dźwięk i odblokowuje drzwi.`,
+      codeExamples: [
+        {
+          title: "Płynne Przejście Kamery i Kontroler Fali (Logic)",
+          code: `// 1. Struktura Menedżera Pokoju i Kamery:
+pub struct DungeonRoomController {
+    pub camera_tween: Option<TweenVec2>,
+    pub enemies_spawned: bool,
+}
+
+// 2. Kontroler Logiki Pokoju (warstwa Logic):
+let dungeon_logic = Logic::with_data(DungeonRoomController {
+    camera_tween: None,
+    enemies_spawned: false,
+})
+.on_update(|ctrl, ctx| {
+    // A. Animacja przejścia kamery między pokojami:
+    if let Some(ref mut tween) = ctrl.camera_tween {
+        ctx.camera.target = tween.tick(ctx.dt());
+        if tween.is_finished() {
+            ctrl.camera_tween = None; // Koniec przejścia
+        }
+        return; // Zablokuj logikę gry w trakcie tranzycji pokoju
+    }
+
+    // B. Sprawdzenie wyczyszczenia pokoju (Room Clear):
+    let alive_enemies = ctx.get_int_or("alive_enemies", 0);
+    if ctrl.enemies_spawned && alive_enemies == 0 && !ctx.flag("room_cleared") {
+        ctx.set_flag("room_cleared", true);
+        ctx.play_sound("room_clear_jingle");
+        
+        // Zespawnuj nagrodę (skrzynia lub piedestał):
+        crate::items::spawn_chest(vec2(400.0, 300.0), ctx);
+    }
+});
+
+// 3. Wejście w Drzwi Północne (North Door Transition):
+pub fn check_door_transition(player: &mut Rectangle, ctx: &mut Context, ctrl: &mut DungeonRoomController) {
+    let north_door = Rect::new(370.0, 30.0, 60.0, 20.0);
+
+    if north_door.overlaps(&player.rect()) && ctx.flag("room_cleared") {
+        // Płynny przesuw kamery o 600px w górę (0.45 sekundy):
+        ctrl.camera_tween = Some(TweenVec2::new(
+            ctx.camera.target,
+            ctx.camera.target - vec2(0.0, 600.0),
+            0.45,
+            Easing::EaseInOutCubic,
+        ));
+
+        // Teleportuj gracza do dolnych drzwi nowego pokoju:
+        player.position.y = 510.0;
+        ctx.set_flag("room_cleared", false);
+        ctrl.enemies_spawned = false;
+        ctx.play_sound("door_open");
+    }
+}`,
+          collapsible: false
+        }
+      ]
+    }
+  ]
+};
+
+export const spatialQueriesDetectionDoc = {
+  id: "spatial-queries-detection",
+  title: "35. 📡 Raycasty, Detekcja Obszarowa & Zapytania Przestrzenne (Spatial Queries)",
+  badge: "Spatial Math & Queries",
+  description: "Zaawansowane zapytania przestrzenne: Raycasty 2D i Line-of-Sight, wykrywanie przedmiotów w promieniu gracza, dynamiczne prompty interakcji UI ('Naciśnij E'), stożki widzenia AI (FOV Cone), cięcia kapsułą i eksplozje AoE.",
+  sections: [
+    {
+      id: "spatial-raycasting-los",
+      title: "1. 🔦 Raycasting 2D & Pole Widzenia (Line of Sight)",
+      content: `Promienie **\`Ray2D\`** pozwalają na rzucanie niewidzialnych linii w przestrzeni świata 2D w celu wykrywania kolizji z przeszkodami (AABB, okręgi, odcinki) oraz sprawdzania czystej linii wzroku (*Line of Sight*):
+
+### Metody Ray2D:
+- **\`Ray2D::new(origin, direction)\`**: Tworzy promień z automatyczną normalizacją kierunku.
+- **\`.cast_against_rect(rect, max_dist) -> Option<RayHit>\`**: Zwraca punkt uderzenia (\`hit.point\`), odległość (\`hit.distance\`) oraz wektor normalny powierzchni (\`hit.normal\`).
+- **\`.cast_against_circle(circle, max_dist) -> Option<RayHit>\`**: Trafienie w okrąg kolizyjny.
+- **\`.cast_against_segment(segment, max_dist) -> Option<RayHit>\`**: Przecięcie z odcinkiem linii.`,
+      codeExamples: [
+        {
+          title: "Line of Sight AI — Czy Wróg Widzi Gracza Przez Ściany?",
+          code: `use rusted_engine::prelude::*;
+use macroquad::prelude::*;
+
+// Funkcja pomocnicza testująca czy linia między punktem A a B jest wolna od ścian:
+pub fn has_line_of_sight(from: Vec2, to: Vec2, walls: &[Rect]) -> bool {
+    let to_target = to - from;
+    let dist = to_target.length();
+    if dist < 0.001 { return true; }
+
+    let ray = Ray2D::new(from, to_target / dist);
+
+    for wall in walls {
+        if let Some(hit) = ray.cast_against_rect(*wall, dist) {
+            if hit.distance < dist {
+                return false; // Ściana przesłania widok!
+            }
+        }
+    }
+    true // Czysta linia widzenia
+}
+
+// W update() przeciwnika AI:
+let player_pos = ctx.resources.get::<Vec2>().copied().unwrap_or(Vec2::ZERO);
+let walls = ctx.resources.get::<Vec<Rect>>().map(|w| w.as_slice()).unwrap_or(&[]);
+
+if enemy.position.distance(player_pos) < 300.0 && has_line_of_sight(enemy.position, player_pos, walls) {
+    // Wróg widzi gracza — przejdź do agresywnego pościgu:
+    enemy.data.is_chasing = true;
+}`,
+          collapsible: false
+        },
+        {
+          title: "Odbicie Promienia Lasera od Ściany (Ray Reflection)",
+          code: `// Rzucenie promienia i obliczenie kąta odbicia od powierzchni:
+let laser = Ray2D::new(gun_pos, gun_dir);
+
+if let Some(hit) = laser.cast_against_rect(wall_rect, 600.0) {
+    // 1. Rysuj główny promień:
+    draw_line(gun_pos.x, gun_pos.y, hit.point.x, hit.point.y, 2.0, RED);
+
+    // 2. Oblicz wektor odbicia: r = d - 2*(d · n)*n
+    let bounce_dir = laser.direction - 2.0 * laser.direction.dot(hit.normal) * hit.normal;
+    let bounce_ray = Ray2D::new(hit.point, bounce_dir);
+
+    // 3. Rysuj odbity promień o długości 200px:
+    let end_pos = bounce_ray.point_at(200.0);
+    draw_line(hit.point.x, hit.point.y, end_pos.x, end_pos.y, 1.5, ORANGE);
+}`,
+          collapsible: true,
+          defaultCollapsed: true
+        }
+      ]
+    },
+    {
+      id: "spatial-interaction-prompts",
+      title: "2. 🎁 Zasięg Interakcji z Przedmiotami & Dynamiczny Prompt UI (Press E)",
+      content: `Wyszukiwanie najbliższego interaktywnego przedmiotu (skrzynia, mikstura, NPC) w zasięgu gracza i wyświetlanie komunikatu w interfejsie:
+
+### Dobre Praktyki:
+1. **Pojedyncza Etykieta Promptu w UI**: W HUD trzymaj jeden element tekstowy (np. z tagiem \`"interact_prompt"\`), który aktualizujesz co klatkę.
+2. **Wyszukanie z Tagiem**: Użyj \`ctx.find_nearest(player.position, "pickup")\` lub \`ctx.find_within_radius(player.position, 60.0)\`.
+3. **Akcja pod Klawiszem**: Wciśnięcie klawisza \`E\` aplikuje efekt (np. leczenie) i usuwa zebrany przedmiot (\`obj.destroy()\`).`,
+      codeExamples: [
+        {
+          title: "Kompletny System Podnoszenia Przedmiotów i Otwierania Skrzyń",
+          code: `// Encja Skrzyni ze Skarbem:
+pub struct ChestData {
+    pub is_opened: bool,
+    pub gold_reward: i32,
+}
+
+pub fn spawn_chest(pos: Vec2) -> impl Object {
+    Sprite::solid(pos, vec2(24.0, 24.0), GOLD)
+        .with_tag("chest")
+        .with_data(ChestData { is_opened: false, gold_reward: 150 })
+}
+
+// W update() encji Gracza:
+let interact_range = 60.0;
+let mut active_prompt = None;
+
+// 1. Sprawdź czy w pobliżu znajduje się skrzynia:
+if let Some(chest) = ctx.find_nearest(player.position, "chest") {
+    if let Some(bounds) = chest.bounds() {
+        let center = vec2(bounds.x + bounds.w * 0.5, bounds.y + bounds.h * 0.5);
+        
+        if player.position.distance(center) <= interact_range {
+            active_prompt = Some("[E] Otwórz Skrzynię");
+
+            if ctx.input.is_key_pressed(KeyCode::E) {
+                ctx.increment("gold", 150);
+                ctx.play_varied("chest_open_fanfare", 0.1, 0.05);
+                ctx.emit_signal("chest_looted");
+            }
+        }
+    }
+}
+
+// 2. Aktualizacja etykiety w UI HUD:
+if let Some(msg) = active_prompt {
+    ctx.set_ui_text("interact_prompt", msg);
+} else {
+    ctx.set_ui_text("interact_prompt", ""); // Ukryj gdy brak obiektów w zasięgu
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "spatial-fov-cone",
+      title: "3. 👁️ Stożek Wzroku AI / Zasięg Latarki (Vision Cone)",
+      content: `Wykrywanie czy gracz znajduje się w kątowym stożku widzenia postaci (np. $60^\circ$ przed oczyma):
+
+### Wzór Kątowy (Dot Product):
+Wektor patrzenia $\\vec{F}$ oraz znormalizowany wektor do celu $\\vec{D}$:
+$$\\vec{F} \\cdot \\vec{D} \\ge \\cos(\\text{half\\_fov})$$`,
+      codeExamples: [
+        {
+          title: "Detekcja Gracza w Stożku Widzenia Strażnika",
+          code: `pub fn is_inside_cone(
+    viewer_pos: Vec2,
+    viewer_facing: Vec2, // np. vec2(1.0, 0.0)
+    target_pos: Vec2,
+    max_distance: f32,
+    fov_degrees: f32,
+) -> bool {
+    let to_target = target_pos - viewer_pos;
+    let dist = to_target.length();
+
+    if dist > max_distance || dist < 0.001 {
+        return false;
+    }
+
+    let dir = to_target / dist;
+    let threshold = (fov_degrees.to_radians() * 0.5).cos();
+
+    viewer_facing.dot(dir) >= threshold
+}
+
+// W update() strażnika:
+let player_pos = ctx.resources.get::<Vec2>().copied().unwrap_or(Vec2::ZERO);
+
+// Kąt 75 stopni na dystans 250px:
+if is_inside_cone(guard.position, guard.data.facing, player_pos, 250.0, 75.0) {
+    // Gracz wszedł w pole widzenia!
+    guard.data.alert_level = 1.0;
+}`,
+          collapsible: false
+        }
+      ]
+    },
+    {
+      id: "spatial-aoe-explosion",
+      title: "4. 💥 Eksplozje Obszarowe & Odrzut (AoE Damage & Knockback)",
+      content: `Wybuchy bomb i min wykorzystują zapytanie \`ctx.find_within_radius(pos, radius)\` w celu zadania obrażeń i odrzucenia fizycznego:`,
+      codeExamples: [
+        {
+          title: "Eksplozja Obszarowa z Odrzutem Wrogów",
+          code: `pub fn trigger_bomb_explosion(ctx: &mut Context, bomb_pos: Vec2, radius: f32, max_dmg: f32) {
+    ctx.camera.shake(0.35, 12.0);
+    ctx.play_varied("explosion_heavy", 0.1, 0.15);
+
+    // Znajdź wszystkie byty w promieniu rażenia:
+    let targets = ctx.find_within_radius(bomb_pos, radius);
+
+    for target in targets {
+        if target.has_tag("enemy") {
+            if let Some(b) = target.bounds() {
+                let target_pos = vec2(b.x + b.w * 0.5, b.y + b.h * 0.5);
+                let dist = bomb_pos.distance(target_pos).max(1.0);
+
+                // Opad obrażeń proporcjonalny do odległości:
+                let falloff = (1.0 - (dist / radius)).clamp(0.0, 1.0);
+                let damage = (max_dmg * falloff).round() as i32;
+
+                // Wektor odrzutu (Knockback):
+                let knockback_dir = (target_pos - bomb_pos).normalize_or_zero();
+                let knockback_force = knockback_dir * (400.0 * falloff);
+
+                println!("Trafiono wroga: {} dmg, odrzut: {:?}", damage, knockback_force);
+            }
+        }
+    }
+}`,
+          collapsible: false
+        }
+      ]
     }
   ]
 };

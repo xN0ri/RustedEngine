@@ -226,6 +226,157 @@ impl Capsule {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Ray2D & RayHit
+// ---------------------------------------------------------------------------
+
+/// 2D Ray starting at origin and pointing in a normalized direction.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Ray2D {
+    pub origin: Vec2,
+    pub direction: Vec2,
+}
+
+/// Result of a 2D raycast hit against a primitive geometry.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RayHit {
+    /// Distance along the ray from origin to hit point.
+    pub distance: f32,
+    /// World position of the hit point.
+    pub point: Vec2,
+    /// Surface normal vector at the hit point.
+    pub normal: Vec2,
+}
+
+impl Ray2D {
+    /// Creates a new [`Ray2D`] from origin and direction (direction is automatically normalized).
+    pub fn new(origin: Vec2, direction: Vec2) -> Self {
+        let dir = if direction.length_squared() > f32::EPSILON {
+            direction.normalize()
+        } else {
+            vec2(1.0, 0.0)
+        };
+        Self { origin, direction: dir }
+    }
+
+    /// Evaluates world position along the ray at distance `t`.
+    pub fn point_at(&self, t: f32) -> Vec2 {
+        self.origin + self.direction * t
+    }
+
+    /// Casts ray against an axis-aligned bounding box ([`Rect`]) up to `max_distance`.
+    pub fn cast_against_rect(&self, rect: Rect, max_distance: f32) -> Option<RayHit> {
+        let mut t_min = 0.0_f32;
+        let mut t_max = max_distance;
+        let mut hit_normal = Vec2::ZERO;
+
+        // X axis slab
+        if self.direction.x.abs() > f32::EPSILON {
+            let inv_d = 1.0 / self.direction.x;
+            let mut t1 = (rect.x - self.origin.x) * inv_d;
+            let mut t2 = (rect.x + rect.w - self.origin.x) * inv_d;
+            let mut normal_sign = -1.0;
+            if t1 > t2 {
+                std::mem::swap(&mut t1, &mut t2);
+                normal_sign = 1.0;
+            }
+            if t1 > t_min {
+                t_min = t1;
+                hit_normal = vec2(normal_sign, 0.0);
+            }
+            t_max = t_max.min(t2);
+            if t_min > t_max {
+                return None;
+            }
+        } else if self.origin.x < rect.x || self.origin.x > rect.x + rect.w {
+            return None;
+        }
+
+        // Y axis slab
+        if self.direction.y.abs() > f32::EPSILON {
+            let inv_d = 1.0 / self.direction.y;
+            let mut t1 = (rect.y - self.origin.y) * inv_d;
+            let mut t2 = (rect.y + rect.h - self.origin.y) * inv_d;
+            let mut normal_sign = -1.0;
+            if t1 > t2 {
+                std::mem::swap(&mut t1, &mut t2);
+                normal_sign = 1.0;
+            }
+            if t1 > t_min {
+                t_min = t1;
+                hit_normal = vec2(0.0, normal_sign);
+            }
+            t_max = t_max.min(t2);
+            if t_min > t_max {
+                return None;
+            }
+        } else if self.origin.y < rect.y || self.origin.y > rect.y + rect.h {
+            return None;
+        }
+
+        if t_min <= max_distance && t_min >= 0.0 {
+            Some(RayHit {
+                distance: t_min,
+                point: self.point_at(t_min),
+                normal: hit_normal,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Casts ray against a [`Circle`] up to `max_distance`.
+    pub fn cast_against_circle(&self, circle: Circle, max_distance: f32) -> Option<RayHit> {
+        let m = self.origin - circle.center;
+        let b = m.dot(self.direction);
+        let c = m.dot(m) - circle.radius * circle.radius;
+
+        // If ray origin is outside circle and ray points away from circle
+        if c > 0.0 && b > 0.0 {
+            return None;
+        }
+
+        let discr = b * b - c;
+        if discr < 0.0 {
+            return None;
+        }
+
+        let mut t = -b - discr.sqrt();
+        if t < 0.0 {
+            t = 0.0;
+        }
+
+        if t <= max_distance {
+            let point = self.point_at(t);
+            let normal = (point - circle.center).normalize_or_zero();
+            Some(RayHit {
+                distance: t,
+                point,
+                normal,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Casts ray against a [`Segment`] up to `max_distance`.
+    pub fn cast_against_segment(&self, seg: Segment, max_distance: f32) -> Option<RayHit> {
+        let seg_ray = Segment::new(self.origin, self.point_at(max_distance));
+        if let Some(hit_pos) = seg_ray.intersects_segment(seg) {
+            let dist = self.origin.distance(hit_pos);
+            let seg_dir = seg.direction();
+            let normal = vec2(-seg_dir.y, seg_dir.x);
+            Some(RayHit {
+                distance: dist,
+                point: hit_pos,
+                normal,
+            })
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,5 +432,29 @@ mod tests {
 
         let target_circle = Circle::new(vec2(5.0, 4.0), 3.0);
         assert!(cap.intersects_circle(target_circle));
+    }
+
+    #[test]
+    fn test_ray2d_intersections() {
+        let ray = Ray2D::new(vec2(0.0, 0.0), vec2(1.0, 0.0));
+
+        // Rect hit
+        let rect = Rect::new(10.0, -5.0, 10.0, 10.0);
+        let hit_rect = ray.cast_against_rect(rect, 100.0);
+        assert!(hit_rect.is_some());
+        let hit = hit_rect.unwrap();
+        assert!((hit.distance - 10.0).abs() < 0.01);
+        assert_eq!(hit.normal, vec2(-1.0, 0.0));
+
+        // Circle hit
+        let circle = Circle::new(vec2(20.0, 0.0), 5.0);
+        let hit_circle = ray.cast_against_circle(circle, 100.0);
+        assert!(hit_circle.is_some());
+        let hit_c = hit_circle.unwrap();
+        assert!((hit_c.distance - 15.0).abs() < 0.01);
+
+        // Miss
+        let far_miss = ray.cast_against_circle(Circle::new(vec2(0.0, 20.0), 2.0), 100.0);
+        assert!(far_miss.is_none());
     }
 }

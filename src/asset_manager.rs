@@ -193,6 +193,19 @@ impl Assets {
         Ok(font)
     }
 
+    /// Asynchronously loads a list of TTF fonts `&[("name", "path"), ...]`.
+    pub async fn load_fonts(
+        &mut self,
+        list: &[(&str, &str)],
+    ) -> Result<Vec<Font>, macroquad::Error> {
+        let mut loaded = Vec::with_capacity(list.len());
+        for (name, path) in list {
+            let font = self.load_font(name, path).await?;
+            loaded.push(font);
+        }
+        Ok(loaded)
+    }
+
     /// Manually inserts a pre-loaded [`Font`] handle under `name`.
     pub fn insert_font(&mut self, name: &str, font: Font) {
         self.fonts.insert(name.to_string(), font);
