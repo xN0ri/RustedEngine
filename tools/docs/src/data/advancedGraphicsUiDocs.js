@@ -260,17 +260,17 @@ export const panelManagerDoc = {
       title: "Menedżer Okien Pulpitu (PanelManager)",
       content: `**\`PanelManager\`** zarządza niezależnymi, ruchomymi i skalowalnymi oknami pulpitu (np. okna ekwipunku, drzewka umiejętności, konsole terminalowe).
 
-### Czym różni się `PanelManager` od `ui::Panel`?
-- **`ui::Panel`** — statyczny kontener grupujący layout (flexbox) wewnątrz okna.
-- **`PanelManager`** — nadrzędny menedżer okien wyższej warstwy (`World::add_ui`), zarządzający kolejnością z-order (wyciąganie na wierzch po kliknięciu), przeciąganiem nagłówka okna i zmianą rozmiaru.
+### Czym różni się \`PanelManager\` od \`ui::Panel\`?
+- **\`ui::Panel\`** — statyczny kontener grupujący layout (flexbox) wewnątrz okna.
+- **\`PanelManager\`** — nadrzędny menedżer okien wyższej warstwy (\`World::add_ui\`), zarządzający kolejnością z-order (wyciąganie na wierzch po kliknięciu), przeciąganiem nagłówka okna i zmianą rozmiaru.
 
-### Trait `Panel` (oraz aliasy `WindowPanel` / `DesktopWindow`):
-Aby uniknąć kolizji nazw z `ui::Panel`, trait okna pulpitu posiada oficjalne aliasy **`WindowPanel`** oraz **`DesktopWindow`**:
-- `fn update(&mut self, dt: f32)`
-- `fn draw(&self, rect: Rect)`
-- `fn on_close(&mut self)` — opcjonalne sprzątanie po zamknięciu.
-- `fn is_draggable(&self) -> bool { true }` — włącza przeciąganie myszą.
-- `fn is_resizable(&self) -> bool { true }` — włącza skalowanie krawędzi.`,
+### Trait \`Panel\` (oraz aliasy \`WindowPanel\` / \`DesktopWindow\`):
+Aby uniknąć kolizji nazw z \`ui::Panel\`, trait okna pulpitu posiada oficjalne aliasy **\`WindowPanel\`** oraz **\`DesktopWindow\`**:
+- \`fn update(&mut self, dt: f32)\`
+- \`fn draw(&self, rect: Rect)\`
+- \`fn on_close(&mut self)\` — opcjonalne sprzątanie po zamknięciu.
+- \`fn is_draggable(&self) -> bool { true }\` — włącza przeciąganie myszą.
+- \`fn is_resizable(&self) -> bool { true }\` — włącza skalowanie krawędzi.`,
       codeExamples: [
         {
           title: "Implementacja Własnego Okna Ekwipunku (Panel)",

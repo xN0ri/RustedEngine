@@ -1152,32 +1152,6 @@ turret.rotation = lerp_angle(turret.rotation, target_angle, 8.0 * ctx.dt());`,
       ]
     }
   ]
-};z granicę 0 / 2π radianów.
-- **\`remap(val, in_min, in_max, out_min, out_max)\`**: Przelicza wartość z jednego przedziału liczbowego na inny.
-- **\`approach(current, target, max_delta)\`**: Przesuwa wartość w stronę celu z maksymalnym limitem kroku.`,
-      codeExamples: [
-        {
-          title: "Tłumienie Kamery i Płynny Obrót Wieżyczki",
-          code: `// 1. Płynne podążanie kamery za celem:
-let smooth_pos = smooth_damp_vec2(
-    ctx.camera.target,
-    player.position,
-    &mut cam_velocity,
-    0.15,
-    1200.0,
-    ctx.dt()
-);
-ctx.camera.target = smooth_pos;
-
-// 2. Płynne celowanie wieżyczki w stronę myszy:
-let target_dir = ctx.mouse_world() - turret.position;
-let target_angle = target_dir.y.atan2(target_dir.x);
-turret.rotation = lerp_angle(turret.rotation, target_angle, 8.0 * ctx.dt());`,
-          collapsible: false
-        }
-      ]
-    }
-  ]
 };
 
 export const rngProceduralDoc = {
